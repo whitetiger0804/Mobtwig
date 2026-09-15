@@ -1,4 +1,5 @@
-# 프로젝트 이름
+# Mobtwig
+Mobile+twig(작은 가지)
 
 ## 프로젝트 구성
 teamproject/
