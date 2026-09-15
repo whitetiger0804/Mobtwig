@@ -1,0 +1,255 @@
+<mxfile host="65bd71144e">
+    <diagram name="페이지-1" id="ivqVX-eDAo9KLcM3s9bu">
+        <mxGraphModel dx="1716" dy="880" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="title" value="&lt;b&gt;전자책 앱 · 개념적 ERD&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;overflow=hidden;fontFamily=Malgun Gothic;fontSize=32;fontColor=#172b4d;spacing=0;" parent="1" vertex="1">
+                    <mxGeometry x="40" y="28" width="1080" height="48" as="geometry"/>
+                </mxCell>
+                <mxCell id="subtitle" value="서재 · 콘텐츠 · 독서 활동 · 리뷰의 주요 속성과 관계를 정리한 설계 초안입니다." style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;overflow=hidden;fontFamily=Malgun Gothic;fontSize=18;fontColor=#334155;spacing=0;" parent="1" vertex="1">
+                    <mxGeometry x="40" y="84" width="1410" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="author" value="저자" style="swimlane;html=1;startSize=42;horizontal=1;rounded=0;collapsible=0;whiteSpace=wrap;fillColor=#dae8fc;swimlaneFillColor=#ffffff;strokeColor=#6c8ebf;strokeWidth=1.7;fontFamily=Malgun Gothic;fontSize=21;fontStyle=1;fontColor=#172b4d;align=left;spacingLeft=16;" parent="1" vertex="1">
+                    <mxGeometry x="460" y="140" width="250" height="160" as="geometry"/>
+                </mxCell>
+                <mxCell id="author_attrs" value="&lt;div style=&quot;line-height:1.6;&quot;&gt;이름&lt;br&gt;소개&lt;br&gt;활동 분야&lt;/div&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;overflow=hidden;fontFamily=Malgun Gothic;fontSize=18;fontColor=#334155;spacingLeft=16;spacingTop=10;spacingRight=10;" parent="author" vertex="1">
+                    <mxGeometry y="42" width="250" height="118" as="geometry"/>
+                </mxCell>
+                <mxCell id="publisher" value="출판사" style="swimlane;html=1;startSize=42;horizontal=1;rounded=0;collapsible=0;whiteSpace=wrap;fillColor=#dae8fc;swimlaneFillColor=#ffffff;strokeColor=#6c8ebf;strokeWidth=1.7;fontFamily=Malgun Gothic;fontSize=21;fontStyle=1;fontColor=#172b4d;align=left;spacingLeft=16;" parent="1" vertex="1">
+                    <mxGeometry x="900" y="140" width="260" height="160" as="geometry"/>
+                </mxCell>
+                <mxCell id="publisher_attrs" value="&lt;div style=&quot;line-height:1.6;&quot;&gt;이름&lt;br&gt;소개&lt;br&gt;홈페이지&lt;/div&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;overflow=hidden;fontFamily=Malgun Gothic;fontSize=18;fontColor=#334155;spacingLeft=16;spacingTop=10;spacingRight=10;" parent="publisher" vertex="1">
+                    <mxGeometry y="42" width="260" height="118" as="geometry"/>
+                </mxCell>
+                <mxCell id="category" value="카테고리" style="swimlane;html=1;startSize=42;horizontal=1;rounded=0;collapsible=0;whiteSpace=wrap;fillColor=#dae8fc;swimlaneFillColor=#ffffff;strokeColor=#6c8ebf;strokeWidth=1.7;fontFamily=Malgun Gothic;fontSize=21;fontStyle=1;fontColor=#172b4d;align=left;spacingLeft=16;" parent="1" vertex="1">
+                    <mxGeometry x="1340" y="140" width="260" height="160" as="geometry"/>
+                </mxCell>
+                <mxCell id="category_attrs" value="&lt;div style=&quot;line-height:1.6;&quot;&gt;이름&lt;br&gt;설명&lt;br&gt;표시 순서&lt;/div&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;overflow=hidden;fontFamily=Malgun Gothic;fontSize=18;fontColor=#334155;spacingLeft=16;spacingTop=10;spacingRight=10;" parent="category" vertex="1">
+                    <mxGeometry y="42" width="260" height="118" as="geometry"/>
+                </mxCell>
+                <mxCell id="book" value="전자책" style="swimlane;html=1;startSize=42;horizontal=1;rounded=0;collapsible=0;whiteSpace=wrap;fillColor=#dae8fc;swimlaneFillColor=#ffffff;strokeColor=#6c8ebf;strokeWidth=1.7;fontFamily=Malgun Gothic;fontSize=21;fontStyle=1;fontColor=#172b4d;align=left;spacingLeft=16;" parent="1" vertex="1">
+                    <mxGeometry x="900" y="450" width="280" height="250" as="geometry"/>
+                </mxCell>
+                <mxCell id="book_attrs" value="&lt;div style=&quot;line-height:1.6;&quot;&gt;제목&lt;br&gt;소개&lt;br&gt;표지&lt;br&gt;출간일&lt;br&gt;언어&lt;br&gt;도서식별번호(ISBN, 선택)&lt;/div&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;overflow=hidden;fontFamily=Malgun Gothic;fontSize=18;fontColor=#334155;spacingLeft=16;spacingTop=10;spacingRight=10;" parent="book" vertex="1">
+                    <mxGeometry y="42" width="280" height="208" as="geometry"/>
+                </mxCell>
+                <mxCell id="library" value="서재" style="swimlane;html=1;startSize=42;horizontal=1;rounded=0;collapsible=0;whiteSpace=wrap;fillColor=#fff2cc;swimlaneFillColor=#ffffff;strokeColor=#d6b656;strokeWidth=1.7;fontFamily=Malgun Gothic;fontSize=21;fontStyle=1;fontColor=#172b4d;align=left;spacingLeft=16;" parent="1" vertex="1">
+                    <mxGeometry x="430" y="810" width="270" height="190" as="geometry"/>
+                </mxCell>
+                <mxCell id="library_attrs" value="&lt;div style=&quot;line-height:1.6;&quot;&gt;이름&lt;br&gt;설명&lt;br&gt;생성일&lt;br&gt;표시 순서&lt;/div&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;overflow=hidden;fontFamily=Malgun Gothic;fontSize=18;fontColor=#334155;spacingLeft=16;spacingTop=10;spacingRight=10;" parent="library" vertex="1">
+                    <mxGeometry y="42" width="270" height="148" as="geometry"/>
+                </mxCell>
+                <mxCell id="review" value="리뷰" style="swimlane;html=1;startSize=42;horizontal=1;rounded=0;collapsible=0;whiteSpace=wrap;fillColor=#e1d5e7;swimlaneFillColor=#ffffff;strokeColor=#9673a6;strokeWidth=1.7;fontFamily=Malgun Gothic;fontSize=21;fontStyle=1;fontColor=#172b4d;align=left;spacingLeft=16;" parent="1" vertex="1">
+                    <mxGeometry x="900" y="790" width="280" height="208" as="geometry"/>
+                </mxCell>
+                <mxCell id="review_attrs" value="&lt;div style=&quot;line-height:1.6;&quot;&gt;평점(1~5점)&lt;br&gt;내용&lt;br&gt;작성 시각&lt;br&gt;수정 시각&lt;/div&gt;&lt;div style=&quot;line-height:1.6;&quot;&gt;링크(선택)&lt;/div&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;overflow=hidden;fontFamily=Malgun Gothic;fontSize=18;fontColor=#334155;spacingLeft=16;spacingTop=10;spacingRight=10;" parent="review" vertex="1">
+                    <mxGeometry y="42" width="280" height="160" as="geometry"/>
+                </mxCell>
+                <mxCell id="reading" value="독서상태" style="swimlane;html=1;startSize=42;horizontal=1;rounded=0;collapsible=0;whiteSpace=wrap;fillColor=#d5e8d4;swimlaneFillColor=#ffffff;strokeColor=#82b366;strokeWidth=1.7;fontFamily=Malgun Gothic;fontSize=21;fontStyle=1;fontColor=#172b4d;align=left;spacingLeft=16;" parent="1" vertex="1">
+                    <mxGeometry x="1370" y="790" width="290" height="230" as="geometry"/>
+                </mxCell>
+                <mxCell id="reading_attrs" value="&lt;div style=&quot;line-height:1.6;&quot;&gt;읽기 상태&lt;br&gt;현재 위치&lt;br&gt;진행률(계산 속성)&lt;br&gt;읽기 시작일 · 완료일&lt;br&gt;마지막 읽은 시각&lt;/div&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;overflow=hidden;fontFamily=Malgun Gothic;fontSize=18;fontColor=#334155;spacingLeft=16;spacingTop=10;spacingRight=10;" parent="reading" vertex="1">
+                    <mxGeometry y="42" width="290" height="188" as="geometry"/>
+                </mxCell>
+                <mxCell id="user" value="회원" style="swimlane;html=1;startSize=42;horizontal=1;rounded=0;collapsible=0;whiteSpace=wrap;fillColor=#fff2cc;swimlaneFillColor=#ffffff;strokeColor=#d6b656;strokeWidth=1.7;fontFamily=Malgun Gothic;fontSize=21;fontStyle=1;fontColor=#172b4d;align=left;spacingLeft=16;" parent="1" vertex="1">
+                    <mxGeometry x="900" y="1130" width="280" height="190" as="geometry"/>
+                </mxCell>
+                <mxCell id="user_attrs" value="&lt;div style=&quot;line-height:1.6;&quot;&gt;닉네임&lt;br&gt;이메일&lt;br&gt;가입일&lt;br&gt;회원 상태&lt;/div&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;overflow=hidden;fontFamily=Malgun Gothic;fontSize=18;fontColor=#334155;spacingLeft=16;spacingTop=10;spacingRight=10;" parent="user" vertex="1">
+                    <mxGeometry y="42" width="280" height="148" as="geometry"/>
+                </mxCell>
+                <mxCell id="bookmark" value="북마크" style="swimlane;html=1;startSize=42;horizontal=1;rounded=0;collapsible=0;whiteSpace=wrap;fillColor=#d5e8d4;swimlaneFillColor=#ffffff;strokeColor=#82b366;strokeWidth=1.7;fontFamily=Malgun Gothic;fontSize=21;fontStyle=1;fontColor=#172b4d;align=left;spacingLeft=16;" parent="1" vertex="1">
+                    <mxGeometry x="1820" y="560" width="250" height="160" as="geometry"/>
+                </mxCell>
+                <mxCell id="bookmark_attrs" value="&lt;div style=&quot;line-height:1.6;&quot;&gt;이름&lt;br&gt;저장 위치&lt;br&gt;생성 시각&lt;/div&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;overflow=hidden;fontFamily=Malgun Gothic;fontSize=18;fontColor=#334155;spacingLeft=16;spacingTop=10;spacingRight=10;" parent="bookmark" vertex="1">
+                    <mxGeometry y="42" width="250" height="118" as="geometry"/>
+                </mxCell>
+                <mxCell id="highlight" value="하이라이트" style="swimlane;html=1;startSize=42;horizontal=1;rounded=0;collapsible=0;whiteSpace=wrap;fillColor=#d5e8d4;swimlaneFillColor=#ffffff;strokeColor=#82b366;strokeWidth=1.7;fontFamily=Malgun Gothic;fontSize=21;fontStyle=1;fontColor=#172b4d;align=left;spacingLeft=16;" parent="1" vertex="1">
+                    <mxGeometry x="1820" y="1020" width="280" height="220" as="geometry"/>
+                </mxCell>
+                <mxCell id="highlight_attrs" value="&lt;div style=&quot;line-height:1.6;&quot;&gt;시작 위치 · 끝 위치&lt;br&gt;인용문&lt;br&gt;색상&lt;br&gt;메모(선택)&lt;br&gt;생성 시각&lt;/div&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;overflow=hidden;fontFamily=Malgun Gothic;fontSize=18;fontColor=#334155;spacingLeft=16;spacingTop=10;spacingRight=10;" parent="highlight" vertex="1">
+                    <mxGeometry y="42" width="280" height="178" as="geometry"/>
+                </mxCell>
+                <mxCell id="writes" value="집필" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=none;startArrow=none;strokeColor=#64748b;strokeWidth=1.8;fontFamily=Malgun Gothic;fontSize=17;fontColor=#334155;labelBackgroundColor=#ffffff;jumpStyle=arc;jumpSize=8;exitX=0.5;exitY=1;entryX=0.2;entryY=0;" parent="1" source="author" target="book" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="585" y="370"/>
+                            <mxPoint x="956" y="370"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="writes_s" value="1..N" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;fontFamily=Malgun Gothic;fontSize=16;fontStyle=1;fontColor=#1e293b;labelBackgroundColor=#ffffff;" parent="writes" connectable="0" vertex="1">
+                    <mxGeometry x="-0.8" y="-13" relative="1" as="geometry">
+                        <mxPoint as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="writes_t" value="0..N" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;fontFamily=Malgun Gothic;fontSize=16;fontStyle=1;fontColor=#1e293b;labelBackgroundColor=#ffffff;" parent="writes" connectable="0" vertex="1">
+                    <mxGeometry x="0.8" y="-13" relative="1" as="geometry">
+                        <mxPoint as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="publishes" value="발행" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=none;startArrow=none;strokeColor=#64748b;strokeWidth=1.8;fontFamily=Malgun Gothic;fontSize=17;fontColor=#334155;labelBackgroundColor=#ffffff;jumpStyle=arc;jumpSize=8;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" parent="1" source="publisher" target="book" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="publishes_s" value="1" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;fontFamily=Malgun Gothic;fontSize=16;fontStyle=1;fontColor=#1e293b;labelBackgroundColor=#ffffff;" parent="publishes" connectable="0" vertex="1">
+                    <mxGeometry x="-0.8" y="-13" relative="1" as="geometry">
+                        <mxPoint as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="publishes_t" value="0..N" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;fontFamily=Malgun Gothic;fontSize=16;fontStyle=1;fontColor=#1e293b;labelBackgroundColor=#ffffff;" parent="publishes" connectable="0" vertex="1">
+                    <mxGeometry x="0.8" y="-13" relative="1" as="geometry">
+                        <mxPoint as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="classifies" value="분류" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=none;startArrow=none;strokeColor=#64748b;strokeWidth=1.8;fontFamily=Malgun Gothic;fontSize=17;fontColor=#334155;labelBackgroundColor=#ffffff;jumpStyle=arc;jumpSize=8;exitX=0.5;exitY=1;entryX=0.82;entryY=0;" parent="1" source="category" target="book" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="1470" y="385"/>
+                            <mxPoint x="1129.6" y="385"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="classifies_s" value="0..N" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;fontFamily=Malgun Gothic;fontSize=16;fontStyle=1;fontColor=#1e293b;labelBackgroundColor=#ffffff;" parent="classifies" connectable="0" vertex="1">
+                    <mxGeometry x="-0.8" y="-13" relative="1" as="geometry">
+                        <mxPoint as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="classifies_t" value="0..N" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;fontFamily=Malgun Gothic;fontSize=16;fontStyle=1;fontColor=#1e293b;labelBackgroundColor=#ffffff;" parent="classifies" connectable="0" vertex="1">
+                    <mxGeometry x="0.8" y="-13" relative="1" as="geometry">
+                        <mxPoint as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="contains" value="담기" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=none;startArrow=none;strokeColor=#64748b;strokeWidth=1.8;fontFamily=Malgun Gothic;fontSize=17;fontColor=#334155;labelBackgroundColor=#ffffff;jumpStyle=arc;jumpSize=8;exitX=0.5;exitY=0;entryX=0;entryY=0.62;" parent="1" source="library" target="book" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="565" y="605"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="contains_s" value="0..N" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;fontFamily=Malgun Gothic;fontSize=16;fontStyle=1;fontColor=#1e293b;labelBackgroundColor=#ffffff;" parent="contains" connectable="0" vertex="1">
+                    <mxGeometry x="-0.8" y="-13" relative="1" as="geometry">
+                        <mxPoint as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="contains_t" value="0..N" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;fontFamily=Malgun Gothic;fontSize=16;fontStyle=1;fontColor=#1e293b;labelBackgroundColor=#ffffff;" parent="contains" connectable="0" vertex="1">
+                    <mxGeometry x="0.8" y="-13" relative="1" as="geometry">
+                        <mxPoint as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="book_review" value="평가 대상" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=none;startArrow=none;strokeColor=#64748b;strokeWidth=1.8;fontFamily=Malgun Gothic;fontSize=17;fontColor=#334155;labelBackgroundColor=#ffffff;jumpStyle=arc;jumpSize=8;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" parent="1" source="book" target="review" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="book_review_s" value="1" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;fontFamily=Malgun Gothic;fontSize=16;fontStyle=1;fontColor=#1e293b;labelBackgroundColor=#ffffff;" parent="book_review" connectable="0" vertex="1">
+                    <mxGeometry x="-0.8" y="-13" relative="1" as="geometry">
+                        <mxPoint as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="book_review_t" value="0..N" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;fontFamily=Malgun Gothic;fontSize=16;fontStyle=1;fontColor=#1e293b;labelBackgroundColor=#ffffff;" parent="book_review" connectable="0" vertex="1">
+                    <mxGeometry x="0.8" y="-13" relative="1" as="geometry">
+                        <mxPoint as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="book_state" value="독서 대상" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=none;startArrow=none;strokeColor=#64748b;strokeWidth=1.8;fontFamily=Malgun Gothic;fontSize=17;fontColor=#334155;labelBackgroundColor=#ffffff;jumpStyle=arc;jumpSize=8;exitX=1;exitY=0.62;entryX=0.5;entryY=0;" parent="1" source="book" target="reading" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="1515" y="605"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="book_state_s" value="1" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;fontFamily=Malgun Gothic;fontSize=16;fontStyle=1;fontColor=#1e293b;labelBackgroundColor=#ffffff;" parent="book_state" connectable="0" vertex="1">
+                    <mxGeometry x="-0.8" y="-13" relative="1" as="geometry">
+                        <mxPoint as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="book_state_t" value="0..N" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;fontFamily=Malgun Gothic;fontSize=16;fontStyle=1;fontColor=#1e293b;labelBackgroundColor=#ffffff;" parent="book_state" connectable="0" vertex="1">
+                    <mxGeometry x="0.8" y="-13" relative="1" as="geometry">
+                        <mxPoint as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="owns_library" value="관리" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=none;startArrow=none;strokeColor=#64748b;strokeWidth=1.8;fontFamily=Malgun Gothic;fontSize=17;fontColor=#334155;labelBackgroundColor=#ffffff;jumpStyle=arc;jumpSize=8;exitX=0;exitY=0.5;entryX=0.5;entryY=1;" parent="1" source="user" target="library" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="565" y="1225"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="owns_library_s" value="1" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;fontFamily=Malgun Gothic;fontSize=16;fontStyle=1;fontColor=#1e293b;labelBackgroundColor=#ffffff;" parent="owns_library" connectable="0" vertex="1">
+                    <mxGeometry x="-0.8" y="-13" relative="1" as="geometry">
+                        <mxPoint as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="owns_library_t" value="0..N" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;fontFamily=Malgun Gothic;fontSize=16;fontStyle=1;fontColor=#1e293b;labelBackgroundColor=#ffffff;" parent="owns_library" connectable="0" vertex="1">
+                    <mxGeometry x="0.8" y="-13" relative="1" as="geometry">
+                        <mxPoint as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="writes_review" value="작성" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=none;startArrow=none;strokeColor=#64748b;strokeWidth=1.8;fontFamily=Malgun Gothic;fontSize=17;fontColor=#334155;labelBackgroundColor=#ffffff;jumpStyle=arc;jumpSize=8;exitX=0.5;exitY=0;entryX=0.5;entryY=1;" parent="1" source="user" target="review" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="writes_review_s" value="1" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;fontFamily=Malgun Gothic;fontSize=16;fontStyle=1;fontColor=#1e293b;labelBackgroundColor=#ffffff;" parent="writes_review" connectable="0" vertex="1">
+                    <mxGeometry x="-0.8" y="-13" relative="1" as="geometry">
+                        <mxPoint as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="writes_review_t" value="0..N" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;fontFamily=Malgun Gothic;fontSize=16;fontStyle=1;fontColor=#1e293b;labelBackgroundColor=#ffffff;" parent="writes_review" connectable="0" vertex="1">
+                    <mxGeometry x="0.8" y="-13" relative="1" as="geometry">
+                        <mxPoint as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="owns_state" value="보유" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=none;startArrow=none;strokeColor=#64748b;strokeWidth=1.8;fontFamily=Malgun Gothic;fontSize=17;fontColor=#334155;labelBackgroundColor=#ffffff;jumpStyle=arc;jumpSize=8;exitX=1;exitY=0.5;entryX=0.5;entryY=1;" parent="1" source="user" target="reading" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="1515" y="1225"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="owns_state_s" value="1" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;fontFamily=Malgun Gothic;fontSize=16;fontStyle=1;fontColor=#1e293b;labelBackgroundColor=#ffffff;" parent="owns_state" connectable="0" vertex="1">
+                    <mxGeometry x="-0.8" y="-13" relative="1" as="geometry">
+                        <mxPoint as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="owns_state_t" value="0..N" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;fontFamily=Malgun Gothic;fontSize=16;fontStyle=1;fontColor=#1e293b;labelBackgroundColor=#ffffff;" parent="owns_state" connectable="0" vertex="1">
+                    <mxGeometry x="0.8" y="-13" relative="1" as="geometry">
+                        <mxPoint as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="marks" value="위치 저장" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=none;startArrow=none;strokeColor=#64748b;strokeWidth=1.8;fontFamily=Malgun Gothic;fontSize=17;fontColor=#334155;labelBackgroundColor=#ffffff;jumpStyle=arc;jumpSize=8;exitX=1;exitY=0.3;entryX=0;entryY=0.5;" parent="1" source="reading" target="bookmark" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="1735" y="859"/>
+                            <mxPoint x="1735" y="640"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="marks_s" value="1" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;fontFamily=Malgun Gothic;fontSize=16;fontStyle=1;fontColor=#1e293b;labelBackgroundColor=#ffffff;" parent="marks" connectable="0" vertex="1">
+                    <mxGeometry x="-0.8" y="-13" relative="1" as="geometry">
+                        <mxPoint as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="marks_t" value="0..N" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;fontFamily=Malgun Gothic;fontSize=16;fontStyle=1;fontColor=#1e293b;labelBackgroundColor=#ffffff;" parent="marks" connectable="0" vertex="1">
+                    <mxGeometry x="0.8" y="-13" relative="1" as="geometry">
+                        <mxPoint as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="highlights" value="문장 표시" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=none;startArrow=none;strokeColor=#64748b;strokeWidth=1.8;fontFamily=Malgun Gothic;fontSize=17;fontColor=#334155;labelBackgroundColor=#ffffff;jumpStyle=arc;jumpSize=8;exitX=1;exitY=0.74;entryX=0;entryY=0.5;" parent="1" source="reading" target="highlight" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="1755" y="960.2"/>
+                            <mxPoint x="1755" y="1130"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="highlights_s" value="1" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;fontFamily=Malgun Gothic;fontSize=16;fontStyle=1;fontColor=#1e293b;labelBackgroundColor=#ffffff;" parent="highlights" connectable="0" vertex="1">
+                    <mxGeometry x="-0.8" y="-13" relative="1" as="geometry">
+                        <mxPoint as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="highlights_t" value="0..N" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;fontFamily=Malgun Gothic;fontSize=16;fontStyle=1;fontColor=#1e293b;labelBackgroundColor=#ffffff;" parent="highlights" connectable="0" vertex="1">
+                    <mxGeometry x="0.8" y="-13" relative="1" as="geometry">
+                        <mxPoint as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+</mxfile>
