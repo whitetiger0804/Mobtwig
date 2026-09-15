@@ -1,7 +1,7 @@
 ---
 name: 버그 신고
 about: 발생한 오류와 재현 방법을 공유합니다.
-title: "[bug] "
+title: "[Bug] "
 labels: ""
 assignees: ""
 ---
