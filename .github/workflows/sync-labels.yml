@@ -1,0 +1,96 @@
+name: 라벨을 동기화합니다
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - .github/labels.json
+      - .github/workflows/sync-labels.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: sync-repository-labels
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    steps:
+      - name: 파일의 라벨 정의를 GitHub에 반영합니다
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          # labels.json의 이름, 색상, 설명을 편집하고 master에 푸시합니다.
+          # 이름 변경 시 previous_name에 변경 전 이름을 함께 지정합니다.
+          # 파일에서 제외한 라벨은 GitHub에서 삭제하지 않습니다.
+          script: |
+            const assert = require('node:assert/strict');
+            const { data: file } = await github.rest.repos.getContent({
+              ...context.repo,
+              path: '.github/labels.json',
+              ref: context.payload.repository.default_branch,
+            });
+            const labels = JSON.parse(Buffer.from(file.content, file.encoding).toString('utf8'));
+            assert(Array.isArray(labels), '라벨 정의는 배열이어야 합니다.');
+
+            const existingLabels = await github.paginate(github.rest.issues.listLabelsForRepo, {
+              ...context.repo,
+              per_page: 100,
+            });
+            const byName = new Map(existingLabels.map(label => [label.name.toLowerCase(), label]));
+            const desiredNames = new Set();
+            const matchedIds = new Set();
+
+            // 전체 정의를 검증한 뒤 변경을 시작합니다.
+            const changes = labels.map(label => {
+              assert(typeof label.name === 'string' && label.name.trim().length > 0,
+                '라벨 이름을 입력해야 합니다.');
+              assert(typeof label.color === 'string' && /^[0-9a-f]{6}$/i.test(label.color),
+                `${label.name}: 색상은 # 없이 6자리 HEX로 입력해야 합니다.`);
+              assert(typeof label.description === 'string' && [...label.description].length <= 100,
+                `${label.name}: 설명은 100자 이하의 문자열이어야 합니다.`);
+              assert(label.previous_name === undefined ||
+                (typeof label.previous_name === 'string' && label.previous_name.trim().length > 0),
+                `${label.name}: previous_name에는 변경 전 이름을 입력해야 합니다.`);
+
+              const key = label.name.toLowerCase();
+              assert(!desiredNames.has(key), `${label.name}: 이름이 중복되었습니다.`);
+              desiredNames.add(key);
+
+              const current = byName.get(key);
+              const previous = byName.get(label.previous_name?.toLowerCase());
+              assert(!current || !previous || current.id === previous.id,
+                `${label.name}: 변경 전 이름과 새 이름의 라벨이 모두 존재합니다.`);
+              const existing = current ?? previous;
+              assert(label.previous_name === undefined || existing,
+                `${label.name}: 이름을 변경할 기존 라벨을 찾을 수 없습니다.`);
+              if (existing) {
+                assert(!matchedIds.has(existing.id), `${label.name}: 같은 라벨을 두 번 지정했습니다.`);
+                matchedIds.add(existing.id);
+              }
+              return { label, existing };
+            });
+
+            for (const { label, existing } of changes) {
+              const { name, color, description } = label;
+              if (!existing) {
+                await github.rest.issues.createLabel({ ...context.repo, name, color, description });
+                core.info(`${name}: 라벨을 생성했습니다.`);
+              } else if (existing.name !== name || existing.color.toLowerCase() !== color.toLowerCase() ||
+                         (existing.description ?? '') !== description) {
+                await github.rest.issues.updateLabel({
+                  ...context.repo,
+                  name: existing.name,
+                  new_name: name,
+                  color,
+                  description,
+                });
+                core.info(`${name}: 라벨을 수정했습니다.`);
+              } else {
+                core.info(`${name}: 변경 사항이 없습니다.`);
+              }
+            }
