@@ -26,7 +26,7 @@ jobs:
         with:
           # labels.json의 이름, 색상, 설명을 편집하고 master에 푸시합니다.
           # 이름 변경 시 previous_name에 변경 전 이름을 함께 지정합니다.
-          # 파일에서 제외한 라벨은 GitHub에서 삭제하지 않습니다.
+          # 파일에서 제외한 라벨은 GitHub와 기존 이슈·PR에서 삭제합니다.
           script: |
             const assert = require('node:assert/strict');
             const { data: file } = await github.rest.repos.getContent({
@@ -93,4 +93,9 @@ jobs:
               } else {
                 core.info(`${name}: 변경 사항이 없습니다.`);
               }
+            }
+
+            for (const label of existingLabels.filter(label => !matchedIds.has(label.id))) {
+              await github.rest.issues.deleteLabel({ ...context.repo, name: label.name });
+              core.info(`${label.name}: 라벨을 삭제했습니다.`);
             }
