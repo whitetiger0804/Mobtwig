@@ -7,6 +7,6 @@ Mobile+twig(작은 가지)
 teamproject/
 ├─ client/       # 모바일 앱
 ├─ server/       # 서버
-├─ doc/          # 문서
+├─ docs/         # 문서
 └─ README.md
 ```
