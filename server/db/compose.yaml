@@ -1,0 +1,31 @@
+name: mobtwig-local84
+
+services:
+  mysql:
+    image: mysql:8.4.11@sha256:0744ee5ef89ce6ccfa13de3e579fe6b9e27f93dd70da9c06d2c908b1b193fb8d
+    environment:
+      MYSQL_DATABASE: ${DB_NAME:?DB_NAME을 server/.env에 설정하십시오.}
+      MYSQL_USER: ${DB_USERNAME:?DB_USERNAME을 server/.env에 설정하십시오.}
+      MYSQL_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD를 server/.env에 설정하십시오.}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?DB_ROOT_PASSWORD를 server/.env에 설정하십시오.}
+      MYSQL_ROOT_HOST: localhost
+      TZ: UTC
+    ports:
+      - "127.0.0.1:${DB_PORT:?DB_PORT를 server/.env에 설정하십시오.}:3306"
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+      - --default-time-zone=+00:00
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - MYSQL_PWD="$${MYSQL_PASSWORD}" mysql --host=127.0.0.1 --user="$${MYSQL_USER}" --database="$${MYSQL_DATABASE}" --batch --skip-column-names --execute="SELECT 1"
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+volumes:
+  mysql_data:

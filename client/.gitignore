@@ -1,0 +1,41 @@
+# 의존성
+node_modules/
+
+# Expo
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+
+# 네이티브 빌드·서명
+.kotlin/
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# Metro
+.metro-health-check*
+
+# 디버그 로그
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# macOS
+.DS_Store
+*.pem
+
+# 로컬 환경 변수
+.env
+.env.*
+!.env.example
+
+# TypeScript
+*.tsbuildinfo
+
+# 자동 생성되는 네이티브 폴더
+/ios
+/android
