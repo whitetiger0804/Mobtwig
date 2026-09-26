@@ -1,0 +1,111 @@
+name: CI
+
+on:
+  push:
+    branches: [develop]
+  pull_request:
+    branches: [develop, master]
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  client:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: client
+    env:
+      CI: 'true'
+      EXPO_PUBLIC_API_URL: http://127.0.0.1:8080
+    steps:
+      - name: 검증할 코드를 가져옵니다
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: 팀 공통 Node.js를 설치합니다
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+      - name: 팀 공통 npm과 고정된 의존성을 설치합니다
+        run: |
+          npm install --global npm@12.1.0
+          npm ci
+      - name: TypeScript를 검사합니다
+        run: npm run typecheck
+      - name: Android·iOS·웹 번들을 검사합니다
+        run: npx expo export --platform all
+
+  server:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: server
+    services:
+      mysql:
+        image: mysql:8.4.11@sha256:0744ee5ef89ce6ccfa13de3e579fe6b9e27f93dd70da9c06d2c908b1b193fb8d
+        env:
+          MYSQL_DATABASE: mobtwig_ci
+          MYSQL_USER: mobtwig_ci
+          MYSQL_PASSWORD: ci-only-password
+          MYSQL_ROOT_PASSWORD: ci-only-root-password
+        ports:
+          - '3306'
+        options: >-
+          --health-cmd="mysql --host=127.0.0.1 --user=mobtwig_ci --password=ci-only-password --database=mobtwig_ci --execute='SELECT 1'"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
+          --health-start-period=30s
+    env:
+      DB_HOST: 127.0.0.1
+      DB_NAME: mobtwig_ci
+      DB_USERNAME: mobtwig_ci
+      DB_PASSWORD: ci-only-password
+      SERVER_PORT: '8080'
+    steps:
+      - name: 검증할 코드를 가져옵니다
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Java 21을 설치합니다
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+          cache-dependency-path: |
+            server/pom.xml
+            server/.mvn/wrapper/maven-wrapper.properties
+      - name: Maven Wrapper로 빌드와 테스트를 실행합니다
+        env:
+          DB_PORT: ${{ job.services.mysql.ports['3306'] }}
+        run: |
+          bash mvnw --batch-mode --no-transfer-progress clean verify
+          cp target/mobtwig-server-*.jar target/app.jar
+      - name: 시험 DB에 마이그레이션을 적용하고 서버 상태를 검사합니다
+        env:
+          DB_PORT: ${{ job.services.mysql.ports['3306'] }}
+        run: |
+          java -jar target/app.jar > target/application.log 2>&1 &
+          server_pid=$!
+          trap 'cat target/application.log; kill "$server_pid"' EXIT
+          curl --fail --silent --show-error \
+            --retry 30 --retry-delay 2 --retry-all-errors \
+            --max-time 5 --retry-max-time 120 \
+            http://127.0.0.1:8080/actuator/health/readiness \
+            > target/readiness.json
+          jq --exit-status '.status == "UP"' target/readiness.json
+      - name: 검증한 서버 JAR를 보관합니다
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: server-jar
+          path: server/target/app.jar
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0

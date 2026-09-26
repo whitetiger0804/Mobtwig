@@ -1,0 +1,134 @@
+name: 공용 서버에 배포합니다
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# 빌드부터 배포 완료까지 직렬화하고 진행 중인 마이그레이션을 취소하지 않습니다.
+concurrency:
+  group: shared-server-release
+  cancel-in-progress: false
+
+jobs:
+  checks:
+    if: github.ref == 'refs/heads/master'
+    uses: ./.github/workflows/ci.yml
+
+  publish:
+    needs: checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ steps.reference.outputs.image }}
+    steps:
+      - name: 검사한 커밋을 가져옵니다
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: CI에서 검증한 동일 JAR를 가져옵니다
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: server-jar
+          path: server
+      - name: 이미지 이름을 지정합니다
+        id: name
+        run: echo "value=ghcr.io/${GITHUB_REPOSITORY,,}-server" >> "$GITHUB_OUTPUT"
+      - name: 이미지 빌더를 준비합니다
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: GitHub 이미지 저장소에 로그인합니다
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: 실행 이미지를 빌드하고 게시합니다
+        id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: server
+          push: true
+          platforms: linux/amd64
+          tags: ${{ steps.name.outputs.value }}:${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+      - name: 배포할 이미지 다이제스트를 기록합니다
+        id: reference
+        env:
+          IMAGE_NAME: ${{ steps.name.outputs.value }}
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          echo "image=$IMAGE_NAME@$IMAGE_DIGEST" >> "$GITHUB_OUTPUT"
+          printf '검증한 커밋: `%s`\n\n이미지: `%s@%s`\n' "$GITHUB_SHA" "$IMAGE_NAME" "$IMAGE_DIGEST" >> "$GITHUB_STEP_SUMMARY"
+
+  deploy:
+    needs: publish
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+      DEPLOY_USER: ${{ vars.DEPLOY_USER }}
+      IMAGE_REFERENCE: ${{ needs.publish.outputs.image }}
+    steps:
+      - name: 같은 커밋의 배포 설정을 가져옵니다
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: 배포 설정과 최신 master 여부를 확인합니다
+        env:
+          LC_ALL: C.UTF-8
+          GH_TOKEN: ${{ github.token }}
+          TS_CLIENT_ID: ${{ vars.TS_CLIENT_ID }}
+          TS_AUDIENCE: ${{ vars.TS_AUDIENCE }}
+          SSH_PRIVATE_KEY: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+        run: |
+          : "${DEPLOY_HOST:?DEPLOY_HOST를 설정하십시오.}"
+          : "${DEPLOY_USER:?DEPLOY_USER를 설정하십시오.}"
+          : "${TS_CLIENT_ID:?TS_CLIENT_ID를 설정하십시오.}"
+          : "${TS_AUDIENCE:?TS_AUDIENCE를 설정하십시오.}"
+          : "${SSH_PRIVATE_KEY:?DEPLOY_SSH_PRIVATE_KEY를 설정하십시오.}"
+          : "${SSH_KNOWN_HOSTS:?DEPLOY_SSH_KNOWN_HOSTS를 설정하십시오.}"
+          [[ "$DEPLOY_HOST" =~ ^[a-zA-Z0-9][a-zA-Z0-9.-]*$ ]]
+          [[ "$DEPLOY_USER" =~ ^[[:alnum:]_][[:alnum:]_.-]*$ ]]
+          [[ "$IMAGE_REFERENCE" =~ ^ghcr\.io/[a-z0-9/_.-]+@sha256:[a-f0-9]{64}$ ]]
+          current_sha=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/master" --jq .object.sha)
+          test "$current_sha" = "$GITHUB_SHA"
+          install -m 700 -d "$HOME/.ssh"
+          printf '%s\n' "$SSH_PRIVATE_KEY" > "$HOME/.ssh/id_ed25519"
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/id_ed25519" "$HOME/.ssh/known_hosts"
+      - name: 배포 작업만 Tailscale에 연결합니다
+        uses: tailscale/github-action@d1b6cd204f8dceda5b3eaad7f1f767be390056cd # v4.2.0
+        with:
+          oauth-client-id: ${{ vars.TS_CLIENT_ID }}
+          audience: ${{ vars.TS_AUDIENCE }}
+          tags: tag:mobtwig-deploy
+          version: '1.102.4'
+          ping: ${{ vars.DEPLOY_HOST }}
+      - name: Windows 서버에 배포 파일을 전달하고 실행합니다
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
+          $sshOptions = @('-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=yes', '-o', 'ConnectTimeout=20')
+          $destination = "$env:DEPLOY_USER@$env:DEPLOY_HOST"
+          $releasePath = "C:/Mobtwig/releases/$env:GITHUB_SHA"
+          $prepare = "`$ErrorActionPreference = 'Stop'; New-Item -ItemType Directory -Force -Path '$releasePath' | Out-Null"
+          $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($prepare))
+          ssh @sshOptions $destination "powershell.exe -NoProfile -NonInteractive -OutputFormat Text -EncodedCommand $encoded"
+          scp @sshOptions server/deploy/compose.yaml server/deploy/deploy.ps1 "${destination}:$releasePath/"
+          $execute = "& '$releasePath/deploy.ps1' -ImageReference '$env:IMAGE_REFERENCE' -CommitSha '$env:GITHUB_SHA'"
+          $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($execute))
+          ssh @sshOptions $destination "powershell.exe -NoProfile -NonInteractive -OutputFormat Text -ExecutionPolicy Bypass -EncodedCommand $encoded"
+          "배포 성공: $env:GITHUB_SHA`n`n이미지: $env:IMAGE_REFERENCE`n`nDB 연결을 포함한 API readiness 검사를 통과했습니다." >> $env:GITHUB_STEP_SUMMARY
