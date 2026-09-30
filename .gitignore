@@ -17,3 +17,6 @@
 server/db/data/
 server/db/backups/
 server/app.jar
+
+# macOS
+**/.DS_Store
