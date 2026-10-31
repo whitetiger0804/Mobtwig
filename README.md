@@ -20,7 +20,7 @@ teamproject/
 | --- | --- |
 | Node.js / npm | `24.21.0` / `12.1.0`입니다. `.nvmrc`와 `client/package.json`에 명시합니다. |
 | 모바일 앱 | Expo `57.0.25`, React Native `0.86.3`, React `19.2.3`, TypeScript `6.0.3`입니다. `package-lock.json`을 공유합니다. |
-| 백엔드 | Java `21`, Spring Boot `4.1.1`입니다. `server/pom.xml`로 의존성을 관리합니다. |
+| 백엔드 | Java `21`, Spring Boot `4.1.2`입니다. `server/pom.xml`로 의존성을 관리합니다. |
 | 빌드 | Maven Wrapper가 Maven `3.9.16`을 내려받습니다. 배포 파일의 SHA-256도 검사합니다. |
 | DB | MySQL `8.4.11` LTS입니다. Compose에 이미지 태그와 digest를 고정합니다. |
 | DB 보조 도구 | Python `3.13.15`를 기준으로 합니다. SQLAlchemy·PyMySQL 및 간접 의존성은 `server/db/requirements.txt`로 고정합니다. |
