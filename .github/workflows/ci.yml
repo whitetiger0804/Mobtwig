@@ -37,6 +37,8 @@ jobs:
           npm ci
       - name: TypeScript를 검사합니다
         run: npm run typecheck
+      - name: SDUI 응답과 간이 서버를 검사합니다
+        run: npm test
       - name: Android·iOS·웹 번들을 검사합니다
         run: npx expo export --platform all
 
