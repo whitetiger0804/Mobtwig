@@ -7,8 +7,9 @@
 | `V1__create_member_and_content.sql` | 회원·콘텐츠 | `member`, `member_reading_setting`, `author`, `genre`, `category`, `book`, `chapter`, `book_author`, `book_genre`, `book_category` (10개) |
 | `V2__create_auth_tables.sql` | 인증 | `password_reset_token`, `SPRING_SESSION`, `SPRING_SESSION_ATTRIBUTES` (3개) |
 | `V3__create_reading_records.sql` | 독서 활동 | `library_book`, `wishlist`, `reading_progress`, `recent_view`, `bookmark`, `highlight` (6개) |
+| `V4__create_review_and_stats.sql` | 리뷰·통계 | `review`, `review_comment`, `book_stat_daily` (3개) |
 
-V4~V6은 정의서에 설계되어 있으며 이후 PR에서 추가합니다.
+V5~V6은 정의서의 테이블 목록에 있으며, 컬럼 설계를 마친 뒤 이후 PR에서 추가합니다.
 
 공통 기준은 `snake_case`, `utf8mb4`, `BIGINT AUTO_INCREMENT` PK, `{참조테이블}_id` FK, UTC `TIMESTAMP`입니다.
 
