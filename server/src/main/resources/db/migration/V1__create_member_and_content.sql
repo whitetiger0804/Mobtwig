@@ -6,7 +6,7 @@ CREATE TABLE member (
     id            BIGINT       NOT NULL AUTO_INCREMENT,
     email         VARCHAR(255) NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
-    nickname      VARCHAR(30)  NOT NULL,
+    nickname      VARCHAR(30)  NULL,
     role          VARCHAR(20)  NOT NULL DEFAULT 'USER',
     status        VARCHAR(20)  NOT NULL DEFAULT 'ACTIVE',
     withdrawn_at  TIMESTAMP    NULL,
@@ -17,7 +17,8 @@ CREATE TABLE member (
     CONSTRAINT uk_member_nickname UNIQUE (nickname),
     CONSTRAINT ck_member_role CHECK (role IN ('USER', 'ADMIN')),
     CONSTRAINT ck_member_status CHECK (status IN ('ACTIVE', 'SUSPENDED', 'WITHDRAWN')),
-    CONSTRAINT ck_member_withdrawn_at CHECK (status <> 'WITHDRAWN' OR withdrawn_at IS NOT NULL)
+    CONSTRAINT ck_member_withdrawn_at CHECK (status <> 'WITHDRAWN' OR withdrawn_at IS NOT NULL),
+    CONSTRAINT ck_member_active_nickname CHECK (status = 'WITHDRAWN' OR nickname IS NOT NULL)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
 -- 읽기 설정 (회원 1:1)
