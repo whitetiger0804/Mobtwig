@@ -1,6 +1,8 @@
 # Mobtwig 모바일 앱
 
-React Native와 Expo를 사용하는 TypeScript 앱입니다. 시작 화면에는 `Mobtwig` 제목을 표시합니다.
+React Native와 Expo를 사용하는 TypeScript 클라이언트입니다. 홈은 서버가 보내는 SDUI 구역을 렌더링하며 메뉴, 패널, 입력란과 공통 빈 요소를 제공합니다.
+
+홈의 화면 표시 계약은 `src/homeSchema.ts`에 정의합니다. 실제 업무 데이터의 DB 저장 구조와 인증·변경 API는 아직 확정하지 않았습니다. 홈 외의 미연동 영역은 표지 자리를 예약하지 않고 `EmptyState`만 표시합니다. 테스트 자료는 앱에 넣지 않고 `server/mock/`에서 제공합니다.
 
 ## 팀 공통 버전
 
@@ -13,15 +15,7 @@ React Native와 Expo를 사용하는 TypeScript 앱입니다. 시작 화면에�
 | React | 19.2.3 |
 | TypeScript | 6.0.3 |
 
-직접 의존성은 `package.json`에서 고정하고 전체 의존성은 `package-lock.json`으로 공유합니다. 버전을 맞춰 설치할 때에는 `npm ci`를 사용합니다. [Expo SDK 호환표](https://docs.expo.dev/versions/v57.0.0/)와 [SDK 57 릴리스](https://expo.dev/changelog/sdk-57)를 기준으로 구성했습니다.
-
-## PC에 직접 설치할 도구
-
-- [Node.js 24.21.0 LTS](https://nodejs.org/en/blog/release/v24.21.0)를 설치합니다. npm 12.1.0을 설치합니다. `node --version`과 `npm --version`으로 위 표와 일치하는지 확인합니다.
-- Android 에뮬레이터를 사용하려면 [Android Studio와 에뮬레이터](https://docs.expo.dev/workflow/android-studio-emulator/)를 설치하고 가상 기기를 실행합니다. 실제 Android 기기를 사용하려면 SDK 57에 맞는 [Expo Go](https://expo.dev/go)를 준비합니다.
-- iOS 시뮬레이터는 macOS와 [Xcode](https://docs.expo.dev/workflow/ios-simulator/)가 필요합니다. Windows에서는 iOS 시뮬레이터를 실행할 수 없습니다.
-
-Expo CLI는 이 프로젝트의 `expo` 패키지에 포함되어 있으므로 전역 설치할 필요가 없습니다.
+직접 의존성은 `package.json`, 설치 버전은 `package-lock.json`으로 공유합니다. 같은 구성으로 설치할 때에는 `npm ci`를 사용합니다. Expo CLI는 프로젝트의 `expo` 패키지에 포함되어 있습니다.
 
 ## 설치와 실행
 
@@ -35,29 +29,113 @@ npm start
 
 | 명령 | 용도 |
 | --- | --- |
-| `npm start` | Expo 개발 서버와 기기 연결 안내를 표시합니다. |
-| `npm run android` | 실행 중인 Android 에뮬레이터 또는 연결된 기기로 앱을 엽니다. |
+| `npm start` | Expo 개발 서버를 실행합니다. |
+| `npm run start:test -- --go` | 테스트 앱에서 간이 서버·실제 개발 서버 선택 화면을 활성화합니다. |
+| `npm run mock` | 포트 8090에서 SDUI 간이 서버를 실행합니다. |
+| `npm run android` | 연결된 Android 개발 환경으로 앱을 엽니다. |
 | `npm run ios` | macOS의 iOS 시뮬레이터에서 앱을 엽니다. |
-| `npm run web` | 웹 브라우저에서 시작 화면을 확인합니다. |
+| `npm run web` | 웹 개발 화면을 엽니다. |
 | `npm run typecheck` | TypeScript 타입을 검사합니다. |
-| `npx expo export --platform all` | Android·iOS·웹 배포용 번들을 `dist/`에 생성합니다. |
+| `npm test` | SDUI 계약과 간이 서버의 HTTP 응답을 검사합니다. |
+| `npm run docs` | UI 코드 문서를 `docs-api/`에 생성합니다. |
+| `npx expo export --platform all` | Android·iOS·웹 JavaScript와 자산을 `dist/`에 내보냅니다. |
 
-번들 생성은 APK·IPA 네이티브 빌드 및 실기기 검증과 구분됩니다. 개발 서버는 `Ctrl+C`로 종료합니다.
+플랫폼별 번들 생성은 APK·IPA 빌드나 실기기 설치와 구분합니다. 개발 서버는 `Ctrl+C`로 종료합니다.
 
-## 백엔드 주소
+## SDUI 테스트 실행
 
-API 기능을 구현할 때 `client/.env.example`을 `client/.env`로 복사하고 실행 환경에 맞게 `EXPO_PUBLIC_API_URL`을 설정합니다. 현재 제목 화면은 API 요청을 하지 않습니다.
+첫 번째 터미널의 `client/`에서 `npm run mock`을 실행합니다. 두 번째 터미널에서는 다음과 같이 실행합니다. `.env`가 이미 있으면 복사하지 말고 필요한 값을 확인합니다.
 
-| 실행 환경 | 개발 PC의 백엔드 주소 |
+```powershell
+Copy-Item .env.example .env
+npm run start:test -- --go
+```
+
+앱을 열면 `간이 서버`와 `실제 개발 서버` 중 하나를 선택합니다. 선택은 이번 앱 세션에만 유지되며 앱을 다시 불러오면 다시 선택합니다. 선택하기 전에는 홈 요청을 보내지 않습니다. 일반 `npm start`·`android`·`ios`·`web` 실행은 선택 화면 없이 `EXPO_PUBLIC_API_URL`로 연결합니다. `.env`의 `EXPO_PUBLIC_ENABLE_SERVER_SELECTION`은 기본값 `false`를 유지합니다. 테스트 실행 명령이 자식 Expo 프로세스에만 `true`를 전달합니다. 별도로 테스트 번들을 만들 때도 이 값을 명시적으로 `true`로 지정할 수 있으며 일반 배포에서는 `false`를 사용합니다.
+
+USB로 연결한 Android 휴대폰이나 에뮬레이터에서 간이 서버를 사용하려면 개발 PC의 별도 터미널에서 실행합니다.
+
+```powershell
+adb devices -l
+adb -s <기기ID> reverse tcp:8090 tcp:8090
+```
+
+`EXPO_PUBLIC_MOCK_API_URL=http://127.0.0.1:8090`을 사용하면 기기의 8090 포트가 개발 PC의 간이 서버로 연결됩니다. USB 없이 사용할 때는 서버 README의 LAN 실행 방법과 접근 가능한 PC 주소를 사용합니다. 실제 개발 서버 주소도 기기에서 접근 가능해야 합니다. 예를 들어 Android 에뮬레이터의 `10.0.2.2`는 개발 PC를 가리키지만 실제 휴대폰에서는 같은 뜻이 아닙니다. Metro 연결 주소와 데이터 API 주소는 별개입니다.
+
+서버 선택이 정상이어도 해당 서버가 `GET /sdui/home?kind=all|book|magazine|novel`을 구현하지 않았으면 홈을 표시할 수 없습니다. 현재 Spring Boot 서버에는 이 API가 없으며, `server/mock/`만 해당 응답을 제공합니다. 실패하면 다른 서버로 바꾸지 않고 오류와 다시 불러오기 버튼을 표시합니다.
+
+테스트를 끝낼 때 두 터미널에서 각각 `Ctrl+C`를 누르고 필요하면 `adb -s <기기ID> reverse --remove tcp:8090`으로 연결을 해제합니다.
+
+## 코드 구성
+
+| 파일 | 역할 |
 | --- | --- |
-| Android Studio 에뮬레이터 | `http://10.0.2.2:8080` |
-| 개발 PC의 웹 브라우저·iOS 시뮬레이터 | `http://localhost:8080` |
-| 같은 네트워크의 실제 휴대폰 | `http://개발_PC의_LAN_IP:8080` |
+| `index.ts` | Expo에 루트 컴포넌트를 등록합니다. |
+| `App.tsx` | 안전 영역, 공통 메뉴, 화면 선택, 패널을 구성합니다. |
+| `src/appState.tsx` | 화면 스택, 현재 탭, 패널, 뒤로 가기만 관리합니다. |
+| `src/serverConnection.tsx` | 테스트 실행의 서버 선택과 일반 실행의 API 주소 공급을 담당합니다. |
+| `src/homeSchema.ts` | 홈의 표시 계약과 수신 JSON 검증을 담당합니다. |
+| `src/HomeContent.tsx` | 홈을 조회하고 공통 요소로 렌더링합니다. |
+| `src/workDetails.ts` | 작품 ID별 상세 조회와 정보 응답 검증을 담당합니다. |
+| `src/EmptyState.tsx` | 표시할 데이터가 없을 때 쓰는 공통 빈 요소입니다. |
+| `src/ui.tsx` | 버튼·입력란·카드·아이콘과 공통 스타일입니다. |
+| `src/CatalogScreens.tsx` | 홈·검색·상세·서재·기록·공유 화면 틀입니다. |
+| `src/AccountScreens.tsx` | 계정 입력과 읽기 설정 화면 틀입니다. |
+| `src/CommunityScreens.tsx` | 커뮤니티·글쓰기·댓글·신고 화면 틀입니다. |
+| `src/ReviewScreens.tsx` | 리뷰·리뷰 작성·댓글 화면 틀입니다. |
+| `src/ReadingScreens.tsx` | 독서 도구와 본문·설정집의 빈 영역입니다. |
 
-실제 휴대폰에서는 해당 주소로 접근할 수 있어야 합니다. 코드에서는 `process.env.EXPO_PUBLIC_API_URL`로 읽습니다. `EXPO_PUBLIC_` 값은 앱에 포함되어 공개되므로 DB 비밀번호나 인증 비밀키를 넣지 않습니다. [Expo 환경 변수 문서](https://docs.expo.dev/guides/environment-variables/)를 참고합니다.
+`Route`는 화면 이동과 작품 상세 조회에 필요한 식별자를 전달하는 타입입니다. 홈의 SDUI 타입과 작품 상세 조회 응답은 표시용 계약이며 DB 테이블을 정의하지 않습니다. 상·하단 메뉴와 상세 화면 배치는 앱에 남고 홈 본문 구역은 서버 응답으로 결정합니다.
 
-`.env`, `node_modules/`, `.expo/`, `dist/` 및 자동 생성된 `android/`, `ios/` 폴더는 Git에서 제외합니다. 의존성 변경 시 `package.json`과 `package-lock.json`을 함께 커밋합니다.
+## 홈의 공통 요소
+
+| 응답의 `type` | 클라이언트가 제공하는 요소 |
+| --- | --- |
+| `bannerCarousel` | 배경 이미지·제목·선택적 설명과 이동 버튼을 가진 가로 배너 목록입니다. |
+| `featuredWork` | 기존 '오늘의 책'처럼 왼쪽 추천 문구·작품 정보와 오른쪽 표지를 배치합니다. |
+| `workShelf` | 표지·제목·선택적 보조 문구를 가진 가로 작품 목록입니다. |
+| `linkRow` | 기존 앱 화면으로 이동하는 바로가기 목록입니다. |
+
+전체·도서·매거진·웹소설 홈 모두 `{ version: 1, sections: [...] }`을 받습니다. `sections`의 순서와 개수, 구역 제목, `items`의 내용과 개수를 그대로 표시합니다. 추천과 최근 본 작품은 같은 `workShelf`를 사용합니다. `items: []`이면 클라이언트가 요소별 공통 빈 상태 안내를 표시하고 빈 표지·배너를 만들지 않습니다. 빈 상태 문구는 서버에서 전달하지 않습니다. 구역 자체를 없애려면 `sections`에서 제거합니다. `sections: []`이면 홈 구성 없음 안내를 표시합니다.
+
+간이 서버의 도서·매거진·웹소설 홈은 첫 구역에 `featuredWork`를 보냅니다. '오늘의 책' 등의 추천 문구는 서버 항목의 `label`입니다. 제목·표지·보조 문구·버튼과 항목 개수도 응답으로 바꿀 수 있습니다. 작품 카드와 추천 작품을 누르면 해당 항목의 `id`로 상세 화면을 엽니다.
+
+상세 화면은 `GET /works/:id`에서 작품 정보를 조회합니다. 도서·매거진·웹소설의 화면 배치는 클라이언트에 두고 제목·표지·저자·소개·출판정보·목차·통계는 서버 응답으로 채웁니다. 매거진의 소개 제목·아티클 분류·쪽수, 웹소설 회차의 공개일·글자 수도 전달받은 정보만 표시합니다. 상세 응답에는 SDUI 구역이나 배치 명령이 없습니다. 간이 서버의 `fixtures/works.json`에는 표지 16개에 대응하는 테스트용 가상 정보가 있습니다.
+
+`server/mock/fixtures/home.json`을 바꾸고 다른 홈 탭을 갔다가 돌아오거나 앱을 다시 불러오면 서버 재시작 없이 변경을 확인할 수 있습니다. 제목과 개수는 앱 코드 수정이 필요 없습니다. 새로운 요소 유형이나 새로운 동작을 추가하려면 클라이언트의 계약·렌더러도 구현해야 합니다. 서버에서 임의 코드를 보내 실행하는 구조는 아닙니다.
+
+## 현재 동작 범위
+
+- 상·하단 메뉴와 분류 탭으로 화면을 이동합니다.
+- 홈은 선택한 서버에서 SDUI를 조회하고 로딩·오류·빈 목록·실제 항목을 구분합니다.
+- 작품 상세는 선택한 서버에서 ID별 정보를 조회하며 다른 작품으로 이동하거나 뒤로 가면 이전 요청을 취소합니다.
+- 검색 설정·서재 관리·읽기 설정 등의 패널을 열고 닫습니다.
+- 입력란의 값과 선택한 탭은 실행 중 React 상태에만 보관합니다.
+- 계정, 서재, 본문, 미디어, 관계도, 리뷰, 게시글, 댓글 등의 미연동 영역에는 `EmptyState`를 표시합니다.
+- 로그인·등록·구매·읽기·저장·삭제·공유 등 아직 연결되지 않은 동작은 비활성 상태를 유지합니다.
+
+미연동 화면의 빈 요소는 API 오류를 감지한 결과가 아닙니다. SDUI 홈에서는 정상 빈 목록과 통신·계약 오류를 별도로 처리합니다. 지원하지 않는 버전·요소와 중복 키는 오류로 표시하며 정상 빈 목록으로 바꾸지 않습니다.
+
+브랜드 아이콘과 헤더 이미지만 클라이언트의 `assets/brand/`에 포함합니다. 테스트 표지 16개와 배경 1개는 서버에서 URL로 전달합니다. 화면은 세로 방향과 최대 너비 480의 모바일 배치를 사용합니다.
+
+## 서버 연동 전제
+
+`EXPO_PUBLIC_API_URL`은 일반 실행 및 테스트의 실제 개발 서버 주소이고, `EXPO_PUBLIC_MOCK_API_URL`은 테스트의 간이 서버 주소입니다. 환경 변수는 번들에 반영되므로 변경 후 앱을 완전히 다시 불러옵니다. 이미 배포한 번들의 주소는 서버 환경 변수만 바꿔 변경할 수 없습니다.
+
+실제 개발 서버에서도 홈의 `GET /sdui/home`과 작품 상세의 `GET /works/:id` 조회 계약을 구현해야 합니다. 인증·변경 API와 DB 저장 구조는 별도 확정 후 구현합니다.
+
+`EXPO_PUBLIC_` 값은 앱에 포함되므로 비밀번호나 비밀키를 넣지 않습니다.
+
+## 코드 문서와 생성 파일
+
+소스의 문서 주석은 TSDoc 형식으로 작성합니다. 요약 다음에 필요한 상세 설명은 `@remarks`, 매개변수는 `@param 이름 - 설명`, 반환값은 `@returns`로 작성합니다. 속성은 해당 선언 바로 위에 설명하고, 관련 코드 연결에는 `{@link 심볼명}`을 사용합니다. 인터페이스 속성의 기본값은 `@defaultValue`, 실제로 던지는 예외는 `@throws`, 사용 예시는 `@example`으로 설명합니다.
+
+TypeDoc은 `index.ts`, `App.tsx`, `src/` 전체에서 공개한 화면·공통 컴포넌트·UI 타입과 속성을 문서화합니다. 구조 분해 매개변수는 `@param props - 설명`으로 문서화하고 각 속성 선언에 개별 설명을 작성합니다. 비공개 구현 함수의 설명은 소스에서 확인합니다. 서버 API 문서가 아닙니다.
+
+`npm run typecheck`로 타입을 확인한 뒤 `npm run docs`로 문서를 생성하고 `docs-api/index.html`을 엽니다. 문서 누락·잘못된 링크·잘못된 경로와 문서 생성 경고가 있으면 명령이 실패하도록 설정했습니다. 공개 매개변수도 문서 누락 검사에 포함합니다.
+
+`node_modules/`, `.expo/`, `dist/`, `docs-api/`, 자동 생성된 `android/`·`ios/`, 로컬 `.env`는 Git에서 제외합니다.
 
 ## 템플릿 저작권 고지
 
-공식 `expo-template-blank-typescript@57.0.27`을 바탕으로 구성했습니다. `LICENSE.expo-template`은 이 원본 템플릿의 MIT 저작권 고지입니다. Mobtwig 프로젝트 전체의 라이선스를 지정하는 문서는 아닙니다.
+공식 `expo-template-blank-typescript@57.0.27`을 바탕으로 구성했습니다. `LICENSE.expo-template`은 원본 템플릿의 MIT 저작권 고지이며 프로젝트 전체의 라이선스를 지정하지 않습니다.
