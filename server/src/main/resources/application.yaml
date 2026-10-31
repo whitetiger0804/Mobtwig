@@ -9,6 +9,9 @@ spring:
     password: ${DB_PASSWORD}
   flyway:
     enabled: true
+  session:
+    jdbc:
+      initialize-schema: never
   jpa:
     hibernate:
       ddl-auto: validate
