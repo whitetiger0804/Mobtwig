@@ -1,0 +1,770 @@
+[
+  {
+    "id": "book-quiet",
+    "kind": "book",
+    "title": "고요를 연습하는 시간",
+    "author": "한서윤",
+    "description": "분주한 하루 속에서 자신만의 속도를 되찾는 방법을 이야기합니다. 창가에 앉는 짧은 시간, 아무 말 없이 걷는 저녁처럼 일상에서 시도할 수 있는 고요의 순간을 담았습니다.",
+    "publisher": "모북출판",
+    "publishedAt": "2026-09-03",
+    "category": "에세이",
+    "pageCount": 216,
+    "fileFormat": "EPUB · 7.2 MB",
+    "quote": "잠시 멈춘 자리에서도 하루는 천천히 자랍니다.",
+    "imageUrl": "/assets/도서/고요를 연습하는 시간.png",
+    "contents": [
+      {
+        "id": "book-quiet-1",
+        "title": "시작하며 · 고요를 만나기 전에"
+      },
+      {
+        "id": "book-quiet-2",
+        "title": "1장 · 아침의 소리를 듣는 일"
+      },
+      {
+        "id": "book-quiet-3",
+        "title": "2장 · 걷는 동안 비워지는 마음"
+      },
+      {
+        "id": "book-quiet-4",
+        "title": "3장 · 혼자 있는 시간의 온도"
+      },
+      {
+        "id": "book-quiet-5",
+        "title": "마치며 · 다시 나의 속도로"
+      }
+    ]
+  },
+  {
+    "id": "book-cloud",
+    "kind": "book",
+    "title": "구름섬 우체부",
+    "author": "윤해나",
+    "description": "하늘 위 작은 섬에서 길을 잃은 편지를 배달하는 우체부의 여정을 그립니다. 수신인이 지워진 편지 한 통을 따라가며 잊힌 약속과 서로를 기다리는 마음을 만납니다.",
+    "publisher": "구름숲",
+    "publishedAt": "2026-08-21",
+    "category": "판타지 소설",
+    "pageCount": 304,
+    "fileFormat": "EPUB · 10.6 MB",
+    "imageUrl": "/assets/도서/구름섬 우체부.png",
+    "contents": [
+      {
+        "id": "book-cloud-1",
+        "title": "1장 · 바람이 데려온 편지"
+      },
+      {
+        "id": "book-cloud-2",
+        "title": "2장 · 주소 없는 섬"
+      },
+      {
+        "id": "book-cloud-3",
+        "title": "3장 · 비를 모으는 사람"
+      },
+      {
+        "id": "book-cloud-4",
+        "title": "4장 · 돌아오지 않은 답장"
+      },
+      {
+        "id": "book-cloud-5",
+        "title": "5장 · 마지막 배달"
+      }
+    ]
+  },
+  {
+    "id": "book-care",
+    "kind": "book",
+    "title": "나를 돌보는 연습",
+    "author": "서지온",
+    "description": "자신의 마음을 살피는 일을 작은 일상의 습관에서 시작하도록 돕는 에세이입니다. 감정을 기록하고 휴식을 선택하는 순간들을 통해 오늘의 자신에게 필요한 돌봄을 찾아갑니다.",
+    "publisher": "모북출판",
+    "publishedAt": "2026-09-18",
+    "category": "에세이",
+    "pageCount": 248,
+    "fileFormat": "EPUB · 8.4 MB",
+    "quote": "나를 돌보는 일은 오늘의 마음을 듣는 일.",
+    "imageUrl": "/assets/도서/나를 돌보는 연습.png",
+    "contents": [
+      {
+        "id": "book-care-1",
+        "title": "들어가며 · 오늘의 마음을 듣습니다"
+      },
+      {
+        "id": "book-care-2",
+        "title": "1장 · 나의 안부를 묻는 시간"
+      },
+      {
+        "id": "book-care-3",
+        "title": "2장 · 감정에 이름을 붙이는 연습"
+      },
+      {
+        "id": "book-care-4",
+        "title": "3장 · 쉬어도 괜찮은 하루"
+      },
+      {
+        "id": "book-care-5",
+        "title": "4장 · 나를 위한 작은 약속"
+      }
+    ]
+  },
+  {
+    "id": "book-slow",
+    "kind": "book",
+    "title": "느리게 사는 기술",
+    "author": "김도하",
+    "description": "해야 할 일을 늘리기보다 하루의 여백을 만드는 방법을 소개합니다. 식사와 산책, 관계와 일의 속도를 돌아보며 자신에게 맞는 생활 리듬을 찾는 과정을 담았습니다.",
+    "publisher": "작은걸음",
+    "publishedAt": "2026-07-30",
+    "category": "자기계발",
+    "pageCount": 232,
+    "fileFormat": "EPUB · 6.9 MB",
+    "imageUrl": "/assets/도서/느리게 사는 기술.png",
+    "contents": [
+      {
+        "id": "book-slow-1",
+        "title": "1장 · 서두르는 이유를 묻습니다"
+      },
+      {
+        "id": "book-slow-2",
+        "title": "2장 · 하루에서 한 가지를 덜어냅니다"
+      },
+      {
+        "id": "book-slow-3",
+        "title": "3장 · 천천히 먹고 오래 걷습니다"
+      },
+      {
+        "id": "book-slow-4",
+        "title": "4장 · 관계에도 여백이 필요합니다"
+      }
+    ]
+  },
+  {
+    "id": "book-thoughts",
+    "kind": "book",
+    "title": "생각을 정리하는 작은 습관",
+    "author": "이도현",
+    "description": "머릿속에 흩어진 생각을 짧은 메모와 질문으로 정리하는 연습을 제안합니다. 하루를 돌아보는 기록부터 선택의 기준을 세우는 목록까지 부담 없이 시작할 수 있는 예시를 담았습니다.",
+    "publisher": "생각의칸",
+    "publishedAt": "2026-09-09",
+    "category": "자기계발",
+    "pageCount": 192,
+    "fileFormat": "EPUB · 5.8 MB",
+    "imageUrl": "/assets/도서/생각을 정리하는 작은 습관.png",
+    "contents": [
+      {
+        "id": "book-thoughts-1",
+        "title": "시작하며 · 한 줄이면 충분합니다"
+      },
+      {
+        "id": "book-thoughts-2",
+        "title": "1장 · 떠오른 생각을 붙잡습니다"
+      },
+      {
+        "id": "book-thoughts-3",
+        "title": "2장 · 질문으로 핵심을 찾습니다"
+      },
+      {
+        "id": "book-thoughts-4",
+        "title": "3장 · 선택의 기준을 적습니다"
+      },
+      {
+        "id": "book-thoughts-5",
+        "title": "4장 · 기록을 다시 읽습니다"
+      }
+    ]
+  },
+  {
+    "id": "book-react-native",
+    "kind": "book",
+    "title": "React Native 첫걸음",
+    "author": "박지훈",
+    "description": "작은 모바일 화면을 만들며 React Native의 기본 개념을 익히는 입문서 예시입니다. 컴포넌트와 상태, 화면 이동과 서버 연결을 차례로 살펴보는 학습 흐름으로 구성했습니다.",
+    "publisher": "모북테크",
+    "publishedAt": "2026-10-05",
+    "category": "IT·프로그래밍",
+    "pageCount": 368,
+    "fileFormat": "EPUB · 16.3 MB",
+    "imageUrl": "/assets/도서/React Native 첫걸음.png",
+    "contents": [
+      {
+        "id": "book-react-native-1",
+        "title": "1장 · 첫 화면을 실행합니다"
+      },
+      {
+        "id": "book-react-native-2",
+        "title": "2장 · 컴포넌트를 나눕니다"
+      },
+      {
+        "id": "book-react-native-3",
+        "title": "3장 · 입력과 상태를 다룹니다"
+      },
+      {
+        "id": "book-react-native-4",
+        "title": "4장 · 화면을 연결합니다"
+      },
+      {
+        "id": "book-react-native-5",
+        "title": "5장 · 서버 응답을 표시합니다"
+      },
+      {
+        "id": "book-react-native-6",
+        "title": "6장 · 앱을 확인하고 배포합니다"
+      }
+    ]
+  },
+  {
+    "id": "magazine-frame",
+    "kind": "magazine",
+    "title": "FRAME 디자인 저널",
+    "author": "FRAME 편집부",
+    "description": "일상 속 디자인이 만들어지는 과정을 살펴보는 매거진입니다. 이번 호에서는 작은 브랜드의 시각 언어, 오래 쓰는 물건, 도시의 안내 체계를 만드는 사람들을 소개합니다.",
+    "publisher": "모북이 디자인",
+    "publishedAt": "2026-10-01",
+    "category": "디자인·예술",
+    "pageCount": 104,
+    "fileFormat": "앱북 · 28.6 MB",
+    "issue": "2026.10 · VOL.12",
+    "publicationCycle": "월간",
+    "imageUrl": "/assets/매거진/FRAME 디자인 저널.png",
+    "contents": [
+      {
+        "id": "magazine-frame-1",
+        "title": "에디터 노트 · 매일 마주하는 디자인",
+        "category": "에디터 노트",
+        "pageNumber": 4
+      },
+      {
+        "id": "magazine-frame-2",
+        "title": "특집 · 작은 브랜드의 큰 표정",
+        "category": "브랜드 특집",
+        "pageNumber": 12
+      },
+      {
+        "id": "magazine-frame-3",
+        "title": "인터뷰 · 물건의 다음 시간을 설계합니다",
+        "category": "인터뷰",
+        "pageNumber": 34
+      },
+      {
+        "id": "magazine-frame-4",
+        "title": "포트폴리오 · 도시를 읽는 안내 체계",
+        "category": "포트폴리오",
+        "pageNumber": 58
+      },
+      {
+        "id": "magazine-frame-5",
+        "title": "리뷰 · 이달의 디자인 책",
+        "category": "도서 리뷰",
+        "pageNumber": 88
+      }
+    ],
+    "descriptionTitle": "매일 마주하는 디자인"
+  },
+  {
+    "id": "magazine-orbit",
+    "kind": "magazine",
+    "title": "ORBIT 월간 과학",
+    "author": "ORBIT 편집부",
+    "description": "우주와 일상에서 발견하는 과학의 질문을 함께 살펴봅니다. 이번 호에서는 밤하늘을 관측하는 사람들의 기록과 탐사 장비, 빛을 통해 세상을 이해하는 방법을 소개합니다.",
+    "publisher": "모북이 사이언스",
+    "publishedAt": "2026-10-01",
+    "category": "과학·천문",
+    "pageCount": 92,
+    "fileFormat": "앱북 · 24.8 MB",
+    "issue": "2026.10 · VOL.08",
+    "publicationCycle": "월간",
+    "imageUrl": "/assets/매거진/ORBIT 월간 과학.png",
+    "contents": [
+      {
+        "id": "magazine-orbit-1",
+        "title": "태양계, 어디까지 알고 있나요?",
+        "category": "기초 과학",
+        "pageNumber": 8
+      },
+      {
+        "id": "magazine-orbit-2",
+        "title": "밤하늘에서 목성 찾기",
+        "category": "관측 노트",
+        "pageNumber": 22
+      },
+      {
+        "id": "magazine-orbit-3",
+        "title": "토성의 고리가 사라지는 날",
+        "category": "스페셜",
+        "pageNumber": 36
+      },
+      {
+        "id": "magazine-orbit-4",
+        "title": "달의 표면을 따라 걷다",
+        "category": "이미지 에세이",
+        "pageNumber": 50
+      },
+      {
+        "id": "magazine-orbit-5",
+        "title": "우주를 기록하는 소리",
+        "category": "오디오",
+        "pageNumber": 66
+      },
+      {
+        "id": "magazine-orbit-6",
+        "title": "이번 달의 관측 캘린더",
+        "category": "생활 과학",
+        "pageNumber": 80
+      }
+    ],
+    "descriptionTitle": "밤하늘을 읽는 시간"
+  },
+  {
+    "id": "magazine-paper",
+    "kind": "magazine",
+    "title": "PAPER 문학의 계절",
+    "author": "PAPER 편집부",
+    "description": "계절의 변화와 함께 읽을 소설, 시, 에세이를 소개하는 문학 매거진입니다. 이번 호는 오래 간직한 문장과 새로운 시작을 주제로 작가들의 짧은 글과 대화를 엮었습니다.",
+    "publisher": "모북이 문학",
+    "publishedAt": "2026-09-01",
+    "category": "문학·문화",
+    "pageCount": 128,
+    "fileFormat": "앱북 · 19.2 MB",
+    "issue": "2026 가을 · VOL.04",
+    "publicationCycle": "계간",
+    "imageUrl": "/assets/매거진/PAPER 문학의 계절.png",
+    "contents": [
+      {
+        "id": "magazine-paper-1",
+        "title": "여는 글 · 계절을 건너는 문장",
+        "category": "여는 글",
+        "pageNumber": 6
+      },
+      {
+        "id": "magazine-paper-2",
+        "title": "단편소설 · 창문 너머의 우편함",
+        "category": "단편소설",
+        "pageNumber": 16
+      },
+      {
+        "id": "magazine-paper-3",
+        "title": "시선 · 다시 시작하는 마음",
+        "category": "에세이",
+        "pageNumber": 48
+      },
+      {
+        "id": "magazine-paper-4",
+        "title": "작가와의 대화 · 첫 문장 이후",
+        "category": "작가 인터뷰",
+        "pageNumber": 72
+      },
+      {
+        "id": "magazine-paper-5",
+        "title": "서가 · 가을에 함께 읽는 책",
+        "category": "서평",
+        "pageNumber": 108
+      }
+    ],
+    "descriptionTitle": "계절을 건너는 문장"
+  },
+  {
+    "id": "magazine-room",
+    "kind": "magazine",
+    "title": "ROOM 공간과 생활",
+    "author": "ROOM 편집부",
+    "description": "사는 사람의 취향과 생활이 담긴 공간을 만나는 매거진입니다. 이번 호에서는 작은 집의 수납, 빛이 드는 작업실, 이웃과 나누는 공용 공간을 둘러봅니다.",
+    "publisher": "모북이 리빙",
+    "publishedAt": "2026-10-01",
+    "category": "주거·생활",
+    "pageCount": 112,
+    "fileFormat": "앱북 · 31.5 MB",
+    "issue": "2026.10 · VOL.06",
+    "publicationCycle": "월간",
+    "imageUrl": "/assets/매거진/ROOM 공간과 생활.png",
+    "contents": [
+      {
+        "id": "magazine-room-1",
+        "title": "에디터 노트 · 공간에 남는 생활",
+        "category": "에디터 노트",
+        "pageNumber": 4
+      },
+      {
+        "id": "magazine-room-2",
+        "title": "집 이야기 · 열두 평의 넉넉함",
+        "category": "주거 탐방",
+        "pageNumber": 14
+      },
+      {
+        "id": "magazine-room-3",
+        "title": "작업실 탐방 · 오후의 빛을 모읍니다",
+        "category": "작업실 탐방",
+        "pageNumber": 38
+      },
+      {
+        "id": "magazine-room-4",
+        "title": "생활 제안 · 물건의 자리를 정합니다",
+        "category": "생활 제안",
+        "pageNumber": 66
+      },
+      {
+        "id": "magazine-room-5",
+        "title": "동네 산책 · 함께 쓰는 작은 마당",
+        "category": "동네 기록",
+        "pageNumber": 94
+      }
+    ],
+    "descriptionTitle": "공간에 남는 생활"
+  },
+  {
+    "id": "magazine-table",
+    "kind": "magazine",
+    "title": "TABLE 일상의 식탁",
+    "author": "TABLE 편집부",
+    "description": "재료를 고르고 한 끼를 차리는 일상의 이야기를 전합니다. 이번 호에서는 가을 채소로 만드는 식탁과 작은 가게의 조리 기록, 함께 먹는 시간을 소개합니다.",
+    "publisher": "모북이 푸드",
+    "publishedAt": "2026-10-01",
+    "category": "요리·생활",
+    "pageCount": 96,
+    "fileFormat": "앱북 · 26.1 MB",
+    "issue": "2026.10 · VOL.10",
+    "publicationCycle": "월간",
+    "imageUrl": "/assets/매거진/TABLE 일상의 식탁.png",
+    "contents": [
+      {
+        "id": "magazine-table-1",
+        "title": "에디터 노트 · 한 끼의 온기",
+        "category": "에디터 노트",
+        "pageNumber": 4
+      },
+      {
+        "id": "magazine-table-2",
+        "title": "제철 식탁 · 가을 채소를 만납니다",
+        "category": "제철 요리",
+        "pageNumber": 12
+      },
+      {
+        "id": "magazine-table-3",
+        "title": "가게의 기록 · 골목의 작은 부엌",
+        "category": "가게 탐방",
+        "pageNumber": 32
+      },
+      {
+        "id": "magazine-table-4",
+        "title": "레시피 노트 · 남은 재료로 차리는 저녁",
+        "category": "레시피",
+        "pageNumber": 52
+      },
+      {
+        "id": "magazine-table-5",
+        "title": "식탁의 대화 · 함께 먹는 시간",
+        "category": "인터뷰",
+        "pageNumber": 78
+      }
+    ],
+    "descriptionTitle": "한 끼의 온기"
+  },
+  {
+    "id": "novel-marriage",
+    "kind": "novel",
+    "title": "계약 결혼의 마지막 페이지",
+    "author": "서리온",
+    "description": "서로의 비밀을 지키기 위해 시작한 계약 결혼에 정해진 마지막 날이 다가옵니다. 계약서에 쓰지 못한 마음을 마주한 두 사람이 자신들의 결말을 다시 선택하는 로맨스 이야기입니다.",
+    "publisher": "모북이 스토리",
+    "publishedAt": "2026-08-05",
+    "category": "로맨스",
+    "fileFormat": "연재 전자책",
+    "publicationCycle": "월·수·금 연재",
+    "statistics": {
+      "views": 18640,
+      "recommendations": 732,
+      "rating": 4.7
+    },
+    "imageUrl": "/assets/웹소설/계약 결혼의 마지막 페이지.png",
+    "contents": [
+      {
+        "id": "novel-marriage-1",
+        "title": "계약서의 첫 문장",
+        "publishedAt": "2026-08-05",
+        "characterCount": 4800
+      },
+      {
+        "id": "novel-marriage-2",
+        "title": "서로 묻지 않을 것",
+        "publishedAt": "2026-08-07",
+        "characterCount": 5200
+      },
+      {
+        "id": "novel-marriage-3",
+        "title": "같은 집의 낯선 저녁",
+        "publishedAt": "2026-08-10",
+        "characterCount": 5100
+      },
+      {
+        "id": "novel-marriage-4",
+        "title": "약속에 없던 방문",
+        "publishedAt": "2026-08-12",
+        "characterCount": 4900
+      },
+      {
+        "id": "novel-marriage-5",
+        "title": "마지막 페이지의 빈칸",
+        "publishedAt": "2026-08-14",
+        "characterCount": 4800
+      }
+    ]
+  },
+  {
+    "id": "novel-record",
+    "kind": "novel",
+    "title": "괴이청 야간기록관",
+    "author": "백서림",
+    "description": "사람들이 잠든 뒤에만 문을 여는 괴이청에서 신입 기록관이 첫 야간 근무를 시작합니다. 기록에서 지워진 사건을 따라가며 도시의 평범한 풍경 뒤에 숨은 기이한 규칙을 밝혀갑니다.",
+    "publisher": "모북이 스토리",
+    "publishedAt": "2026-09-12",
+    "category": "현대판타지",
+    "fileFormat": "연재 전자책",
+    "publicationCycle": "화·목·토 연재",
+    "statistics": {
+      "views": 12000,
+      "recommendations": 486,
+      "rating": 4.8
+    },
+    "imageUrl": "/assets/웹소설/괴이청 야간기록관.png",
+    "contents": [
+      {
+        "id": "novel-record-1",
+        "title": "야간 발령",
+        "publishedAt": "2026-10-01",
+        "characterCount": 4800
+      },
+      {
+        "id": "novel-record-2",
+        "title": "폐역의 기록",
+        "publishedAt": "2026-10-02",
+        "characterCount": 5200
+      },
+      {
+        "id": "novel-record-3",
+        "title": "닫힌 서고",
+        "publishedAt": "2026-10-03",
+        "characterCount": 5100
+      },
+      {
+        "id": "novel-record-4",
+        "title": "이름 없는 문서",
+        "publishedAt": "2026-10-04",
+        "characterCount": 4900
+      },
+      {
+        "id": "novel-record-5",
+        "title": "두 번째 직인",
+        "publishedAt": "2026-10-05",
+        "characterCount": 4800
+      },
+      {
+        "id": "novel-record-6",
+        "title": "사라진 기록관",
+        "publishedAt": "2026-10-06",
+        "characterCount": 5200
+      },
+      {
+        "id": "novel-record-7",
+        "title": "금지된 열람",
+        "publishedAt": "2026-10-07",
+        "characterCount": 5100
+      },
+      {
+        "id": "novel-record-8",
+        "title": "돌아오지 않은 야근",
+        "publishedAt": "2026-10-08",
+        "characterCount": 4900
+      },
+      {
+        "id": "novel-record-9",
+        "title": "문 너머의 목소리",
+        "publishedAt": "2026-10-09",
+        "characterCount": 4800
+      },
+      {
+        "id": "novel-record-10",
+        "title": "기록의 대가",
+        "publishedAt": "2026-10-10",
+        "characterCount": 5200
+      },
+      {
+        "id": "novel-record-11",
+        "title": "마지막 인계",
+        "publishedAt": "2026-10-11",
+        "characterCount": 5100
+      },
+      {
+        "id": "novel-record-12",
+        "title": "새벽의 봉인",
+        "publishedAt": "2026-10-12",
+        "characterCount": 4900
+      },
+      {
+        "id": "novel-record-13",
+        "title": "지워진 이름",
+        "publishedAt": "2026-10-13",
+        "characterCount": 4800
+      },
+      {
+        "id": "novel-record-14",
+        "title": "첫 번째 퇴근",
+        "publishedAt": "2026-10-14",
+        "characterCount": 5200
+      }
+    ]
+  },
+  {
+    "id": "novel-library",
+    "kind": "novel",
+    "title": "멸망한 세계의 도서관",
+    "author": "밤결",
+    "description": "모든 도시가 무너진 뒤에도 한 도서관의 불빛만은 꺼지지 않습니다. 마지막 사서가 책 속에 남은 기억을 모으며 세상을 다시 잇는 길을 찾는 판타지 이야기입니다.",
+    "publisher": "모북이 스토리",
+    "publishedAt": "2026-07-17",
+    "category": "판타지",
+    "fileFormat": "연재 전자책",
+    "publicationCycle": "월·화·목·금 연재",
+    "statistics": {
+      "views": 24380,
+      "recommendations": 1056,
+      "rating": 4.9
+    },
+    "imageUrl": "/assets/웹소설/멸망한 세계의 도서관.png",
+    "contents": [
+      {
+        "id": "novel-library-1",
+        "title": "마지막 대출 기록",
+        "publishedAt": "2026-07-17",
+        "characterCount": 4800
+      },
+      {
+        "id": "novel-library-2",
+        "title": "문밖의 손님",
+        "publishedAt": "2026-07-20",
+        "characterCount": 5200
+      },
+      {
+        "id": "novel-library-3",
+        "title": "지워진 도시의 지도",
+        "publishedAt": "2026-07-21",
+        "characterCount": 5100
+      },
+      {
+        "id": "novel-library-4",
+        "title": "책장을 넘기는 바람",
+        "publishedAt": "2026-07-23",
+        "characterCount": 4900
+      },
+      {
+        "id": "novel-library-5",
+        "title": "기억을 보관하는 방법",
+        "publishedAt": "2026-07-24",
+        "characterCount": 4800
+      },
+      {
+        "id": "novel-library-6",
+        "title": "도서관 밖으로",
+        "publishedAt": "2026-07-27",
+        "characterCount": 5200
+      }
+    ]
+  },
+  {
+    "id": "novel-dungeon",
+    "kind": "novel",
+    "title": "퇴근 후 던전 관리인",
+    "author": "이월",
+    "description": "평범한 회사원이 퇴근길에 낡은 던전의 관리 계약을 맺게 됩니다. 낮에는 업무를, 밤에는 몬스터와 시설을 관리하며 두 일상 사이에서 뜻밖의 동료를 만납니다.",
+    "publisher": "모북이 스토리",
+    "publishedAt": "2026-09-02",
+    "category": "현대판타지",
+    "fileFormat": "연재 전자책",
+    "publicationCycle": "월·수·금 연재",
+    "statistics": {
+      "views": 15920,
+      "recommendations": 608,
+      "rating": 4.6
+    },
+    "imageUrl": "/assets/웹소설/퇴근 후 던전 관리인.png",
+    "contents": [
+      {
+        "id": "novel-dungeon-1",
+        "title": "퇴근길의 채용 공고",
+        "publishedAt": "2026-09-02",
+        "characterCount": 4800
+      },
+      {
+        "id": "novel-dungeon-2",
+        "title": "던전 인수인계서",
+        "publishedAt": "2026-09-04",
+        "characterCount": 5200
+      },
+      {
+        "id": "novel-dungeon-3",
+        "title": "첫 번째 시설 점검",
+        "publishedAt": "2026-09-07",
+        "characterCount": 5100
+      },
+      {
+        "id": "novel-dungeon-4",
+        "title": "몬스터도 쉬는 시간이 필요합니다",
+        "publishedAt": "2026-09-09",
+        "characterCount": 4900
+      },
+      {
+        "id": "novel-dungeon-5",
+        "title": "지하 삼 층의 불빛",
+        "publishedAt": "2026-09-11",
+        "characterCount": 4800
+      }
+    ]
+  },
+  {
+    "id": "novel-princess",
+    "kind": "novel",
+    "title": "황녀는 결말을 바꾼다",
+    "author": "라니엘",
+    "description": "자신의 비극적인 결말을 읽어 버린 황녀가 정해진 운명에서 벗어나기로 결심합니다. 오래된 동맹과 낯선 선택 사이에서 스스로의 이야기를 만들어 가는 로맨스 판타지입니다.",
+    "publisher": "모북이 스토리",
+    "publishedAt": "2026-08-28",
+    "category": "로맨스판타지",
+    "fileFormat": "연재 전자책",
+    "publicationCycle": "화·목·토 연재",
+    "statistics": {
+      "views": 21350,
+      "recommendations": 894,
+      "rating": 4.8
+    },
+    "imageUrl": "/assets/웹소설/황녀는 결말을 바꾼다.png",
+    "contents": [
+      {
+        "id": "novel-princess-1",
+        "title": "내가 읽은 마지막 장",
+        "publishedAt": "2026-08-29",
+        "characterCount": 4800
+      },
+      {
+        "id": "novel-princess-2",
+        "title": "무도회의 다른 선택",
+        "publishedAt": "2026-09-01",
+        "characterCount": 5200
+      },
+      {
+        "id": "novel-princess-3",
+        "title": "믿을 수 없는 동맹",
+        "publishedAt": "2026-09-03",
+        "characterCount": 5100
+      },
+      {
+        "id": "novel-princess-4",
+        "title": "탑에 숨겨진 편지",
+        "publishedAt": "2026-09-05",
+        "characterCount": 4900
+      },
+      {
+        "id": "novel-princess-5",
+        "title": "황녀의 첫 번째 약속",
+        "publishedAt": "2026-09-08",
+        "characterCount": 4800
+      }
+    ]
+  }
+]

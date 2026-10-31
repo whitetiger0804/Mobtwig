@@ -1,0 +1,123 @@
+{
+  "all": {
+    "version": 1,
+    "sections": [
+      {
+        "id": "featured-events",
+        "type": "bannerCarousel",
+        "items": [
+          { "id": "reading-night", "title": "별이 뜨는 밤, 새로운 이야기", "description": "책과 함께 보내는 조용한 시간을 만나 보세요.", "imageUrl": "/assets/배경/night-sky.png", "action": { "label": "도서 둘러보기", "route": { "screen": "home", "kind": "book" } } },
+          { "id": "night-stories", "title": "다음 이야기가 궁금한 밤", "description": "웹소설 속 새로운 세계로 떠나 보세요.", "imageUrl": "/assets/배경/night-sky.png", "action": { "label": "웹소설 둘러보기", "route": { "screen": "home", "kind": "novel" } } }
+        ]
+      },
+      {
+        "id": "discover-kinds",
+        "type": "linkRow",
+        "title": "어떤 이야기를 찾으시나요?",
+        "items": [
+          { "id": "books", "label": "도서", "route": { "screen": "home", "kind": "book" } },
+          { "id": "magazines", "label": "매거진", "route": { "screen": "home", "kind": "magazine" } },
+          { "id": "novels", "label": "웹소설", "route": { "screen": "home", "kind": "novel" } }
+        ]
+      },
+      {
+        "id": "recommended-works",
+        "type": "workShelf",
+        "title": "취향에 맞는 작품",
+        "action": { "label": "더 보기", "route": { "screen": "search" } },
+        "items": [
+          { "id": "book-quiet", "title": "고요를 연습하는 시간", "imageUrl": "/assets/도서/고요를 연습하는 시간.png" },
+          { "id": "magazine-orbit", "title": "ORBIT 월간 과학", "imageUrl": "/assets/매거진/ORBIT 월간 과학.png" },
+          { "id": "novel-library", "title": "멸망한 세계의 도서관", "imageUrl": "/assets/웹소설/멸망한 세계의 도서관.png" },
+          { "id": "book-cloud", "title": "구름섬 우체부", "imageUrl": "/assets/도서/구름섬 우체부.png" }
+        ]
+      },
+      {
+        "id": "recent-works",
+        "type": "workShelf",
+        "title": "최근 본 작품",
+        "action": { "label": "전체 보기", "route": { "screen": "recent" } },
+        "items": []
+      }
+    ]
+  },
+  "book": {
+    "version": 1,
+    "sections": [
+      {
+        "id": "book-featured",
+        "type": "featuredWork",
+        "items": [
+          { "id": "book-care", "label": "오늘의 책", "title": "나를 돌보는 연습", "subtitle": "서지온 · 에세이", "imageUrl": "/assets/도서/나를 돌보는 연습.png", "action": { "label": "상세 보기", "route": { "screen": "detail", "workId": "book-care" } } }
+        ]
+      },
+      {
+        "id": "book-shelf",
+        "type": "workShelf",
+        "title": "새로 만나는 도서",
+        "items": [
+          { "id": "book-quiet", "title": "고요를 연습하는 시간", "imageUrl": "/assets/도서/고요를 연습하는 시간.png" },
+          { "id": "book-cloud", "title": "구름섬 우체부", "imageUrl": "/assets/도서/구름섬 우체부.png" },
+          { "id": "book-care", "title": "나를 돌보는 연습", "imageUrl": "/assets/도서/나를 돌보는 연습.png" },
+          { "id": "book-slow", "title": "느리게 사는 기술", "imageUrl": "/assets/도서/느리게 사는 기술.png" },
+          { "id": "book-thoughts", "title": "생각을 정리하는 작은 습관", "imageUrl": "/assets/도서/생각을 정리하는 작은 습관.png" },
+          { "id": "book-react-native", "title": "React Native 첫걸음", "imageUrl": "/assets/도서/React Native 첫걸음.png" }
+        ]
+      },
+      {
+        "id": "recent-books",
+        "type": "workShelf",
+        "title": "최근 본 도서",
+        "items": []
+      }
+    ]
+  },
+  "magazine": {
+    "version": 1,
+    "sections": [
+      {
+        "id": "magazine-featured",
+        "type": "featuredWork",
+        "items": [
+          { "id": "magazine-frame", "label": "오늘의 매거진", "title": "FRAME 디자인 저널", "imageUrl": "/assets/매거진/FRAME 디자인 저널.png" }
+        ]
+      },
+      {
+        "id": "magazine-shelf",
+        "type": "workShelf",
+        "title": "일상에 새로운 시선을",
+        "items": [
+          { "id": "magazine-frame", "title": "FRAME 디자인 저널", "imageUrl": "/assets/매거진/FRAME 디자인 저널.png" },
+          { "id": "magazine-orbit", "title": "ORBIT 월간 과학", "imageUrl": "/assets/매거진/ORBIT 월간 과학.png" },
+          { "id": "magazine-paper", "title": "PAPER 문학의 계절", "imageUrl": "/assets/매거진/PAPER 문학의 계절.png" },
+          { "id": "magazine-room", "title": "ROOM 공간과 생활", "imageUrl": "/assets/매거진/ROOM 공간과 생활.png" },
+          { "id": "magazine-table", "title": "TABLE 일상의 식탁", "imageUrl": "/assets/매거진/TABLE 일상의 식탁.png" }
+        ]
+      }
+    ]
+  },
+  "novel": {
+    "version": 1,
+    "sections": [
+      {
+        "id": "novel-featured",
+        "type": "featuredWork",
+        "items": [
+          { "id": "novel-library", "label": "오늘의 웹소설", "title": "멸망한 세계의 도서관", "imageUrl": "/assets/웹소설/멸망한 세계의 도서관.png" }
+        ]
+      },
+      {
+        "id": "novel-shelf",
+        "type": "workShelf",
+        "title": "다음 장이 궁금한 웹소설",
+        "items": [
+          { "id": "novel-marriage", "title": "계약 결혼의 마지막 페이지", "imageUrl": "/assets/웹소설/계약 결혼의 마지막 페이지.png" },
+          { "id": "novel-record", "title": "괴이청 야간기록관", "imageUrl": "/assets/웹소설/괴이청 야간기록관.png" },
+          { "id": "novel-library", "title": "멸망한 세계의 도서관", "imageUrl": "/assets/웹소설/멸망한 세계의 도서관.png" },
+          { "id": "novel-dungeon", "title": "퇴근 후 던전 관리인", "imageUrl": "/assets/웹소설/퇴근 후 던전 관리인.png" },
+          { "id": "novel-princess", "title": "황녀는 결말을 바꾼다", "imageUrl": "/assets/웹소설/황녀는 결말을 바꾼다.png" }
+        ]
+      }
+    ]
+  }
+}
