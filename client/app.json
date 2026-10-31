@@ -1,9 +1,17 @@
 {
   "expo": {
-    "name": "Mobtwig",
+    "name": "모북이",
     "slug": "mobtwig",
     "version": "1.0.0",
     "orientation": "portrait",
-    "userInterfaceStyle": "light"
+    "userInterfaceStyle": "light",
+    "scheme": "mobtwig",
+    "icon": "./assets/brand/app-icon-1024.png",
+    "web": {
+      "favicon": "./assets/brand/app-icon-512.png"
+    },
+    "android": {
+      "package": "com.whitetiger0804.mobtwig"
+    }
   }
 }

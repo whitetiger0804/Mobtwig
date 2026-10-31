@@ -39,3 +39,6 @@ yarn-error.*
 # 자동 생성되는 네이티브 폴더
 /ios
 /android
+
+# TypeDoc 생성 문서
+/docs-api/
