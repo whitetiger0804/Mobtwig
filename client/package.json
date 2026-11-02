@@ -20,12 +20,15 @@
     "typescript": "6.0.3"
   },
   "scripts": {
-    "start": "expo start",
-    "start:test": "node scripts/start-test.mjs",
+    "start": "node scripts/start-expo.mjs",
+    "start:go": "node scripts/start-expo.mjs --go",
+    "start:test": "node scripts/start-expo.mjs --server-selection",
     "mock": "node ../server/mock/index.mjs",
-    "android": "expo run:android",
+    "android": "node scripts/run-android.mjs",
+    "android:go": "node scripts/start-expo.mjs --go --android",
     "ios": "expo run:ios",
-    "web": "expo start --web",
+    "ios:go": "node scripts/start-expo.mjs --go --ios",
+    "web": "node scripts/start-expo.mjs --web",
     "typecheck": "tsc --noEmit",
     "test": "node --test tests/homeSchema.test.mjs tests/workDetails.test.mjs ../server/mock/server.test.mjs",
     "docs": "typedoc"
