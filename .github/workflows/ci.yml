@@ -11,6 +11,18 @@ permissions:
   contents: read
 
 jobs:
+  deployment:
+    runs-on: windows-2025
+    timeout-minutes: 5
+    steps:
+      - name: 검증할 코드를 가져옵니다
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Windows 배포 절차와 실패 처리를 검사합니다
+        shell: powershell
+        run: ./server/deploy/deploy.test.ps1
+
   client:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
