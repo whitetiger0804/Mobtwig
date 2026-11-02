@@ -24,16 +24,20 @@ React Native와 Expo를 사용하는 TypeScript 클라이언트입니다. 홈은
 ```powershell
 cd client
 npm ci
-npm start
 ```
+
+처음 개발 앱을 설치할 때는 `npm run android`, Expo Go로 열 때는 `npm run android:go`를 실행합니다. 개발 앱 설치 후에는 `npm start`로 개발 서버만 다시 실행할 수 있습니다.
 
 | 명령 | 용도 |
 | --- | --- |
-| `npm start` | Expo 개발 서버를 실행합니다. |
-| `npm run start:test -- --go` | 테스트 앱에서 간이 서버·실제 개발 서버 선택 화면을 활성화합니다. |
+| `npm start` | 설치된 개발 앱에 연결할 Expo 개발 서버를 실행합니다. |
+| `npm run start:go` | Expo Go에 연결할 개발 서버를 실행합니다. 휴대폰에서 QR을 스캔합니다. |
+| `npm run start:test` | 개발 앱에서 간이 서버·실제 개발 서버 선택 화면을 활성화합니다. `-- --go`를 붙이면 Expo Go로 실행합니다. |
 | `npm run mock` | 포트 8090에서 SDUI 간이 서버를 실행합니다. |
-| `npm run android` | 연결된 Android 개발 환경으로 앱을 엽니다. |
-| `npm run ios` | macOS의 iOS 시뮬레이터에서 앱을 엽니다. |
+| `npm run android` | Android 개발 앱을 빌드·설치하고 개발 서버에 연결합니다. |
+| `npm run android:go` | Android 기기·에뮬레이터의 Expo Go로 앱을 엽니다. 네이티브 빌드는 하지 않습니다. |
+| `npm run ios` | macOS에서 iOS 개발 앱을 빌드·설치하고 개발 서버에 연결합니다. |
+| `npm run ios:go` | macOS의 iOS 시뮬레이터에서 Expo Go로 앱을 엽니다. |
 | `npm run web` | 웹 개발 화면을 엽니다. |
 | `npm run typecheck` | TypeScript 타입을 검사합니다. |
 | `npm test` | SDUI 계약과 간이 서버의 HTTP 응답을 검사합니다. |
@@ -41,6 +45,22 @@ npm start
 | `npx expo export --platform all` | Android·iOS·웹 JavaScript와 자산을 `dist/`에 내보냅니다. |
 
 플랫폼별 번들 생성은 APK·IPA 빌드나 실기기 설치와 구분합니다. 개발 서버는 `Ctrl+C`로 종료합니다.
+
+### 팀원의 Android 실행 준비
+
+Expo Go는 프로젝트 SDK와 호환되는 Expo Go 앱이 필요합니다. 개발 앱은 프로젝트의 네이티브 모듈을 포함하여 직접 설치하는 앱이며, `npm run android`로 처음 설치한 뒤 일반 JavaScript·TypeScript 수정은 `npm start`와 Fast Refresh로 확인합니다. 네이티브 의존성이나 네이티브 설정을 변경하면 다시 빌드합니다.
+
+Android 개발 앱을 빌드하려면 JDK 21과 Android Studio의 Android SDK를 설치하고 `JAVA_HOME`·`ANDROID_HOME`을 설정합니다. SDK의 `platform-tools`를 PATH에 추가합니다. 에뮬레이터는 Device Manager에서 만들며 실제 휴대폰은 USB 또는 무선 디버깅으로 연결하고 `adb devices -l`에 `device`로 표시되는지 확인합니다. `npm run android -- --device`로 실행할 기기를 선택할 수 있습니다. iOS 네이티브 빌드와 iOS 시뮬레이터 실행에는 macOS와 Xcode가 필요합니다. Windows에서 iPhone의 Expo Go를 사용할 때는 `npm run start:go`의 QR을 사용합니다.
+
+Windows의 `npm run android`는 한글 경로 및 C++ 빌드 경로 길이 문제를 피하도록 사용자 드라이브의 `MobtwigDev/<프로젝트 경로 해시>`에 짧은 정션 경로를 자동으로 만듭니다. 정션은 원본 `client/`를 가리키며 파일을 복사하지 않습니다. 팀원마다 자신의 저장소 경로에 맞춰 생성되므로 다른 사람의 절대 경로를 설정할 필요가 없습니다. `metro.config.js`는 실제 원본 경로를 감시하여 코드 수정과 의존성 변경을 반영합니다.
+
+한글이 포함된 원본 `client/` 폴더에서 위 명령을 실행합니다. `start`·`start:go`·`start:test`·`android:go`·`web`·`mock`·`typecheck`·`test`·`docs`와 `npx expo export --platform all`은 한글 원본 경로를 그대로 사용합니다. Android 네이티브 빌드는 짧은 경로를 준비하는 `npm run android`를 사용합니다. `npx expo run:android`나 `android/gradlew.bat`를 원본 경로에서 직접 실행하면 이 처리를 거치지 않습니다.
+
+프로젝트의 한글 경로 처리와 개발 도구의 설치 조건은 별개입니다. Android SDK·JDK·Gradle 캐시의 위치는 각 PC의 설정을 사용하며, `ios`·`ios:go`는 앞서 설명한 macOS 실행 조건을 따릅니다.
+
+에뮬레이터가 이전 화면에서 멈추고 실행 명령도 부팅을 계속 기다린다면 Device Manager의 해당 기기에서 **Cold Boot**로 다시 시작합니다. Quick Boot 복원 때마다 같은 문제가 재현되면 해당 기기의 편집 화면에서 **Boot option → Cold boot**를 선택합니다. 이 설정은 각 PC의 에뮬레이터 설정이며 저장소에서 일괄 변경하지 않습니다.
+
+같은 포트에 개발 서버를 중복 실행하지 않습니다. 기존 서버를 `Ctrl+C`로 종료하거나 `npm run android:go -- --port 8083`처럼 별도 포트를 지정합니다. 실행 대상만 바꿀 때에는 실행 중인 Expo 터미널에서 `s`로 개발 앱·Expo Go를 전환하고 `a`로 Android를 열 수 있습니다. 공통 실행 스크립트는 Expo의 앱 선택용 브라우저 페이지를 생략하고 선택한 개발 앱 또는 Expo Go를 바로 엽니다.
 
 ## SDUI 테스트 실행
 
