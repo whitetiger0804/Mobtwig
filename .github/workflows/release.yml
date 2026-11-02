@@ -75,6 +75,7 @@ jobs:
     permissions:
       contents: read
       id-token: write
+      packages: read
     env:
       DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
       DEPLOY_USER: ${{ vars.DEPLOY_USER }}
@@ -118,6 +119,8 @@ jobs:
           ping: ${{ vars.DEPLOY_HOST }}
       - name: Windows 서버에 배포 파일을 전달하고 실행합니다
         shell: pwsh
+        env:
+          REGISTRY_TOKEN: ${{ github.token }}
         run: |
           $ErrorActionPreference = 'Stop'
           $PSNativeCommandUseErrorActionPreference = $true
@@ -128,7 +131,7 @@ jobs:
           $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($prepare))
           ssh @sshOptions $destination "powershell.exe -NoProfile -NonInteractive -OutputFormat Text -EncodedCommand $encoded"
           scp @sshOptions server/deploy/compose.yaml server/deploy/deploy.ps1 "${destination}:$releasePath/"
-          $execute = "& '$releasePath/deploy.ps1' -ImageReference '$env:IMAGE_REFERENCE' -CommitSha '$env:GITHUB_SHA'"
+          $execute = "& '$releasePath/deploy.ps1' -ImageReference '$env:IMAGE_REFERENCE' -CommitSha '$env:GITHUB_SHA' -RegistryUser '$env:GITHUB_ACTOR'"
           $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($execute))
-          ssh @sshOptions $destination "powershell.exe -NoProfile -NonInteractive -OutputFormat Text -ExecutionPolicy Bypass -EncodedCommand $encoded"
+          $env:REGISTRY_TOKEN | ssh @sshOptions $destination "powershell.exe -NoProfile -NonInteractive -OutputFormat Text -ExecutionPolicy Bypass -EncodedCommand $encoded"
           "배포 성공: $env:GITHUB_SHA`n`n이미지: $env:IMAGE_REFERENCE`n`nDB 연결을 포함한 API readiness 검사를 통과했습니다." >> $env:GITHUB_STEP_SUMMARY

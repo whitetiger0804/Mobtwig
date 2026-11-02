@@ -8,14 +8,24 @@ param(
     [ValidatePattern('^[0-9a-f]{40}$')]
     [string]$CommitSha,
 
+    [Parameter(Mandatory = $true)]
+    [ValidateNotNullOrEmpty()]
+    [string]$RegistryUser,
+
     [string]$DeploymentRoot = 'C:\Mobtwig',
 
     [ValidatePattern('^[a-z0-9][a-z0-9_-]*$')]
-    [string]$ProjectName = 'mobtwig-shared'
+    [string]$ProjectName = 'mobtwig-shared',
+
+    [string]$DockerHost = 'npipe:////./pipe/dockerDesktopLinuxEngine'
 )
 
 chcp 65001 > $null
 $ErrorActionPreference = 'Stop'
+$registryToken = [Console]::In.ReadLine()
+if ([string]::IsNullOrWhiteSpace($registryToken)) {
+    throw '이미지 다운로드 토큰을 표준 입력으로 전달해야 합니다.'
+}
 $utf8 = New-Object System.Text.UTF8Encoding($false)
 [Console]::InputEncoding = $utf8
 [Console]::OutputEncoding = $utf8
@@ -60,15 +70,36 @@ $deploymentLock = [System.IO.File]::Open(
     [System.IO.FileShare]::None
 )
 $previousImageEnvironment = $env:API_IMAGE
+$previousDockerConfig = $env:DOCKER_CONFIG
+$previousDockerHost = $env:DOCKER_HOST
+$configDirectory = Join-Path $DeploymentRoot 'config'
+$registryDirectory = [System.IO.Path]::GetFullPath((Join-Path $configDirectory ('registry-' + [Guid]::NewGuid().ToString('N'))))
+if (-not $registryDirectory.StartsWith(([System.IO.Path]::GetFullPath($configDirectory) + [System.IO.Path]::DirectorySeparatorChar), [StringComparison]::OrdinalIgnoreCase)) {
+    throw '임시 인증 경로가 서버 설정 디렉터리를 벗어났습니다.'
+}
+$registryConfigPath = Join-Path $registryDirectory 'config.json'
 $env:API_IMAGE = $ImageReference
+$env:DOCKER_CONFIG = $registryDirectory
+$env:DOCKER_HOST = $DockerHost
 $composeArguments = @(
     'compose', '--project-name', $ProjectName,
     '--env-file', $envPath, '--file', $composePath
 )
 
 try {
-    Write-Host '배포 설정을 검사하고 API 이미지를 내려받습니다.'
+    New-Item -ItemType Directory -Path $registryDirectory | Out-Null
+    # 레지스트리 항목이 없으면 Docker CLI가 Windows 자격 증명 저장소를 자동 선택합니다.
+    [System.IO.File]::WriteAllText($registryConfigPath, '{"auths":{"ghcr.io":{}}}', $utf8)
+    # 배포 결과와 SQL 백업도 비밀번호 설정 폴더와 같은 접근 권한으로 보관합니다.
+    $privateAcl = Get-Acl -LiteralPath $configDirectory
+    Set-Acl -LiteralPath $backupDirectory -AclObject $privateAcl
+    Set-Acl -LiteralPath $stateDirectory -AclObject $privateAcl
+
+    Write-Output '배포 설정을 검사하고 API 이미지를 내려받습니다.'
     Invoke-Docker -Arguments ($composeArguments + @('config', '--quiet'))
+    # Actions의 단기 토큰만 전달하며 Docker Desktop의 대화형 자격 증명 저장소를 사용하지 않습니다.
+    Invoke-Docker -Arguments @('login', 'ghcr.io', '--username', $RegistryUser, '--password-stdin') -InputText $registryToken
+    $registryToken = $null
     Invoke-Docker -Arguments ($composeArguments + @('pull', 'api'))
 
     $mysqlContainerIds = @(Invoke-Docker -Arguments ($composeArguments + @('ps', '--all', '--quiet', 'mysql')))
@@ -92,7 +123,7 @@ try {
         )
     }
 
-    Write-Host 'API를 정지한 뒤 변경 전 DB를 백업합니다.'
+    Write-Output 'API를 정지한 뒤 변경 전 DB를 백업합니다.'
     Invoke-Docker -Arguments ($composeArguments + @('stop', 'api'))
     $backupName = '{0}-{1}.sql' -f [DateTime]::UtcNow.ToString('yyyyMMddTHHmmssfffZ'), $CommitSha.Substring(0, 12)
     $containerDumpPath = '/tmp/mobtwig-' + $backupName
@@ -106,9 +137,9 @@ try {
         throw 'DB 백업 파일이 비어 있으므로 배포를 중단합니다.'
     }
     Invoke-Docker -Arguments @('exec', $mysqlContainerId, 'rm', '--', $containerDumpPath)
-    Write-Host "DB 백업을 저장했습니다. $backupPath"
+    Write-Output "DB 백업을 저장했습니다. $backupPath"
 
-    Write-Host 'API 서비스만 교체하고 정상 기동을 기다립니다.'
+    Write-Output 'API 서비스만 교체하고 정상 기동을 기다립니다.'
     Invoke-Docker -Arguments ($composeArguments + @('up', '-d', '--no-deps', '--wait', '--wait-timeout', '180', 'api'))
     $readinessJson = Invoke-Docker -Arguments ($composeArguments + @(
         'exec', '-T', 'api', 'curl', '--fail', '--silent', '--show-error', '--max-time', '10',
@@ -132,8 +163,8 @@ try {
     $pendingStatePath = Join-Path $stateDirectory 'last-success.json.pending'
     [System.IO.File]::WriteAllText($pendingStatePath, ($record | ConvertTo-Json), $utf8)
     Move-Item -LiteralPath $pendingStatePath -Destination $statePath -Force
-    Write-Host "배포와 DB 연결 검증을 완료했습니다. 커밋: $CommitSha"
-    Write-Host "배포 기록을 저장했습니다. $statePath"
+    Write-Output "배포와 DB 연결 검증을 완료했습니다. 커밋: $CommitSha"
+    Write-Output "배포 기록을 저장했습니다. $statePath"
 }
 catch {
     $deploymentError = $_
@@ -143,6 +174,14 @@ catch {
     throw $deploymentError
 }
 finally {
+    if (Test-Path -LiteralPath $registryConfigPath -PathType Leaf) {
+        Remove-Item -LiteralPath $registryConfigPath -Force
+    }
+    if (Test-Path -LiteralPath $registryDirectory -PathType Container) {
+        Remove-Item -LiteralPath $registryDirectory -Force
+    }
+    $env:DOCKER_CONFIG = $previousDockerConfig
+    $env:DOCKER_HOST = $previousDockerHost
     $env:API_IMAGE = $previousImageEnvironment
     $deploymentLock.Dispose()
 }
