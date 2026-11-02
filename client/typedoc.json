@@ -1,0 +1,37 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "name": "Mobtwig 클라이언트 UI",
+  "entryPoints": [
+    "index.ts",
+    "App.tsx",
+    "src"
+  ],
+  "entryPointStrategy": "expand",
+  "out": "docs-api",
+  "readme": "none",
+  "githubPages": false,
+  "disableSources": true,
+  "lang": "ko",
+  "jsDocCompatibility": false,
+  "validation": {
+    "notExported": true,
+    "invalidLink": true,
+    "invalidPath": true,
+    "rewrittenLink": true,
+    "notDocumented": true
+  },
+  "requiredToBeDocumented": [
+    "Enum",
+    "EnumMember",
+    "Variable",
+    "Function",
+    "Class",
+    "Interface",
+    "Property",
+    "Method",
+    "Accessor",
+    "TypeAlias",
+    "Parameter"
+  ],
+  "treatWarningsAsErrors": true
+}

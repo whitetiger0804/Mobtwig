@@ -1,0 +1,19 @@
+# 컴퓨터별 설정과 비밀번호를 제외합니다.
+**/.env
+**/.env.*
+!**/.env.example
+
+# 설치 의존성, 빌드 결과와 로컬 실행 기록을 제외합니다.
+**/node_modules/
+**/.expo/
+**/dist/
+**/target/
+**/.venv/
+**/__pycache__/
+*.py[cod]
+*.log
+
+# 실제 DB 파일과 백업은 저장소 밖에 보관합니다.
+server/db/data/
+server/db/backups/
+server/app.jar

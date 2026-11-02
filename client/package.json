@@ -1,0 +1,42 @@
+{
+  "name": "mobtwig-client",
+  "version": "1.0.0",
+  "main": "index.ts",
+  "dependencies": {
+    "@expo/metro-runtime": "57.0.16",
+    "expo": "57.0.25",
+    "expo-dev-client": "~57.0.20",
+    "expo-status-bar": "57.0.1",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "react-native": "0.86.3",
+    "react-native-safe-area-context": "~5.7.0",
+    "react-native-svg": "15.15.4",
+    "react-native-web": "0.21.2"
+  },
+  "devDependencies": {
+    "@types/react": "19.2.4",
+    "typedoc": "0.28.20",
+    "typescript": "6.0.3"
+  },
+  "scripts": {
+    "start": "node scripts/start-expo.mjs",
+    "start:go": "node scripts/start-expo.mjs --go",
+    "start:test": "node scripts/start-expo.mjs --server-selection",
+    "mock": "node ../server/mock/index.mjs",
+    "android": "node scripts/run-android.mjs",
+    "android:go": "node scripts/start-expo.mjs --go --android",
+    "ios": "expo run:ios",
+    "ios:go": "node scripts/start-expo.mjs --go --ios",
+    "web": "node scripts/start-expo.mjs --web",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test tests/homeSchema.test.mjs tests/workDetails.test.mjs ../server/mock/server.test.mjs",
+    "docs": "typedoc"
+  },
+  "engines": {
+    "node": "24.21.0",
+    "npm": "12.1.0"
+  },
+  "packageManager": "npm@12.1.0",
+  "private": true
+}
