@@ -10,9 +10,9 @@ React Native와 Expo를 사용하는 TypeScript 클라이언트입니다. 홈은
 | --- | --- |
 | Node.js | 24.21.0 LTS |
 | npm | 12.1.0 |
-| Expo | 57.0.25 (SDK 57) |
-| React Native | 0.86.3 |
-| React | 19.2.3 |
+| Expo | 58.0.23(SDK 58) |
+| React Native | 0.88.1 |
+| React | 19.3.0 |
 | TypeScript | 6.0.3 |
 
 직접 의존성은 `package.json`, 설치 버전은 `package-lock.json`으로 공유합니다. 같은 구성으로 설치할 때에는 `npm ci`를 사용합니다. Expo CLI는 프로젝트의 `expo` 패키지에 포함되어 있습니다.
