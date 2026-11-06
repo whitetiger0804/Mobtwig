@@ -1,0 +1,946 @@
+openapi: 3.0.3
+info:
+  title: Mobtwig HTTP API
+  version: 0.0.1-SNAPSHOT
+  description: |
+    현재 구현한 홈 SDUI·작품 상세·관리자 등록 API의 계약입니다.
+    이 명세를 포함한 커밋이 배포된 서버에서 사용합니다.
+    공개 조회에는 로그인이 필요하지 않습니다. 관리자 API는 SESSION 쿠키와 활성 ADMIN 권한을 사용합니다.
+    POST 요청은 같은 세션으로 GET /api/admin/csrf에서 받은 X-CSRF-TOKEN 헤더가 필요합니다.
+    로그인은 application/x-www-form-urlencoded이며 성공 시 본문 없는 204를 반환합니다.
+    이 서버의 Swagger UI는 관리자 POST 전에 CSRF 토큰을 자동으로 조회합니다.
+    로그인 요청을 실행한 뒤 관리자 API를 호출하고, 사용을 마치면 로그아웃 요청을 실행하십시오.
+    Authorize 창에 SESSION 쿠키를 직접 입력하지 않습니다. 브라우저가 로그인 응답의 쿠키를 관리합니다.
+    Try it out으로 등록한 자료는 접속한 서버의 실제 DB에 저장합니다.
+servers:
+  - url: /
+    description: 이 명세를 제공하는 서버입니다.
+tags:
+  - name: 공개 조회
+    description: 앱의 홈과 작품 상세를 조회합니다.
+  - name: 관리자 인증
+    description: 세션과 CSRF 토큰으로 로그인 상태를 관리합니다.
+  - name: 관리자 등록
+    description: 활성 ADMIN 계정이 실제 DB에 자료를 등록합니다.
+  - name: 상태 확인
+    description: API와 DB의 준비 상태를 확인합니다.
+security: []
+paths:
+  /sdui/home:
+    get:
+      tags: [공개 조회]
+      operationId: getHome
+      summary: 분류별 홈 SDUI를 조회합니다.
+      description: |
+        kind를 정확히 한 번 지정합니다. 구역과 항목의 순서는 응답 배열의 순서입니다.
+        공개 작품은 출간일과 DB ID 내림차순으로 채우며 작품이 없으면 빈 items를 반환합니다.
+        dataSource는 서버 내부 설정으로 응답에 포함하지 않습니다.
+      parameters:
+        - name: kind
+          in: query
+          required: true
+          description: 조회할 홈 분류입니다. 중복 지정과 쉼표로 묶은 복수 값은 허용하지 않습니다.
+          schema:
+            $ref: '#/components/schemas/HomeKind'
+          example: all
+      responses:
+        '200':
+          description: 클라이언트가 지원하는 버전 1의 홈입니다.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HomeResponse'
+              example:
+                version: 1
+                sections:
+                  - id: welcome
+                    type: bannerCarousel
+                    items:
+                      - id: welcome-book
+                        title: 새로운 이야기를 만나십시오.
+                        imageUrl: /images/banner.jpg
+                        action:
+                          label: 도서를 확인합니다.
+                          route: {screen: home, kind: book}
+                  - id: latest
+                    type: workShelf
+                    title: 새로 공개한 작품
+                    items:
+                      - {id: sample-book, title: 예시 도서, imageUrl: /images/cover.jpg}
+                  - id: featured
+                    type: featuredWork
+                    items:
+                      - {id: sample-book, title: 예시 도서, imageUrl: /images/cover.jpg, label: 오늘의 도서}
+                  - id: shortcuts
+                    type: linkRow
+                    items:
+                      - id: search
+                        label: 검색합니다.
+                        icon: search
+                        route: {screen: search, kind: all}
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /works/{slug}:
+    get:
+      tags: [공개 조회]
+      operationId: getWorkDetail
+      summary: 공개 작품의 상세와 목차를 조회합니다.
+      description: |
+        slug는 홈 카드의 id입니다. DRAFT·HIDDEN 등 비공개 작품은 404입니다.
+        contents에는 현재 시각까지 공개한 회차만 회차 번호 순서로 포함합니다.
+        회차 공개일은 Asia/Seoul 기준 날짜로 반환합니다.
+        정상 조회 후 누적·일별 조회 수를 증가시키므로 반복 호출에도 집계가 발생합니다.
+        응답 통계는 증가 직전에 읽은 값입니다. 본문 파일과 contentUrl은 이 응답에 포함하지 않습니다.
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/Slug'
+          example: sample-book
+      responses:
+        '200':
+          description: null인 선택 필드는 생략한 작품 상세입니다.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkDetail'
+              example:
+                id: sample-book
+                kind: book
+                title: 예시 도서
+                author: 예시 저자
+                imageUrl: /images/cover.jpg
+                description: 문서의 예시 작품입니다.
+                publisher: 예시 출판사
+                publishedAt: '2026-01-01'
+                category: 판타지 · 장편
+                fileFormat: EPUB
+                pageCount: 120
+                contents:
+                  - {id: '1', title: 첫 번째 장, publishedAt: '2026-01-01', characterCount: 1500}
+                statistics: {views: 0, recommendations: 0, rating: 0.00}
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /api/admin/csrf:
+    get:
+      tags: [관리자 인증]
+      operationId: getAdminCsrf
+      summary: 현재 세션의 CSRF 토큰을 받습니다.
+      description: |
+        로그인 전에도 호출할 수 있으며 익명 세션 쿠키를 발급할 수 있습니다.
+        이후 POST에도 동일한 쿠키를 전송하고 반환한 headerName 이름으로 token을 보냅니다.
+        로그인·로그아웃 후에는 토큰을 다시 받습니다. 토큰과 쿠키를 문서나 저장소에 기록하지 않습니다.
+      responses:
+        '200':
+          description: 현재 세션에 연결한 토큰입니다.
+          headers:
+            Set-Cookie:
+              description: 세션을 새로 만들면 SESSION 쿠키를 발급합니다. 운영 HTTPS에서는 Secure를 사용합니다.
+              schema: {type: string}
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CsrfToken'
+  /api/admin/login:
+    post:
+      tags: [관리자 인증]
+      operationId: loginAdmin
+      summary: 이메일과 비밀번호로 로그인합니다.
+      description: |
+        username에 이메일을 넣고 JSON 대신 폼으로 전송합니다.
+        같은 쿠키로 CSRF 토큰을 먼저 받아야 합니다. 로그인 성공 시 세션 ID와 CSRF 토큰이 변경됩니다.
+        활성 USER 계정도 인증 자체는 성공할 수 있으므로 /api/admin/session의 200으로 ADMIN 권한을 확인합니다.
+      security:
+        - SessionCookie: []
+          CsrfTokenHeader: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [username, password]
+              properties:
+                username:
+                  type: string
+                  description: 계정의 이메일입니다.
+                  example: admin@example.com
+                password:
+                  type: string
+                  format: password
+                  writeOnly: true
+                  description: 기존 계정의 비밀번호입니다.
+      responses:
+        '204':
+          description: 로그인에 성공했습니다. JSON 본문을 읽지 말고 변경된 쿠키를 보관합니다.
+          headers:
+            Set-Cookie:
+              description: 로그인 전 세션을 교체한 SESSION 쿠키입니다.
+              schema: {type: string}
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/admin/logout:
+    post:
+      tags: [관리자 인증]
+      operationId: logoutAdmin
+      summary: 현재 세션을 종료합니다.
+      description: 현재 쿠키와 CSRF 토큰을 전송합니다. 로그아웃 후 기존 세션으로 관리자 API에 접근할 수 없습니다.
+      security:
+        - SessionCookie: []
+          CsrfTokenHeader: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: {type: object}
+            example: {}
+      responses:
+        '204':
+          description: 세션을 종료했습니다. 응답 본문은 없습니다.
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/admin/session:
+    get:
+      tags: [관리자 인증]
+      operationId: getAdminSession
+      summary: 활성 ADMIN 로그인 상태를 확인합니다.
+      security:
+        - SessionCookie: []
+      responses:
+        '200':
+          description: 비밀번호와 해시가 없는 현재 관리자 정보입니다.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminSession'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/admin/catalog:
+    get:
+      tags: [관리자 등록]
+      operationId: getAdminCatalog
+      summary: 등록에 사용할 관계 ID와 작품 목록을 조회합니다.
+      description: authorIds·genreIds·categoryIds와 작품 경로의 id는 이 응답에서 선택합니다. 작품에는 비공개 상태도 포함합니다.
+      security:
+        - SessionCookie: []
+      responses:
+        '200':
+          description: 저자·분류·작품의 현재 DB 목록입니다. 자료가 없으면 빈 배열입니다.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminCatalog'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/admin/accounts:
+    post:
+      tags: [관리자 등록]
+      operationId: createAdminAccount
+      summary: 팀원 ADMIN 계정을 생성합니다.
+      description: 새 계정에도 자료 등록과 다른 관리자 계정 생성 권한이 부여됩니다. 기존 회원의 권한이나 비밀번호를 변경하는 API는 아닙니다.
+      security:
+        - SessionCookie: []
+          CsrfTokenHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AccountInput'
+      responses:
+        '201':
+          $ref: '#/components/responses/CreatedId'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/admin/authors:
+    post:
+      tags: [관리자 등록]
+      operationId: createAuthor
+      summary: 저자를 등록합니다.
+      security:
+        - SessionCookie: []
+          CsrfTokenHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuthorInput'
+      responses:
+        '201':
+          $ref: '#/components/responses/CreatedId'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/admin/genres:
+    post:
+      tags: [관리자 등록]
+      operationId: createGenre
+      summary: 장르를 등록합니다.
+      security:
+        - SessionCookie: []
+          CsrfTokenHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenreInput'
+      responses:
+        '201':
+          $ref: '#/components/responses/CreatedId'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/admin/categories:
+    post:
+      tags: [관리자 등록]
+      operationId: createCategory
+      summary: 카테고리를 등록합니다.
+      security:
+        - SessionCookie: []
+          CsrfTokenHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CategoryInput'
+      responses:
+        '201':
+          $ref: '#/components/responses/CreatedId'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/admin/works:
+    post:
+      tags: [관리자 등록]
+      operationId: createWork
+      summary: 작품과 저자·분류·회차를 함께 등록합니다.
+      description: |
+        저자는 한 명 이상, 장르와 카테고리는 합쳐 한 개 이상, 회차는 한 개 이상 필요합니다.
+        관계 ID는 catalog에서 조회한 값이며 각 목록 안의 중복은 거부합니다.
+        작품·관계·회차를 한 트랜잭션으로 저장하고 PUBLISHED이면 WORK 게시판도 만듭니다.
+        회차 번호는 작품 안에서 고유해야 합니다. 매거진은 시작 쪽이 회차 번호 순서로 증가해야 합니다.
+        조회 수·추천 수·평점은 입력받아 저장하지 않습니다.
+      security:
+        - SessionCookie: []
+          CsrfTokenHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkInput'
+      responses:
+        '201':
+          description: 내부 DB ID와 공개 조회에 사용할 slug입니다.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, slug]
+                properties:
+                  id: {type: integer, format: int64}
+                  slug: {$ref: '#/components/schemas/Slug'}
+              example: {id: 1, slug: sample-book}
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/admin/works/{id}/chapters:
+    post:
+      tags: [관리자 등록]
+      operationId: addChapter
+      summary: 기존 작품에 회차를 추가합니다.
+      description: 기존 회차와 함께 번호·매거진 쪽 순서를 검사합니다. 공개 시각이 null이면 비공개이고 미래 시각이면 예약 공개됩니다.
+      security:
+        - SessionCookie: []
+          CsrfTokenHeader: []
+      parameters:
+        - $ref: '#/components/parameters/WorkId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChapterInput'
+      responses:
+        '201':
+          $ref: '#/components/responses/CreatedId'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/admin/works/{id}/status:
+    post:
+      tags: [관리자 등록]
+      operationId: setWorkStatus
+      summary: 작품을 공개하거나 숨깁니다.
+      description: PUBLISHED 전환 시 저장된 필수 메타데이터·저자·분류·회차를 다시 검사하며 WORK 게시판을 중복 생성하지 않습니다.
+      security:
+        - SessionCookie: []
+          CsrfTokenHeader: []
+      parameters:
+        - $ref: '#/components/parameters/WorkId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [publishStatus]
+              properties:
+                publishStatus: {type: string, enum: [PUBLISHED, HIDDEN]}
+            example: {publishStatus: PUBLISHED}
+      responses:
+        '204':
+          description: 공개 상태를 변경했습니다. 응답 본문은 없습니다.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /actuator/health/readiness:
+    get:
+      tags: [상태 확인]
+      operationId: getReadiness
+      summary: 서비스와 DB의 준비 상태를 확인합니다.
+      responses:
+        '200':
+          description: 요청을 처리할 준비가 되었습니다.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+              example: {status: UP}
+        '503':
+          description: 서비스나 DB가 준비되지 않았습니다.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+components:
+  securitySchemes:
+    SessionCookie:
+      type: apiKey
+      in: cookie
+      name: SESSION
+      description: |
+        CSRF 조회로 익명 세션을 시작하고 로그인 시 인증 세션으로 교체합니다.
+        관리자 조회·등록에는 현재 DB에서 ACTIVE·ADMIN인 계정의 세션이 필요합니다.
+        브라우저가 쿠키를 관리하므로 Swagger UI의 Authorize 창에 직접 입력하지 않습니다.
+    CsrfTokenHeader:
+      type: apiKey
+      in: header
+      name: X-CSRF-TOKEN
+      description: GET /api/admin/csrf의 token입니다. Swagger UI는 관리자 POST에 자동으로 넣으며 직접 작성한 클라이언트에서는 같은 세션으로 조회·전송합니다.
+  parameters:
+    WorkId:
+      name: id
+      in: path
+      required: true
+      description: catalog.works[].id 또는 작품 등록 응답의 숫자 ID입니다. slug와 다릅니다.
+      schema: {type: integer, format: int64}
+      example: 1
+  responses:
+    CreatedId:
+      description: 새 자료를 생성했습니다.
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [id]
+            properties:
+              id: {type: integer, format: int64}
+          example: {id: 1}
+    BadRequest:
+      description: 필수값·자료형·길이·형식 또는 업무 조건이 올바르지 않습니다.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorBody'
+    Unauthorized:
+      description: 인증에 실패했거나 로그인 세션이 없습니다. 본문이 비어 있을 수 있습니다.
+    Forbidden:
+      description: CSRF 토큰·쿠키가 일치하지 않거나 현재 활성 ADMIN 권한이 없습니다.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/HttpError'
+    NotFound:
+      description: 요청한 자료가 없거나 공개 조회할 수 없는 작품입니다.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorBody'
+    Conflict:
+      description: 고유 식별자·이메일·닉네임 또는 DB 관계가 충돌합니다.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AdminError'
+    ServerError:
+      description: DB·SDUI 설정 또는 공개 자료의 메타데이터를 처리하지 못했습니다. 간이 데이터로 대체하지 않습니다.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/HttpError'
+  schemas:
+    HomeKind:
+      type: string
+      enum: [all, book, magazine, novel]
+    WorkKind:
+      type: string
+      enum: [book, magazine, novel]
+    Slug:
+      type: string
+      minLength: 1
+      maxLength: 100
+      pattern: '^[a-z0-9-]+$'
+      description: URL에 사용하는 공개 작품 식별자입니다.
+    Text:
+      type: string
+      minLength: 1
+      description: 공백만 있는 문자열은 허용하지 않습니다.
+    ResourceUrl:
+      type: string
+      minLength: 1
+      maxLength: 500
+      description: HTTP(S) 주소 또는 API 서버 기준 / 경로입니다. 사용자 정보·역슬래시·제어 문자가 있는 주소는 허용하지 않습니다.
+      example: /images/cover.jpg
+    Route:
+      type: object
+      required: [screen]
+      properties:
+        screen: {type: string, enum: [home, search, library, recent, detail]}
+        kind: {$ref: '#/components/schemas/HomeKind'}
+        workId:
+          type: string
+          minLength: 1
+          description: detail일 때만 포함하며 해당 화면에서는 필수입니다.
+      oneOf:
+        - required: [workId]
+          additionalProperties: true
+          properties:
+            screen: {type: string, enum: [detail]}
+        - additionalProperties: true
+          properties:
+            screen: {type: string, enum: [home, search, library, recent]}
+          not:
+            required: [workId]
+    Action:
+      type: object
+      required: [label, route]
+      properties:
+        label: {$ref: '#/components/schemas/Text'}
+        route: {$ref: '#/components/schemas/Route'}
+    SectionBase:
+      type: object
+      required: [id]
+      properties:
+        id:
+          type: string
+          minLength: 1
+          description: sections 안에서 고유한 식별자입니다.
+        title: {$ref: '#/components/schemas/Text'}
+        action: {$ref: '#/components/schemas/Action'}
+    BannerItem:
+      type: object
+      required: [id, title, imageUrl]
+      properties:
+        id: {$ref: '#/components/schemas/Text'}
+        title: {$ref: '#/components/schemas/Text'}
+        imageUrl: {$ref: '#/components/schemas/ResourceUrl'}
+        description: {$ref: '#/components/schemas/Text'}
+        action: {$ref: '#/components/schemas/Action'}
+    WorkCard:
+      type: object
+      required: [id, title, imageUrl]
+      properties:
+        id:
+          type: string
+          minLength: 1
+          description: /works/{slug}에서 사용할 작품 식별자입니다.
+        title: {$ref: '#/components/schemas/Text'}
+        imageUrl: {$ref: '#/components/schemas/ResourceUrl'}
+        subtitle: {$ref: '#/components/schemas/Text'}
+    FeaturedCard:
+      allOf:
+        - $ref: '#/components/schemas/WorkCard'
+        - type: object
+          required: [label]
+          properties:
+            label: {$ref: '#/components/schemas/Text'}
+            action: {$ref: '#/components/schemas/Action'}
+    LinkItem:
+      allOf:
+        - $ref: '#/components/schemas/Action'
+        - type: object
+          required: [id]
+          properties:
+            id: {$ref: '#/components/schemas/Text'}
+            icon: {type: string, enum: [bookmark, book, heart, library, search]}
+    BannerSection:
+      allOf:
+        - $ref: '#/components/schemas/SectionBase'
+        - type: object
+          required: [type, items]
+          properties:
+            type: {type: string, enum: [bannerCarousel]}
+            items: {type: array, items: {$ref: '#/components/schemas/BannerItem'}}
+    WorkSection:
+      allOf:
+        - $ref: '#/components/schemas/SectionBase'
+        - type: object
+          required: [type, items]
+          properties:
+            type: {type: string, enum: [workShelf]}
+            items: {type: array, items: {$ref: '#/components/schemas/WorkCard'}}
+    FeaturedSection:
+      allOf:
+        - $ref: '#/components/schemas/SectionBase'
+        - type: object
+          required: [type, items]
+          properties:
+            type: {type: string, enum: [featuredWork]}
+            items: {type: array, items: {$ref: '#/components/schemas/FeaturedCard'}}
+    LinkSection:
+      allOf:
+        - $ref: '#/components/schemas/SectionBase'
+        - type: object
+          required: [type, items]
+          properties:
+            type: {type: string, enum: [linkRow]}
+            items: {type: array, items: {$ref: '#/components/schemas/LinkItem'}}
+    HomeResponse:
+      type: object
+      required: [version, sections]
+      properties:
+        version: {type: integer, enum: [1]}
+        sections:
+          type: array
+          description: 응답 순서로 렌더링합니다. 빈 배열을 허용하며 구역 ID와 각 items 안의 ID는 각각 고유해야 합니다.
+          items:
+            oneOf:
+              - $ref: '#/components/schemas/BannerSection'
+              - $ref: '#/components/schemas/WorkSection'
+              - $ref: '#/components/schemas/FeaturedSection'
+              - $ref: '#/components/schemas/LinkSection'
+            discriminator:
+              propertyName: type
+              mapping:
+                bannerCarousel: '#/components/schemas/BannerSection'
+                workShelf: '#/components/schemas/WorkSection'
+                featuredWork: '#/components/schemas/FeaturedSection'
+                linkRow: '#/components/schemas/LinkSection'
+    WorkDetail:
+      type: object
+      required: [id, kind, title, author, imageUrl, description, publisher, publishedAt, category, fileFormat, contents, statistics]
+      properties:
+        id: {$ref: '#/components/schemas/Slug'}
+        kind: {$ref: '#/components/schemas/WorkKind'}
+        title: {$ref: '#/components/schemas/Text'}
+        author:
+          type: string
+          description: 복수 저자는 쉼표와 공백으로 연결한 표시 문자열입니다.
+        imageUrl: {$ref: '#/components/schemas/ResourceUrl'}
+        description: {$ref: '#/components/schemas/Text'}
+        publisher: {$ref: '#/components/schemas/Text'}
+        publishedAt: {type: string, format: date}
+        category:
+          type: string
+          description: 장르와 카테고리 이름을 중복 제거한 뒤 가운데 점으로 연결한 표시 문자열입니다.
+        fileFormat: {$ref: '#/components/schemas/Text'}
+        pageCount: {type: integer, format: int32}
+        issue: {$ref: '#/components/schemas/Text'}
+        publicationCycle: {$ref: '#/components/schemas/Text'}
+        contents:
+          type: array
+          items:
+            $ref: '#/components/schemas/Content'
+        statistics:
+          type: object
+          required: [views, recommendations, rating]
+          properties:
+            views: {type: integer, format: int64}
+            recommendations: {type: integer, format: int32}
+            rating: {type: number}
+    Content:
+      type: object
+      required: [id, title, publishedAt]
+      properties:
+        id:
+          type: string
+          minLength: 1
+          description: 회차 내부 DB ID를 문자열로 반환합니다.
+        title: {$ref: '#/components/schemas/Text'}
+        category: {$ref: '#/components/schemas/Text'}
+        pageNumber: {type: integer, format: int32}
+        publishedAt:
+          type: string
+          format: date
+          description: 공개 시각을 Asia/Seoul 기준 날짜로 바꾼 값입니다.
+        characterCount:
+          type: integer
+          format: int32
+          minimum: 1
+          description: DB 값이 0이면 이 필드를 생략합니다.
+    CsrfToken:
+      type: object
+      required: [headerName, parameterName, token]
+      properties:
+        headerName: {type: string, enum: [X-CSRF-TOKEN]}
+        parameterName: {type: string, enum: [_csrf]}
+        token: {type: string, minLength: 1}
+    AdminSession:
+      type: object
+      required: [id, email, nickname]
+      properties:
+        id: {type: integer, format: int64}
+        email: {type: string, format: email}
+        nickname: {type: string, nullable: true}
+    Lookup:
+      type: object
+      required: [id, name]
+      properties:
+        id: {type: integer, format: int64}
+        name: {type: string}
+    AdminCatalog:
+      type: object
+      required: [authors, genres, categories, works]
+      properties:
+        authors: {type: array, items: {$ref: '#/components/schemas/Lookup'}}
+        genres: {type: array, items: {$ref: '#/components/schemas/Lookup'}}
+        categories: {type: array, items: {$ref: '#/components/schemas/Lookup'}}
+        works:
+          type: array
+          items:
+            type: object
+            required: [id, slug, title, kind, publishStatus]
+            properties:
+              id: {type: integer, format: int64}
+              slug: {$ref: '#/components/schemas/Slug'}
+              title: {type: string}
+              kind: {$ref: '#/components/schemas/WorkKind'}
+              publishStatus: {type: string, enum: [DRAFT, PENDING_REVIEW, PUBLISHED, REJECTED, HIDDEN]}
+    AccountInput:
+      type: object
+      required: [email, nickname, password]
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 255
+          description: 공백 없는 이메일이며 도메인에 점이 있어야 합니다. 소문자로 저장합니다.
+          example: teammate@example.com
+        nickname: {type: string, minLength: 1, maxLength: 30, example: 예시 팀원}
+        password:
+          type: string
+          format: password
+          writeOnly: true
+          minLength: 12
+          maxLength: 72
+          description: UTF-16 길이 12자 이상이며 UTF-8로 72바이트 이하여야 합니다. 평문을 저장하지 않습니다.
+    AuthorInput:
+      type: object
+      required: [name]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 100, example: 예시 저자}
+        bio:
+          type: string
+          nullable: true
+          maxLength: 65535
+          description: UTF-8로 65535바이트 이하입니다. 생략·null·공백은 null로 저장합니다.
+        field: {type: string, nullable: true, maxLength: 100}
+    GenreInput:
+      type: object
+      required: [name]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 50, example: 판타지}
+        displayOrder: {type: integer, format: int32, default: 0}
+    CategoryInput:
+      type: object
+      required: [name]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 50, example: 장편}
+        description: {type: string, nullable: true, maxLength: 255}
+        displayOrder: {type: integer, format: int32, default: 0}
+    RelationIds:
+      type: array
+      uniqueItems: true
+      items: {type: integer, format: int64, minimum: 1}
+    ChapterInput:
+      type: object
+      required: [chapterNo, title]
+      properties:
+        chapterNo: {type: integer, format: int32, minimum: 1}
+        title: {type: string, minLength: 1, maxLength: 200}
+        publishedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: |
+            null·생략이면 비공개이며 미래 시각이면 예약 공개됩니다. UTC 또는 오프셋이 있는 ISO 8601 시각을 사용합니다.
+            DB 범위는 1970-01-01T00:00:01Z부터 2038-01-19T03:14:07Z까지입니다.
+        characterCount: {type: integer, format: int32, minimum: 0, default: 0}
+        summary:
+          type: string
+          nullable: true
+          maxLength: 65535
+          description: UTF-8로 65535바이트 이하입니다.
+        category: {type: string, nullable: true, maxLength: 50}
+        pageNumber:
+          type: integer
+          format: int32
+          nullable: true
+          minimum: 1
+          description: 매거진은 필수이며 회차 순서대로 증가하고 전체 쪽수 이하여야 합니다.
+        contentUrl:
+          type: string
+          nullable: true
+          maxLength: 500
+          description: 공개 시각을 입력하면 필수입니다. HTTP(S) 주소 또는 API 서버 기준 / 경로를 사용합니다.
+      example:
+        chapterNo: 1
+        title: 첫 번째 장
+        publishedAt: '2026-01-01T00:00:00Z'
+        characterCount: 1500
+        pageNumber: 1
+        contentUrl: /content/sample-book/1.html
+    WorkInput:
+      type: object
+      required: [kind, slug, title, description, imageUrl, publishedAt, publisher, fileFormat, serialStatus, publishStatus, authorIds, genreIds, categoryIds, chapters]
+      properties:
+        kind: {$ref: '#/components/schemas/WorkKind'}
+        slug: {$ref: '#/components/schemas/Slug'}
+        title: {type: string, minLength: 1, maxLength: 200}
+        description:
+          type: string
+          minLength: 1
+          maxLength: 65535
+          description: UTF-8로 65535바이트 이하입니다.
+        imageUrl: {$ref: '#/components/schemas/ResourceUrl'}
+        publishedAt:
+          type: string
+          format: date
+          pattern: '^[1-9][0-9]{3}-[0-9]{2}-[0-9]{2}$'
+          description: 작품의 발행일입니다. 1000년부터 9999년까지 허용합니다.
+        publisher: {type: string, minLength: 1, maxLength: 100}
+        fileFormat: {type: string, minLength: 1, maxLength: 20}
+        pageCount: {type: integer, format: int32, nullable: true, minimum: 1}
+        issue: {type: string, nullable: true, maxLength: 50}
+        publicationCycle: {type: string, nullable: true, maxLength: 20}
+        serialStatus: {type: string, enum: [ONGOING, HIATUS, COMPLETED]}
+        publishStatus: {type: string, enum: [DRAFT, PUBLISHED]}
+        authorIds:
+          allOf:
+            - $ref: '#/components/schemas/RelationIds'
+            - minItems: 1
+        genreIds: {$ref: '#/components/schemas/RelationIds'}
+        categoryIds: {$ref: '#/components/schemas/RelationIds'}
+        chapters:
+          type: array
+          minItems: 1
+          description: chapterNo는 작품 안에서 중복될 수 없습니다.
+          items:
+            $ref: '#/components/schemas/ChapterInput'
+      anyOf:
+        - additionalProperties: true
+          properties:
+            genreIds: {type: array, minItems: 1, items: {type: integer, format: int64, minimum: 1}}
+        - additionalProperties: true
+          properties:
+            categoryIds: {type: array, minItems: 1, items: {type: integer, format: int64, minimum: 1}}
+      example:
+        kind: book
+        slug: sample-book
+        title: 예시 도서
+        description: 문서의 예시 작품입니다.
+        imageUrl: /images/cover.jpg
+        publishedAt: '2026-01-01'
+        publisher: 예시 출판사
+        fileFormat: EPUB
+        pageCount: 120
+        serialStatus: COMPLETED
+        publishStatus: DRAFT
+        authorIds: [1]
+        genreIds: [1]
+        categoryIds: []
+        chapters:
+          - chapterNo: 1
+            title: 첫 번째 장
+            publishedAt: '2026-01-01T00:00:00Z'
+            characterCount: 1500
+            contentUrl: /content/sample-book/1.html
+    AdminError:
+      type: object
+      required: [message]
+      properties:
+        message: {type: string}
+      example: {message: 입력값의 필수 항목·길이·숫자·날짜 형식을 확인하십시오.}
+    HttpError:
+      type: object
+      required: [status, error]
+      properties:
+        timestamp: {type: string}
+        status: {type: integer}
+        error: {type: string}
+        path: {type: string}
+        message: {type: string}
+    ErrorBody:
+      anyOf:
+        - $ref: '#/components/schemas/AdminError'
+        - $ref: '#/components/schemas/HttpError'
+    Health:
+      type: object
+      required: [status]
+      properties:
+        status: {type: string, enum: [UP, DOWN, OUT_OF_SERVICE, UNKNOWN]}
