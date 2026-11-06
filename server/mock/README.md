@@ -59,3 +59,7 @@ node server/mock/index.mjs
 ```powershell
 node --test server/mock/server.test.mjs
 ```
+
+## 텍스트 본문 검증 · #35
+
+GET /works/{slug}/chapters/{chapterId}는 works.json의 공개 목차와 chapter-text.json의 검증용 가상 예문을 조합합니다. 작품 16개·목차 91개에 각각 예문이 있으며 실제 출판 본문이 아닙니다. ID는 기존의 문자열을 보존합니다. 응답 필드는 실제 API와 같고 정규화 body, UTF-16 characterCount, 정수 contentVersion, SHA-256 contentHash를 구분합니다. 처음/끝에는 명시적 null 이웃이 있고 없는 회차는404, 준비되지 않은 본문 파일은503입니다. 정상 빈 body는200입니다. 본문 예문과 작품 JSON 파일 자체는 HTTP로 공개하지 않습니다.

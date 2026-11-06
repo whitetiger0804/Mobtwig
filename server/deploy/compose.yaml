@@ -46,11 +46,18 @@ services:
       ADMIN_BOOTSTRAP_EMAIL: ${ADMIN_BOOTSTRAP_EMAIL:-}
       ADMIN_BOOTSTRAP_NICKNAME: ${ADMIN_BOOTSTRAP_NICKNAME:-}
       ADMIN_BOOTSTRAP_PASSWORD: ${ADMIN_BOOTSTRAP_PASSWORD:-}
+      CONTENT_ROOT: /app/content
       TZ: UTC
     volumes:
       - type: bind
         source: ../sdui
         target: /app/sdui
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${CONTENT_HOST_PATH:?CONTENT_HOST_PATH를 지속되는 비공개 본문 폴더로 설정하십시오.}
+        target: /app/content
         read_only: true
         bind:
           create_host_path: false

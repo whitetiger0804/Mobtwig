@@ -1,7 +1,11 @@
 // #region 의존성 가져오기
-import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useRef, useState, type ComponentRef } from 'react';
+import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from './appState';
+import { useApiUrl } from './serverConnection';
+import { fetchChapterText, type ChapterText } from './chapterText';
+import { selectChapter } from './readerNavigation';
 import { EmptyState } from './EmptyState';
 import { Action, colors, Icon, IconButton, s } from './ui';
 // #endregion
@@ -11,45 +15,67 @@ import { Action, colors, Icon, IconButton, s } from './ui';
  * 본문 독서 도구 또는 앱북의 미디어 배치를 표시합니다.
  *
  * @remarks
- * 본문 화면은 상단 목차·기록·설정, 이전 회차 요약과 하단 회차 이동 도구를 유지합니다.
- * 실제 작품 제목·본문·진행률은 만들지 않으며 본문과 요약은 {@link EmptyState}입니다.
- * 요약 열기는 화면 내부 상태이고 회차 이동과 이어보기는 비활성화합니다.
+ * 본문 화면은 상단 목차·기록·설정과 하단 회차 이동 도구를 유지합니다.
+ * 본문 API의 작품·공개 회차·실제 텍스트를 표시합니다. 페이지 분할·진도 기록·요약 생성은 수행하지 않습니다.
+ * 이전/다음은 공개 목차의 이웃이며 경계에서 비활성화합니다.
  *
  * @returns 현재 독서 종류에 맞는 본문 또는 미디어 화면입니다.
  */
 export function ReadingScreen() {
   const app = useApp();
-  const [summaryOpen, setSummaryOpen] = useState(false);
   if (app.baseRoute.screen === 'media') return <MediaScreen />;
+  return <TextReader />;
+}
 
-  return (
-    <View style={styles.reader}>
-      <View style={styles.readerHeader}>
-        <View style={styles.roundTool}><IconButton icon="back" label="읽기 화면에서 돌아가기" onPress={app.back} /></View>
-        <Text style={[s.subtitle, styles.readerTitle]}>독서</Text>
-        <View style={styles.roundTool}><IconButton icon="list" label="목차" onPress={() => app.navigate({ screen: 'detail', kind: 'novel' })} /></View>
-        <View style={styles.roundTool}><IconButton icon="bookmark" label="밑줄과 책갈피" onPress={() => app.navigate({ screen: 'records' })} /></View>
-        <Pressable accessibilityRole="button" accessibilityLabel="읽기 설정" onPress={() => app.navigate({ screen: 'readingSettings' })} style={styles.roundTool}><Text style={[s.text, styles.typeTool]}>가</Text></Pressable>
-      </View>
-      <ScrollView contentContainerStyle={styles.readerBody} showsVerticalScrollIndicator={false}>
-        <Pressable accessibilityRole="button" accessibilityState={{ expanded: summaryOpen }} onPress={() => setSummaryOpen(!summaryOpen)} style={styles.summaryButton}>
-          <Icon name="refresh" size={16} color={colors.brown} /><Text style={[s.text, styles.summaryLabel]}>이전 회차 요약</Text><View style={summaryOpen && styles.turnUp}><Icon name="down" size={14} color={colors.brown} /></View>
-        </Pressable>
-        {summaryOpen && <View style={styles.summary}><EmptyState compact title="표시할 요약이 없습니다." /></View>}
-        <View style={styles.manuscript}><EmptyState title="표시할 본문이 없습니다." /></View>
-      </ScrollView>
-      <View style={styles.readerFooter}>
-        <View style={styles.progressTrack} />
-        <View style={styles.readerActions}>
-          <Pressable accessibilityRole="button" accessibilityState={{ disabled: true }} disabled style={styles.footerAction}><Icon name="back" size={14} color={colors.muted} /><Text style={[s.text, styles.footerLabel, styles.disabledText]}>이전화</Text></Pressable>
-          <Pressable accessibilityRole="button" accessibilityState={{ disabled: true }} disabled style={styles.footerAction}><Text style={[s.text, styles.footerLabel, styles.continueLabel]}>이어보기</Text></Pressable>
-          <Pressable accessibilityRole="button" onPress={() => app.navigate({ screen: 'world' })} style={styles.footerAction}><Text style={[s.text, styles.footerLabel]}>세계관</Text></Pressable>
-          <Pressable accessibilityRole="button" onPress={() => app.navigate({ screen: 'reviews' })} style={styles.footerAction}><Text style={[s.text, styles.footerLabel]}>댓글</Text></Pressable>
-          <Pressable accessibilityRole="button" accessibilityState={{ disabled: true }} disabled style={styles.footerAction}><Text style={[s.text, styles.footerLabel, styles.disabledText]}>다음화</Text><Icon name="next" size={14} color={colors.muted} /></Pressable>
-        </View>
-      </View>
+/** 선택이 바뀌면 요청을 취소하고 이전 본문을 새 회차로 표시하지 않습니다. */
+function TextReader() {
+  const app = useApp(), apiUrl = useApiUrl();
+  const insets = useSafeAreaInsets();
+  const { workId, chapterId } = app.baseRoute;
+  const [data, setData] = useState<ChapterText | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0), [contentsOpen, setContentsOpen] = useState(false);
+  const scroll = useRef<ComponentRef<typeof ScrollView>>(null);
+  useEffect(() => {
+    setData(null); setError(null); setContentsOpen(false);
+    if (!workId || !chapterId) { setError('작품 상세의 목차에서 읽을 회차를 선택해 주십시오.'); return; }
+    const controller = new AbortController();
+    fetchChapterText(apiUrl, workId, chapterId, controller.signal).then(value => {
+      if (!controller.signal.aborted) { setData(value); scroll.current?.scrollTo({ y: 0, animated: false }); }
+    }).catch((reason: unknown) => {
+      if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : '본문을 불러오지 못했습니다.');
+    });
+    return () => controller.abort();
+  }, [apiUrl, workId, chapterId, attempt]);
+  const selection = data ? selectChapter(data.contents, data.chapter.id) : null;
+  const move = (id: string) => {
+    if (!data || id === data.chapter.id) { setContentsOpen(false); return; }
+    app.navigate({ screen: 'reader', workId: data.workId, chapterId: id, kind: data.kind }, false, true);
+  };
+  return <View style={styles.reader}>
+    <View style={styles.readerHeader}>
+      <View style={styles.roundTool}><IconButton icon="back" label="읽기 화면에서 돌아가기" onPress={app.back} /></View>
+      <Text numberOfLines={1} style={[s.subtitle, styles.readerTitle]}>{data?.workTitle ?? '독서'}</Text>
+      <View style={styles.roundTool}><IconButton icon="list" label="목차" disabled={!data} onPress={() => setContentsOpen(true)} /></View>
+      <View style={styles.roundTool}><IconButton icon="bookmark" label="밑줄과 책갈피" onPress={() => app.navigate({ screen: 'records', workId })} /></View>
+      <Pressable accessibilityRole="button" accessibilityLabel="읽기 설정" onPress={() => app.navigate({ screen: 'readingSettings' })} style={styles.roundTool}><Text style={[s.text, styles.typeTool]}>가</Text></Pressable>
     </View>
-  );
+    <ScrollView ref={scroll} contentContainerStyle={styles.readerBody} showsVerticalScrollIndicator={false}>
+      {error ? <View accessibilityLiveRegion="polite"><Text style={s.subtitle}>본문을 불러오지 못했습니다.</Text><Text style={s.error}>{error}</Text>{workId && chapterId && <Action label="다시 불러오기" onPress={() => setAttempt(v => v + 1)} />}{workId && <Action label="작품 상세로" onPress={() => app.navigate({ screen: 'detail', workId }, false, true)} />}</View>
+        : !data ? <View accessibilityLiveRegion="polite"><ActivityIndicator color={colors.green} /><Text style={s.muted}>본문을 불러오고 있습니다.</Text></View>
+        : <View testID="chapter-text"><Text style={s.muted}>공개 목차 {data.currentIndex + 1} / {data.contents.length}</Text><Text accessibilityRole="header" style={[s.title, { marginVertical: 24 }]}>{data.chapter.number}{data.kind === 'novel' ? '화' : '장'} · {data.chapter.title}</Text>{data.body.length === 0 ? <EmptyState title="이 회차의 본문이 비어 있습니다." /> : <Text selectable testID="reader-body-text" style={[s.text, { fontSize: 17, lineHeight: 32 }]}>{data.body}</Text>}</View>}
+    </ScrollView>
+    <View style={styles.readerFooter}><View style={styles.readerActions}>
+      <Pressable accessibilityRole="button" accessibilityLabel="이전 회차" accessibilityState={{ disabled: !selection?.previous }} disabled={!selection?.previous} onPress={() => selection?.previous && move(selection.previous.id)} style={styles.footerAction}><Icon name="back" size={14} color={selection?.previous ? colors.green : colors.muted} /><Text style={[s.text, styles.footerLabel]}>이전화</Text></Pressable>
+      <Pressable accessibilityRole="button" accessibilityLabel="현재 장 처음으로" disabled={!data} accessibilityState={{ disabled: !data }} onPress={() => scroll.current?.scrollTo({ y: 0, animated: true })} style={styles.footerAction}><Text style={[s.text, styles.footerLabel]}>현재 장</Text></Pressable>
+      <Pressable accessibilityRole="button" onPress={() => app.navigate({ screen: 'world', workId, chapterId, kind: data?.kind })} style={styles.footerAction}><Text style={[s.text, styles.footerLabel]}>세계관</Text></Pressable>
+      <Pressable accessibilityRole="button" onPress={() => app.navigate({ screen: 'reviews', workId, chapterId, kind: data?.kind })} style={styles.footerAction}><Text style={[s.text, styles.footerLabel]}>댓글</Text></Pressable>
+      <Pressable accessibilityRole="button" accessibilityLabel="다음 회차" accessibilityState={{ disabled: !selection?.next }} disabled={!selection?.next} onPress={() => selection?.next && move(selection.next.id)} style={styles.footerAction}><Text style={[s.text, styles.footerLabel]}>다음화</Text><Icon name="next" size={14} color={selection?.next ? colors.green : colors.muted} /></Pressable>
+    </View></View>
+    <Modal visible={contentsOpen} transparent animationType="fade" onRequestClose={() => setContentsOpen(false)}>
+      <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: '#0006' }}><View style={{ backgroundColor: '#fff', maxWidth: 480, width: '100%', alignSelf: 'center', maxHeight: '85%', padding: 24, paddingBottom: 24 + insets.bottom }}><Text style={s.title}>목차</Text><ScrollView showsVerticalScrollIndicator={false}>{data?.contents.map(chapter => <Pressable key={chapter.id} accessibilityRole="button" accessibilityState={{ selected: chapter.id === chapterId }} accessibilityLabel={chapter.title + ' 열기'} onPress={() => move(chapter.id)} style={{ paddingVertical: 18, borderBottomWidth: 1, borderColor: colors.line }}><Text style={s.text}>{chapter.number}{data?.kind === 'novel' ? '화' : '장'} · {chapter.title}{chapter.id === chapterId ? ' · 현재 장' : ''}</Text></Pressable>)}</ScrollView><Action label="목차 닫기" onPress={() => setContentsOpen(false)} /></View></View>
+    </Modal>
+  </View>;
 }
 
 /**
@@ -132,8 +158,8 @@ function WorldHeader({ terms = false }: {
       <IconButton icon="back" label="세계관에서 돌아가기" onPress={app.back} />
       <Text style={[s.subtitle, styles.worldTitle]}>세계관</Text>
       <View style={styles.worldTabs}>
-        <Pressable accessibilityRole="tab" accessibilityState={{ selected: !terms }} onPress={() => app.navigate({ screen: 'world' })} style={[styles.worldTab, !terms && styles.worldTabSelected]}><Text style={[s.text, styles.worldTabLabel, !terms && styles.worldSelectedText]}>요약</Text></Pressable>
-        <Pressable accessibilityRole="tab" accessibilityState={{ selected: terms }} onPress={() => app.navigate({ screen: 'worldTerms' })} style={[styles.worldTab, terms && styles.worldTabSelected]}><Text style={[s.text, styles.worldTabLabel, terms && styles.worldSelectedText]}>용어</Text></Pressable>
+        <Pressable accessibilityRole="tab" accessibilityState={{ selected: !terms }} onPress={() => app.navigate({ ...app.baseRoute, screen: 'world' }, false, true)} style={[styles.worldTab, !terms && styles.worldTabSelected]}><Text style={[s.text, styles.worldTabLabel, !terms && styles.worldSelectedText]}>요약</Text></Pressable>
+        <Pressable accessibilityRole="tab" accessibilityState={{ selected: terms }} onPress={() => app.navigate({ ...app.baseRoute, screen: 'worldTerms' }, false, true)} style={[styles.worldTab, terms && styles.worldTabSelected]}><Text style={[s.text, styles.worldTabLabel, terms && styles.worldSelectedText]}>용어</Text></Pressable>
       </View>
     </View>
   );
@@ -159,7 +185,7 @@ export function WorldScreen() {
         <View style={styles.legend}>{([['인물', '#45714A'], ['사물', '#9A784F'], ['장소', '#8B9054'], ['고유 설정', '#668995']] as const).map(([label, color]) => <View key={label} style={styles.legendItem}><View style={[styles.legendDot, { backgroundColor: color }]} /><Text style={[s.muted, styles.legendLabel]}>{label}</Text></View>)}</View>
         <View style={styles.relationMap}><EmptyState title="표시할 관계가 없습니다." /></View>
       </ScrollView>
-      <View style={styles.worldFooter}><Action label="본문으로 돌아가기" onPress={() => app.navigate({ screen: 'reader' })} style={styles.returnButton} /></View>
+      <View style={styles.worldFooter}><Action label="본문으로 돌아가기" onPress={app.back} style={styles.returnButton} /></View>
     </View>
   );
 }
@@ -183,7 +209,7 @@ export function WorldTermsScreen() {
         <Text style={[s.subtitle, styles.termsTitle]}>고유 용어</Text>
         <View style={styles.termList}><EmptyState title="표시할 고유 용어가 없습니다." /></View>
       </ScrollView>
-      <View style={styles.worldFooter}><Action label="본문으로 돌아가기" onPress={() => app.navigate({ screen: 'reader' })} style={styles.returnButton} /></View>
+      <View style={styles.worldFooter}><Action label="본문으로 돌아가기" onPress={app.back} style={styles.returnButton} /></View>
     </View>
   );
 }

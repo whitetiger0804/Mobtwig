@@ -20,6 +20,8 @@ spring:
       "[hibernate.jdbc.time_zone]": UTC
 
 mobtwig:
+  reader:
+    content-root: ${CONTENT_ROOT:./content}
   admin:
     bootstrap-enabled: ${ADMIN_BOOTSTRAP_ENABLED:false}
   sdui:

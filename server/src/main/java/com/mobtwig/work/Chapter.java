@@ -35,6 +35,21 @@ public class Chapter {
     @Column(name = "start_page")
     private Integer startPage;
 
+    @Column(name = "content_url", length = 500)
+    private String contentUrl;
+
+    @Column(name = "content_version", nullable = false)
+    private int contentVersion;
+
+    /** DB의 본문 버전을 반환합니다. 읽기 요청에서 변경하지 않습니다. */
+    public int getContentVersion() { return contentVersion; }
+
+    /** 본문 공급 주소를 반환합니다. API 응답에 원본 주소를 노출하지 않습니다. */
+    public String getContentUrl() { return contentUrl; }
+
+    /** 작품 내 회차 번호를 반환합니다. */
+    public int getChapterNo() { return chapterNo; }
+
     /** JPA가 회차를 생성합니다. */
     protected Chapter() { }
 

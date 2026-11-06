@@ -17,3 +17,6 @@
 server/db/data/
 server/db/backups/
 server/app.jar
+
+# 비공개 본문 원문은 이미지/JAR/Git에 넣지 않습니다.
+server/content/

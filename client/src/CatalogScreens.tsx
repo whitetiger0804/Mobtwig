@@ -124,12 +124,15 @@ export function FiltersScreen() {
  * @param props - 해당 작품의 목차 또는 회차와 표시 분류입니다.
  * @returns 실제 항목 수에 맞는 목록 또는 빈 상태 안내입니다.
  */
-function DetailContents({ items, kind }: {
+function DetailContents({ items, kind, workId }: {
+  /** 선택 회차와 함께 전달할 작품 slug입니다. */
+  workId: string;
   /** 서버에서 받은 목차 또는 회차 목록입니다. */
   items: WorkDetail['contents'];
   /** 웹소설의 회차와 다른 작품의 목차를 구분합니다. */
   kind: WorkDetail['kind'];
 }) {
+  const { navigate } = useApp();
   if (items.length === 0) return <EmptyState title={kind === 'novel' ? '표시할 회차가 없습니다.' : '표시할 목차가 없습니다.'} />;
   return <View>
     {items.map((item, index) => {
@@ -139,7 +142,7 @@ function DetailContents({ items, kind }: {
           : characterCount >= 1000 ? (characterCount / 1000).toLocaleString('ko-KR', { maximumFractionDigits: 1 }) + '천 자'
           : characterCount + '자'].filter(Boolean).join(' · ')
         : kind === 'magazine' ? item.category : undefined;
-      return <View key={item.id} style={c.contentsRow}>
+      return <Pressable key={item.id} accessibilityRole="button" accessibilityLabel={item.title + ' 본문 읽기'} onPress={() => navigate({ screen: 'reader', kind, workId, chapterId: item.id })} style={c.contentsRow}>
         <Text style={c.contentNumber}>{String(index + 1).padStart(2, '0')}</Text>
         <View style={c.contentInfo}>
           <Text style={s.text}>{item.title}</Text>
@@ -148,7 +151,7 @@ function DetailContents({ items, kind }: {
             {kind === 'magazine' && item.pageNumber !== undefined && <Text style={s.muted}>{String(item.pageNumber).padStart(2, '0')}p</Text>}
           </View>}
         </View>
-      </View>;
+      </Pressable>;
     })}
   </View>;
 }
@@ -159,7 +162,7 @@ function DetailContents({ items, kind }: {
  * @remarks
  * 표지·소개·출판정보·목차는 작품 API에서 받으며 화면 구성을 서버에서 받지 않습니다.
  * 조회 중·실패·자료가 없는 항목을 구분하고 화면을 떠나면 진행 중인 요청을 취소합니다.
- * 구매·읽기·찜·구독은 연동 전 상태를 유지합니다.
+ * 읽기와 목차 선택은 실제 텍스트 API로 연결하며 구매·찜·구독은 연동 전 상태를 유지합니다.
  *
  * @param props - 조회할 작품 식별자를 포함하는 화면 이동 정보입니다.
  * @returns 서버의 작품 정보와 분류에 맞는 상세 화면입니다.
@@ -204,6 +207,7 @@ export function DetailScreen({ route }: {
   </View>;
 
   const kind = work.kind;
+  const firstChapter = work.contents[0];
   return <View testID={'detail-' + work.id} style={c.detail}>
     <View style={c.detailSummary}>
       <Image accessibilityLabel={work.title + ' 표지'} source={{ uri: new URL(work.imageUrl, apiUrl + '/').href }} resizeMode="contain" style={c.detailCover} />
@@ -224,6 +228,7 @@ export function DetailScreen({ route }: {
           : <Action label={kind === 'book' ? '구매하기' : '이번 호 읽기'} style={{ minHeight: 46 }} disabled />}
       </View>
     </View>
+    <Action label={kind === 'novel' ? '첫 화 읽기' : '첫 장 읽기'} disabled={!firstChapter} onPress={() => firstChapter && navigate({ screen: 'reader', kind, workId: work.id, chapterId: firstChapter.id })} />
     {kind === 'novel' ? <>
       <View style={c.detailTags}><Text style={c.kindPill}>웹소설</Text><Text style={c.kindPill}>{work.category}</Text></View>
       <View style={c.novelIntroduction}>
@@ -237,7 +242,7 @@ export function DetailScreen({ route }: {
         {['회차', '리뷰'].map(label => <Pressable key={label} accessibilityRole="tab" accessibilityState={{ selected: tab === label }} onPress={() => label === '리뷰' ? navigate({ screen: 'reviews', kind, workId: work.id }) : setTab(label)} style={[c.detailTab, tab === label && c.categoryTabSelected]}><Text style={[c.categoryTabLabel, tab === label && c.selectedLabel]}>{label}</Text></Pressable>)}
         <Text style={[s.muted, c.chapterCount]}>전체 {work.contents.length}화</Text>
       </View>
-      <DetailContents items={work.contents} kind={kind} />
+      <DetailContents items={work.contents} kind={kind} workId={work.id} />
     </> : kind === 'book' ? <>
       <View style={c.detailSection}>
         <Title>작품 정보</Title>
@@ -250,7 +255,7 @@ export function DetailScreen({ route }: {
         </View>
         {work.quote && <View style={c.quoteEmpty}><Text style={c.quoteText}>{work.quote}</Text></View>}
       </View>
-      <View style={c.detailSection}><Title action={<Text style={s.muted}>{work.contents.length}개</Text>}>목차</Title><DetailContents items={work.contents} kind={kind} /></View>
+      <View style={c.detailSection}><Title action={<Text style={s.muted}>{work.contents.length}개</Text>}>목차</Title><DetailContents items={work.contents} kind={kind} workId={work.id} /></View>
       <View style={c.detailSection}><Title action={<Action compact tone="secondary" label="리뷰 작성" onPress={() => navigate({ screen: 'reviewWrite', kind, workId: work.id })} />}>리뷰</Title><EmptyState title="표시할 리뷰가 없습니다." /></View>
     </> : <>
       <View style={c.detailSection}>
@@ -262,7 +267,7 @@ export function DetailScreen({ route }: {
       </View>
       <View style={c.detailSection}>
         <Title action={<Text style={s.muted}>{work.contents.length}개 아티클{work.pageCount !== undefined && ' · ' + work.pageCount + '쪽'}</Text>}>목차</Title>
-        <DetailContents items={work.contents} kind={kind} />
+        <DetailContents items={work.contents} kind={kind} workId={work.id} />
       </View>
       <View style={c.detailSection}>
         <Title>발행 정보</Title>
