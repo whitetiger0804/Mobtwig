@@ -1,0 +1,12 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "java",
+      "name": "Mobtwig 로컬 서버",
+      "request": "launch",
+      "mainClass": "com.mobtwig.MobtwigApplication",
+      "cwd": "${workspaceFolder}/server"
+    }
+  ]
+}
