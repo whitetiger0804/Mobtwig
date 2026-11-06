@@ -410,3 +410,12 @@ UTF-8 BOM 하나를 제외하고 `CRLF`/`CR`을 `LF`로 정규화한 문자열�
 `GET /api/auth/csrf`에서 `headerName`, `parameterName`, `token`을 받고 같은 `MEMBER_SESSION` 쿠키와 `X-CSRF-TOKEN`으로 후속 변경 요청을 보냅니다. 관리자 `/api/admin/**`의 `SESSION`과 분리합니다. 두 영역의 쿠키 이름만 바꿔 재사용하면 401이며 원래 영역의 세션은 폐기하지 않습니다. 쿠키는 HttpOnly·SameSite=Strict이고 운영 HTTPS의 `SESSION_COOKIE_SECURE`를 따릅니다. 회원 쿠키 Path는 `/api`, 관리자 쿠키 Path는 기존 `/`입니다.
 
 `AUTH_ALLOWED_ORIGINS`는 정확한 웹 origin 목록이며 기본값은 비어 있습니다. 명시한 origin만 credential CORS를 허용합니다. 웹/API는 same-site 구성이 지원 대상이며 cross-site 배포는 CORS만으로 지원하지 않습니다. 현재 구현 및 후속 계약 범위는 [회원 인증 계약](회원%20인증%20계약안.md)을 참고하십시오.
+
+## 회원 로그인·로그아웃·세션 (#20)
+
+- POST /api/auth/login: form email/password, 같은 회원 세션의 X-CSRF-TOKEN. 성공 204, 인증 실패 401, CSRF 실패 403. 비밀번호는 가입 정책으로 재검증하지 않고 기존 해시와 비교한다.
+- GET /api/auth/session: 현재 활성 회원 본인의 id(문자열), email, nickname, createdAt(UTC ISO 8601). 200 또는 401, Cache-Control: no-store. 요청의 회원 ID는 사용하지 않는다.
+- POST /api/auth/logout: 같은 회원 세션의 CSRF 필요. 204 후 기존 세션 ID 재사용 불가, 관리자 세션은 유지한다.
+- MEMBER_SESSION은 HttpOnly/SameSite=Strict/Path=/api이며 30분 미사용 만료다. 웹은 same-site API 구성, 네이티브는 플랫폼 쿠키 저장소를 사용한다. 쿠키·비밀번호를 JS 영구 저장소에 저장하지 않는다.
+- 앱은 서버 확인 후에만 로그인 성공으로 표시하고 계정 변경 시 이전 요청을 취소한다. 늦은 이전 응답은 새 계정에 반영하지 않는다. 로그아웃 실패는 성공으로 표시하지 않는다.
+- #19 약관·가입은 선택 대기 상태이며 이 기능에 포함하지 않는다. 네이티브 실기기 쿠키 동작은 별도 확인이 필요하다.
