@@ -1,0 +1,333 @@
+# Mobtwig HTTP API 명세서
+
+클라이언트가 Java 소스를 읽지 않고 HTTP 요청을 작성할 수 있도록 현재 구현한 계약을 설명합니다. 필드별 타입·필수 여부·최대 길이의 정본은 [OpenAPI 명세](../server/src/main/resources/static/openapi.yaml)입니다. 클래스·메서드의 역할은 기존 Javadoc에서 확인합니다.
+
+이 문서와 명세를 포함한 커밋이 배포된 서버를 기준으로 합니다. 같은 주소라도 이전 버전의 서버에는 새 경로가 없을 수 있습니다. 서버 실행·배포 절차는 [배포 안내](배포%20안내.md)를 참고합니다.
+
+## 문서와 접속 주소
+
+| 용도 | 주소와 사용 방법 |
+| --- | --- |
+| PC 브라우저의 로컬 API | `http://localhost:8080`을 사용합니다. |
+| Android 에뮬레이터의 로컬 API | `http://10.0.2.2:8080`을 사용합니다. |
+| 운영 API | `https://mobtwig.xn--3h3b098b.kro.kr`을 사용합니다. |
+| Swagger UI | 해당 API 서버의 `/api-docs/index.html`에 접속합니다. |
+| OpenAPI 원본 | 해당 API 서버의 `/openapi.yaml`에서 받습니다. Postman 등 OpenAPI를 지원하는 도구에도 불러올 수 있습니다. |
+| 관리자 입력 화면 | 해당 API 서버의 `/admin`에 접속합니다. |
+
+Swagger UI는 자신을 제공한 서버에 요청합니다. 관리자 POST 요청마다 CSRF 토큰을 자동으로 받으며, 로그인 응답의 쿠키는 브라우저가 관리합니다. `Authorize` 창에 쿠키나 토큰을 직접 붙여 넣지 않아도 됩니다. 먼저 `POST /api/admin/login`을 실행하고 `GET /api/admin/session`의 200 응답으로 권한을 확인합니다. 사용을 마치면 `POST /api/admin/logout`을 실행합니다.
+
+`Try it out`의 등록·공개·계정 생성 요청은 해당 서버의 실제 DB를 변경합니다. 문서의 계정·자료는 예시이며 이미 존재하는 자료라는 뜻은 아닙니다. 실제 비밀번호와 세션 쿠키는 저장소나 요청 예제에 기록하지 않습니다.
+
+## 공통 요청·응답 규칙
+
+- JSON API에는 `Accept: application/json`을 사용합니다.
+- JSON을 보내는 POST에는 `Content-Type: application/json`을 사용합니다.
+- 로그인만 `application/x-www-form-urlencoded`로 `username`, `password`를 보냅니다.
+- 201 응답에는 생성한 식별자가 있으며, 204 응답에는 본문이 없습니다. 204에 `response.json()`을 호출하지 않습니다.
+- 작품 발행일은 `YYYY-MM-DD`, 회차 공개 시각은 `2026-01-01T00:00:00Z`처럼 UTC 또는 오프셋을 포함한 ISO 8601 문자열입니다.
+- 공개 작품 상세의 선택 필드는 값이 null이면 생략합니다. 관리자 입력의 선택 필드에는 명세에 따라 null을 보낼 수 있습니다.
+- 표지·배너·본문 주소는 HTTP(S) 또는 `/`로 시작하는 API 서버 기준 경로입니다. `/images/cover.jpg`는 `new URL(imageUrl, apiBase).toString()`으로 절대 주소로 바꿀 수 있습니다.
+- 등록 API는 파일을 업로드하지 않습니다. 입력한 주소의 실제 파일 제공은 별도로 준비해야 합니다.
+- HTTP 성공 여부를 먼저 확인합니다. 401 등 보안 응답에는 본문이 없을 수 있으므로 모든 실패 응답을 곧바로 JSON으로 해석하지 않습니다.
+
+## API 목록
+
+| 메서드 | 경로 | 인증·조건 | 정상 응답 |
+| --- | --- | --- | --- |
+| GET | `/sdui/home?kind=all` | 공개 조회이며 kind가 필수입니다. | 200 홈 SDUI입니다. |
+| GET | `/works/{slug}` | 공개 작품만 조회합니다. | 200 작품 상세입니다. |
+| GET | `/api/admin/csrf` | 로그인 전에도 호출합니다. | 200 CSRF 토큰입니다. |
+| POST | `/api/admin/login` | 같은 세션의 CSRF 토큰과 폼을 보냅니다. | 204이며 본문은 없습니다. |
+| POST | `/api/admin/logout` | 같은 세션의 CSRF 토큰을 보냅니다. | 204이며 본문은 없습니다. |
+| GET | `/api/admin/session` | 활성 ADMIN 계정의 세션이 필요합니다. | 200 관리자 정보입니다. |
+| GET | `/api/admin/catalog` | 활성 ADMIN 계정의 세션이 필요합니다. | 200 저자·분류·작품 목록입니다. |
+| POST | `/api/admin/accounts` | ADMIN 세션과 CSRF가 필요합니다. | 201 `{ "id": 1 }`입니다. |
+| POST | `/api/admin/authors` | ADMIN 세션과 CSRF가 필요합니다. | 201 `{ "id": 1 }`입니다. |
+| POST | `/api/admin/genres` | ADMIN 세션과 CSRF가 필요합니다. | 201 `{ "id": 1 }`입니다. |
+| POST | `/api/admin/categories` | ADMIN 세션과 CSRF가 필요합니다. | 201 `{ "id": 1 }`입니다. |
+| POST | `/api/admin/works` | ADMIN 세션과 CSRF가 필요합니다. | 201 `{ "id": 1, "slug": "sample-book" }`입니다. |
+| POST | `/api/admin/works/{id}/chapters` | ADMIN 세션과 CSRF가 필요합니다. | 201 `{ "id": 1 }`입니다. |
+| POST | `/api/admin/works/{id}/status` | ADMIN 세션과 CSRF가 필요합니다. | 204이며 본문은 없습니다. |
+| GET | `/actuator/health/readiness` | 공개 조회입니다. | 200 `{ "status": "UP" }`입니다. |
+
+회원 가입, 일반 회원용 토큰 인증, 본문 열람, 검색·서재·리뷰·커뮤니티 요청은 이 명세의 구현 범위에 포함하지 않습니다. 표의 경로를 다른 기능의 API로 재사용하지 않습니다.
+
+## 공개 홈 조회
+
+`kind`에는 `all`, `book`, `magazine`, `novel` 중 하나를 정확히 한 번 보냅니다. 누락·중복·지원하지 않는 값은 400입니다.
+
+```javascript
+const apiBase = 'http://10.0.2.2:8080';
+const kind = 'book';
+const homeResponse = await fetch(
+  `${apiBase}/sdui/home?kind=${encodeURIComponent(kind)}`,
+  { headers: { Accept: 'application/json' } },
+);
+if (!homeResponse.ok) throw new Error(`홈 조회에 실패했습니다. HTTP ${homeResponse.status}`);
+const home = await homeResponse.json();
+```
+
+응답 예시입니다.
+
+```json
+{
+  "version": 1,
+  "sections": [
+    {
+      "id": "latest",
+      "type": "workShelf",
+      "title": "새로 공개한 작품",
+      "items": [
+        {
+          "id": "sample-book",
+          "title": "예시 도서",
+          "imageUrl": "/images/cover.jpg"
+        }
+      ]
+    }
+  ]
+}
+```
+
+`sections`와 `items`를 받은 순서대로 표시합니다. 서버가 `dataSource`로 DB 작품을 채운 구역은 공개 작품이 없으면 빈 `items`를 반환합니다. 빈 목록을 오류나 간이 데이터로 바꾸지 않습니다.
+
+| 구역의 `type` | 항목의 필수값 | 선택값 |
+| --- | --- | --- |
+| `bannerCarousel` | `id`, `title`, `imageUrl`입니다. | `description`, `action`을 사용할 수 있습니다. |
+| `workShelf` | `id`, `title`, `imageUrl`입니다. | `subtitle`을 사용할 수 있습니다. |
+| `featuredWork` | `id`, `title`, `imageUrl`, `label`입니다. | `subtitle`, `action`을 사용할 수 있습니다. |
+| `linkRow` | `id`, `label`, `route`입니다. | `icon`을 사용할 수 있습니다. |
+
+각 구역에는 공통으로 `id`, `type`, `items`가 필요하며 `title`, `action`은 선택값입니다. 구역 ID는 응답 안에서, 항목 ID는 같은 items 안에서 고유해야 합니다.
+
+`action`은 `{ "label": "검색합니다.", "route": { "screen": "search", "kind": "all" } }` 형식입니다. `screen`은 `home`, `search`, `library`, `recent`, `detail` 중 하나입니다. `detail`일 때만 `workId`를 포함하며 반드시 지정합니다. `linkRow`의 `icon`은 `bookmark`, `book`, `heart`, `library`, `search` 중 하나입니다.
+
+기존 클라이언트의 [홈 응답 검사](../client/src/homeSchema.ts)에 JSON을 전달하여 계약을 확인할 수 있습니다.
+
+## 공개 작품 상세 조회
+
+홈 카드의 문자열 `id`를 slug로 사용합니다.
+
+```javascript
+const slug = 'sample-book';
+const detailResponse = await fetch(`${apiBase}/works/${encodeURIComponent(slug)}`, {
+  headers: { Accept: 'application/json' },
+});
+if (!detailResponse.ok) throw new Error(`상세 조회에 실패했습니다. HTTP ${detailResponse.status}`);
+const detail = await detailResponse.json();
+```
+
+위 slug는 예시이므로 실제 홈 카드의 id로 교체합니다. 실제 화면에서는 빈 목록일 때 상세 이동을 만들지 않습니다.
+
+```json
+{
+  "id": "sample-book",
+  "kind": "book",
+  "title": "예시 도서",
+  "author": "예시 저자",
+  "imageUrl": "/images/cover.jpg",
+  "description": "문서의 예시 작품입니다.",
+  "publisher": "예시 출판사",
+  "publishedAt": "2026-01-01",
+  "category": "판타지 · 장편",
+  "fileFormat": "EPUB",
+  "pageCount": 120,
+  "contents": [
+    {
+      "id": "1",
+      "title": "첫 번째 장",
+      "publishedAt": "2026-01-01",
+      "characterCount": 1500
+    }
+  ],
+  "statistics": { "views": 0, "recommendations": 0, "rating": 0.00 }
+}
+```
+
+- 작품이 없거나 공개 상태가 아니면 404입니다. slug에는 영문 소문자·숫자·하이픈을 사용합니다.
+- `author`는 저자 이름을 `, `로 연결한 문자열이며, `category`는 장르·카테고리 이름을 ` · `로 연결한 문자열입니다.
+- `contents`에는 공개 시각이 현재 이하인 회차만 회차 번호 순서로 포함합니다. 날짜는 Asia/Seoul 기준입니다.
+- `pageCount`, `issue`, `publicationCycle`과 회차의 선택값은 null이면 생략합니다. 글자 수가 0이면 `characterCount`도 생략합니다.
+- 정상 상세 조회에는 조회 수 집계가 발생합니다. 응답의 `statistics`는 해당 집계 직전에 읽은 값이므로 요청 후 DB 값과 1 차이가 날 수 있습니다.
+- `contents`는 목차 정보입니다. 등록할 때 저장한 `contentUrl`이나 실제 본문 파일은 이 API에서 반환하지 않습니다.
+
+기존 클라이언트의 [상세 응답 검사](../client/src/workDetails.ts)에서 지원하는 형식을 유지합니다.
+
+## 관리자 로그인과 요청 작성
+
+관리자 API의 브라우저 요청은 API와 같은 출처에서 사용합니다. 예를 들어 해당 서버의 관리자 화면이나 Swagger UI에서 실행합니다. 현재 공개 조회만 교차 출처 CORS를 허용하며, 임의의 다른 웹사이트에서 관리자 API를 호출하도록 설정하지 않았습니다.
+
+인증 순서는 다음과 같습니다.
+
+1. `GET /api/admin/csrf`를 호출하고 SESSION 쿠키를 보관합니다.
+2. 응답의 `headerName`과 `token`을 헤더로 넣어 `POST /api/admin/login`을 호출합니다.
+3. 로그인 성공 시 바뀐 SESSION 쿠키를 보관합니다. 이전 CSRF 토큰은 폐기합니다.
+4. `GET /api/admin/session`이 200인지 확인합니다. 로그인 자체가 204여도 활성 ADMIN 권한이 없으면 관리자 API는 403입니다.
+5. 변경 요청마다 현재 세션으로 CSRF 토큰을 다시 받아 전송합니다.
+6. 사용을 마치면 CSRF를 포함한 `POST /api/admin/logout`을 호출합니다.
+
+쿠키는 HttpOnly·SameSite=Strict이며, 운영 HTTPS에서는 Secure도 사용합니다. 세션은 비활동 30분에 만료됩니다. JWT나 Bearer 토큰은 사용하지 않습니다. 다른 HTTP 도구에서는 CSRF 조회·로그인·후속 요청 사이에 쿠키 저장소를 유지해야 합니다.
+
+다음은 같은 출처의 브라우저에서 사용하는 요청 예시입니다. 계정 값은 발급받은 값으로 교체하고 소스에 저장하지 않습니다.
+
+```javascript
+const adminBase = window.location.origin;
+
+async function adminRequest(path, options = {}) {
+  const response = await fetch(`${adminBase}${path}`, {
+    ...options,
+    credentials: 'include',
+    headers: { Accept: 'application/json', ...options.headers },
+  });
+  const body = await response.text();
+  if (!response.ok) throw new Error(`HTTP ${response.status}: ${body}`);
+  return response.status === 204 ? undefined : JSON.parse(body);
+}
+
+async function adminPost(path, body, isLogin = false) {
+  const csrf = await adminRequest('/api/admin/csrf');
+  return adminRequest(path, {
+    method: 'POST',
+    headers: {
+      [csrf.headerName]: csrf.token,
+      'Content-Type': isLogin ? 'application/x-www-form-urlencoded' : 'application/json',
+    },
+    body: isLogin ? new URLSearchParams(body) : JSON.stringify(body),
+  });
+}
+
+await adminPost('/api/admin/login', {
+  username: 'admin@example.com',
+  password: '발급받은 비밀번호로 교체합니다.',
+}, true);
+const currentAdmin = await adminRequest('/api/admin/session');
+```
+
+## 자료 등록 예시
+
+이후 예시는 앞의 `adminRequest`, `adminPost`를 사용합니다. 한 번 등록하는 흐름이며 같은 slug·장르를 다시 등록하면 409입니다. 요청 결과가 불확실하면 `/api/admin/catalog`에서 먼저 확인합니다.
+
+### 저자·분류와 ID 조회
+
+```javascript
+const author = await adminPost('/api/admin/authors', {
+  name: '예시 저자', bio: '문서의 예시 저자입니다.', field: '소설',
+});
+const genre = await adminPost('/api/admin/genres', { name: '예시 장르', displayOrder: 0 });
+const category = await adminPost('/api/admin/categories', {
+  name: '예시 분류', description: '문서의 예시 분류입니다.', displayOrder: 0,
+});
+const catalog = await adminRequest('/api/admin/catalog');
+```
+
+응답의 `authors`, `genres`, `categories`는 `{ "id": 1, "name": "예시 저자" }` 같은 항목의 배열입니다. 작품에는 `id`, `slug`, `title`, `kind`, `publishStatus`가 포함됩니다. 관계 ID는 이 목록이나 생성 응답에서 가져오며 임의의 숫자를 넣지 않습니다.
+
+| 식별자 | 사용 위치 |
+| --- | --- |
+| 홈 카드·공개 상세의 문자열 `id` | `/works/{slug}`에 사용합니다. |
+| 관리자 작품의 숫자 `id` | `/api/admin/works/{id}/chapters`, `/status`에 사용합니다. |
+| 저자·분류의 숫자 `id` | `authorIds`, `genreIds`, `categoryIds` 배열에 사용합니다. |
+| 공개 목차의 문자열 `id` | 회차 DB ID의 문자열 표현입니다. 작품 slug와 다릅니다. |
+
+### 작품과 회차 생성
+
+```javascript
+const createdWork = await adminPost('/api/admin/works', {
+  kind: 'book',
+  slug: 'sample-book',
+  title: '예시 도서',
+  description: '문서의 예시 작품입니다.',
+  imageUrl: '/images/cover.jpg',
+  publishedAt: '2026-01-01',
+  publisher: '예시 출판사',
+  fileFormat: 'EPUB',
+  pageCount: 120,
+  serialStatus: 'COMPLETED',
+  publishStatus: 'DRAFT',
+  authorIds: [author.id],
+  genreIds: [genre.id],
+  categoryIds: [category.id],
+  chapters: [{
+    chapterNo: 1,
+    title: '첫 번째 장',
+    publishedAt: '2026-01-01T00:00:00Z',
+    characterCount: 1500,
+    contentUrl: '/content/sample-book/1.html',
+  }],
+});
+```
+
+201 응답은 `{ "id": 1, "slug": "sample-book" }` 형식입니다. 다음 조건을 확인합니다.
+
+- `kind`는 `book`, `magazine`, `novel` 중 하나입니다.
+- `serialStatus`는 `ONGOING`, `HIATUS`, `COMPLETED` 중 하나입니다.
+- 최초 `publishStatus`는 `DRAFT` 또는 `PUBLISHED`입니다. DRAFT는 공개 홈·상세에서 조회하지 않습니다.
+- 저자는 한 명 이상, 장르와 카테고리는 합쳐 한 개 이상, 회차는 한 개 이상 필요합니다. 빈 쪽의 분류 배열도 `[]`로 보냅니다.
+- 관계 배열 안의 ID와 작품 안의 `chapterNo`는 각각 중복할 수 없습니다.
+- 매거진의 각 회차에는 `pageNumber`가 필요합니다. 회차 번호 순으로 증가하며 `pageCount`가 있으면 그 이하여야 합니다.
+- 회차의 `publishedAt`을 생략하거나 null로 보내면 비공개입니다. 공개 시각을 보내면 `contentUrl`도 필요합니다. 미래 시각은 예약 공개입니다.
+- 회차 공개 시각은 DB의 `1970-01-01T00:00:01Z`부터 `2038-01-19T03:14:07Z`까지 허용합니다.
+- `description`, 저자 `bio`, 회차 `summary`는 각각 UTF-8 65535바이트 이하입니다. Java의 문자열 길이 제한도 함께 적용하므로 한글·이모지의 바이트 수를 확인합니다.
+- 조회 수·추천 수·평점은 서버가 관리합니다. 등록 요청에 통계 필드를 넣어 초기값을 지정하지 않습니다.
+- 작품·관계·회차 중 검증이나 저장이 실패하면 해당 등록 전체를 롤백합니다.
+
+### 공개·숨김과 회차 추가
+
+```javascript
+await adminPost(`/api/admin/works/${createdWork.id}/status`, { publishStatus: 'PUBLISHED' });
+const publishedDetail = await adminRequest(`/works/${encodeURIComponent(createdWork.slug)}`);
+
+await adminPost(`/api/admin/works/${createdWork.id}/chapters`, {
+  chapterNo: 2,
+  title: '두 번째 장',
+  publishedAt: null,
+  characterCount: 0,
+  contentUrl: null,
+});
+
+await adminPost(`/api/admin/works/${createdWork.id}/status`, { publishStatus: 'HIDDEN' });
+```
+
+상태 변경은 `PUBLISHED` 또는 `HIDDEN`만 받으며 204를 반환합니다. 공개 시 필수 메타데이터와 연결 관계·회차를 다시 검사하고 작품 게시판을 생성합니다. 같은 작품을 다시 공개해도 게시판을 중복 생성하지 않습니다.
+
+### 팀원 관리자 생성과 로그아웃
+
+```javascript
+const teammate = await adminPost('/api/admin/accounts', {
+  email: 'teammate@example.com',
+  nickname: '예시 팀원',
+  password: '새 계정에 발급할 비밀번호로 교체합니다.',
+});
+await adminPost('/api/admin/logout', {});
+```
+
+이메일은 최대 255자이며 도메인에 점이 필요합니다. 닉네임은 최대 30자입니다. 비밀번호는 Java UTF-16 길이 12자 이상이며 UTF-8 기준 72바이트 이하여야 합니다. 생성한 팀원도 전체 관리자 등록 기능과 다른 관리자 생성 권한을 갖습니다.
+
+## 오류 처리
+
+| 상태 | 처리 기준 |
+| --- | --- |
+| 400 | 필수값·형식·범위·중복 회차·관계 ID 등을 확인합니다. 입력을 수정한 뒤 다시 요청합니다. |
+| 401 | 로그인 실패 또는 세션 부재·만료입니다. 본문이 비어 있을 수 있으며 로그인 흐름부터 다시 진행합니다. |
+| 403 | CSRF 토큰과 쿠키의 짝 또는 현재 ADMIN 권한을 확인합니다. 권한이 철회되면 기존 세션도 거부합니다. |
+| 404 | 작품이 없거나 비공개이거나 API 경로·서버 버전이 다릅니다. slug와 숫자 ID의 용도를 확인합니다. |
+| 409 | slug·장르·분류·이메일·닉네임 등의 고유값이나 DB 관계가 충돌합니다. catalog에서 기존 자료를 먼저 확인합니다. |
+| 500 | DB·SDUI 설정·공개 자료의 필수 메타데이터 오류입니다. 간이 데이터로 성공 처리하지 않습니다. |
+| 503 | readiness의 API·DB 준비 상태가 정상적이지 않습니다. |
+
+관리자 입력 오류의 응답 예시입니다.
+
+```json
+{ "message": "입력값의 필수 항목·길이·숫자·날짜 형식을 확인하십시오." }
+```
+
+Spring의 공통 오류는 `status`, `error`, `path` 등의 형식일 수 있으며, 보안 응답은 비어 있을 수도 있습니다. 화면은 HTTP 상태를 우선 사용하고 특정 오류 문장과 완전 일치하는지에 의존하지 않습니다.
+
+등록 성공 후 목록 조회만 실패했다면 같은 등록 요청을 곧바로 반복하지 않습니다. catalog에서 저장 여부를 확인한 뒤 처리합니다. 현재 API에는 중복 요청을 별도로 식별하는 키나 자료 삭제·일괄 수정 기능이 없습니다.
+
+## 문서 변경 기준
+
+[OpenAPI 원본](../server/src/main/resources/static/openapi.yaml)을 수정하면 빌드 시 같은 파일이 서버 JAR에 포함됩니다. Swagger UI도 이 파일을 읽습니다. API를 변경할 때에는 요청·응답 스키마, 예제, 이 문서의 호출 순서를 함께 갱신합니다. 구현 예정 경로는 동작하는 API 목록에 추가하지 않습니다.
+
+OpenAPI 계약 검사는 시험 전용 DB에서 실제 HTTP 요청·응답을 명세와 비교합니다. Javadoc은 기존 Java 코드 설명으로 유지합니다.
