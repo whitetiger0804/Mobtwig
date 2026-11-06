@@ -2,3 +2,5 @@
 !Dockerfile
 !.dockerignore
 !app.jar
+!sdui/
+!sdui/home.json
