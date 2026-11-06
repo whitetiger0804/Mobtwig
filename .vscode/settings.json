@@ -3,6 +3,22 @@
   "java.compile.nullAnalysis.mode": "automatic",
   "java.compile.nullAnalysis.nonnull": ["org.jspecify.annotations.NonNull"],
   "java.compile.nullAnalysis.nullable": ["org.jspecify.annotations.Nullable"],
-  "java.compile.nullAnalysis.nonnullbydefault": ["org.jspecify.annotations.NullMarked"],
-  "python.terminal.useEnvFile": true
+  "java.compile.nullAnalysis.nonnullbydefault": [
+    "org.jspecify.annotations.NullMarked"
+  ],
+  "java.test.config": {
+    "name": "Mobtwig 로컬 테스트",
+    "workingDirectory": "${workspaceFolder}/server",
+    "env": {
+      "DB_HOST": "127.0.0.1",
+      "DB_PORT": "3308",
+      "DB_NAME": "mobtwig_test",
+      "SERVER_PORT": "0",
+      "ADMIN_BOOTSTRAP_ENABLED": "false"
+    },
+    "preLaunchTask": "Mobtwig 테스트 DB 실행"
+  },
+  "java.test.defaultConfig": "Mobtwig 로컬 테스트",
+  "python.terminal.useEnvFile": true,
+  "nodejs-testing.include": ["client/tests", "server/mock"]
 }
