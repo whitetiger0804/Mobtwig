@@ -96,11 +96,16 @@ jobs:
           cache-dependency-path: |
             server/pom.xml
             server/.mvn/wrapper/maven-wrapper.properties
+      - name: 실제 API 응답을 검사할 Node.js를 설치합니다
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
       - name: Maven Wrapper로 빌드와 테스트를 실행합니다
         env:
           DB_PORT: ${{ job.services.mysql.ports['3306'] }}
         run: |
           bash mvnw --batch-mode --no-transfer-progress clean verify
+          node src/test/js/catalog-contract.mjs
           cp target/mobtwig-server-*.jar target/app.jar
       - name: 시험 DB에 마이그레이션을 적용하고 서버 상태를 검사합니다
         env:

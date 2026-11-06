@@ -1,0 +1,50 @@
+{
+  "all": {
+    "version": 1,
+    "sections": [
+      {
+        "id": "published-works",
+        "type": "workShelf",
+        "title": "공개 작품",
+        "dataSource": { "type": "publishedWorks", "limit": 20 },
+        "items": []
+      }
+    ]
+  },
+  "book": {
+    "version": 1,
+    "sections": [
+      {
+        "id": "published-works",
+        "type": "workShelf",
+        "title": "공개 작품",
+        "dataSource": { "type": "publishedWorks", "limit": 20 },
+        "items": []
+      }
+    ]
+  },
+  "magazine": {
+    "version": 1,
+    "sections": [
+      {
+        "id": "published-works",
+        "type": "workShelf",
+        "title": "공개 작품",
+        "dataSource": { "type": "publishedWorks", "limit": 20 },
+        "items": []
+      }
+    ]
+  },
+  "novel": {
+    "version": 1,
+    "sections": [
+      {
+        "id": "published-works",
+        "type": "workShelf",
+        "title": "공개 작품",
+        "dataSource": { "type": "publishedWorks", "limit": 20 },
+        "items": []
+      }
+    ]
+  }
+}

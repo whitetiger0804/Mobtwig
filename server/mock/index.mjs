@@ -15,7 +15,7 @@ const supportedKinds = new Set(['all', 'book', 'magazine', 'novel']);
  * @param prefix - 이미지의 공개 URL 경로입니다.
  * @returns 심볼릭 링크를 제외한 URL과 실제 파일 경로의 대응표입니다.
  */
-async function collectAssets(directory, prefix = '/assets') {
+async function collectAssets(directory, prefix = '/media') {
   const assets = new Map();
 
   for (const entry of await readdir(directory, { withFileTypes: true })) {
@@ -61,13 +61,13 @@ function sendJson(response, status, body) {
  * @param options - 테스트에서 사용할 파일 경로 설정입니다.
  * @param options.fixturePath - 네 종류의 화면 응답이 담긴 JSON 파일입니다.
  * @param options.worksPath - 작품 ID별 상세 정보가 담긴 JSON 배열 파일입니다.
- * @param options.assetsRoot - 공개할 PNG 이미지의 최상위 디렉터리입니다.
+ * @param options.assetsRoot - 실제 서버와 공유하는 테스트용 PNG 이미지의 최상위 디렉터리입니다.
  * @returns 아직 포트를 열지 않은 Node HTTP 서버입니다.
  */
 export async function createMockServer({
   fixturePath = join(mockDirectory, 'fixtures', 'home.json'),
   worksPath = join(mockDirectory, 'fixtures', 'works.json'),
-  assetsRoot = join(mockDirectory, 'assets'),
+  assetsRoot = join(mockDirectory, '..', 'src', 'main', 'resources', 'static', 'media'),
 } = {}) {
   const assets = await collectAssets(assetsRoot);
 

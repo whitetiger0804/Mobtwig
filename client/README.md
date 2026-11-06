@@ -10,9 +10,9 @@ React Native와 Expo를 사용하는 TypeScript 클라이언트입니다. 홈은
 | --- | --- |
 | Node.js | 24.21.0 LTS |
 | npm | 12.1.0 |
-| Expo | 57.0.25 (SDK 57) |
-| React Native | 0.86.3 |
-| React | 19.2.3 |
+| Expo | 58.0.23(SDK 58) |
+| React Native | 0.88.1 |
+| React | 19.3.0 |
 | TypeScript | 6.0.3 |
 
 직접 의존성은 `package.json`, 설치 버전은 `package-lock.json`으로 공유합니다. 같은 구성으로 설치할 때에는 `npm ci`를 사용합니다. Expo CLI는 프로젝트의 `expo` 패키지에 포함되어 있습니다.
@@ -46,7 +46,7 @@ npm ci
 
 플랫폼별 번들 생성은 APK·IPA 빌드나 실기기 설치와 구분합니다. 개발 서버는 `Ctrl+C`로 종료합니다.
 
-### 팀원의 Android 실행 준비
+### Android 실행 준비
 
 Expo Go는 프로젝트 SDK와 호환되는 Expo Go 앱이 필요합니다. 개발 앱은 프로젝트의 네이티브 모듈을 포함하여 직접 설치하는 앱이며, `npm run android`로 처음 설치한 뒤 일반 JavaScript·TypeScript 수정은 `npm start`와 Fast Refresh로 확인합니다. 네이티브 의존성이나 네이티브 설정을 변경하면 다시 빌드합니다.
 
