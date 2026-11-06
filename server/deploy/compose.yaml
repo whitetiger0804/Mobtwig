@@ -41,7 +41,19 @@ services:
       DB_USERNAME: ${DB_USERNAME:?DB_USERNAME을 배포 환경 파일에 설정하십시오.}
       DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD를 배포 환경 파일에 설정하십시오.}
       SERVER_PORT: "8080"
+      SESSION_COOKIE_SECURE: "true"
+      ADMIN_BOOTSTRAP_ENABLED: ${ADMIN_BOOTSTRAP_ENABLED:-false}
+      ADMIN_BOOTSTRAP_EMAIL: ${ADMIN_BOOTSTRAP_EMAIL:-}
+      ADMIN_BOOTSTRAP_NICKNAME: ${ADMIN_BOOTSTRAP_NICKNAME:-}
+      ADMIN_BOOTSTRAP_PASSWORD: ${ADMIN_BOOTSTRAP_PASSWORD:-}
       TZ: UTC
+    volumes:
+      - type: bind
+        source: ../sdui
+        target: /app/sdui
+        read_only: true
+        bind:
+          create_host_path: false
     ports:
       - "127.0.0.1:${API_PORT:-8080}:8080"
 

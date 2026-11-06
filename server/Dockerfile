@@ -6,6 +6,7 @@ RUN groupadd --gid 10001 mobtwig \
 
 WORKDIR /app
 COPY --chown=10001:10001 app.jar app.jar
+COPY --chown=10001:10001 sdui/ sdui/
 
 ENV TZ=UTC
 USER 10001:10001
