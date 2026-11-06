@@ -1,5 +1,9 @@
 {
   "recommendations": [
-    "hediet.vscode-drawio"
+    "github.vscode-pull-request-github",
+    "github.vscode-github-actions",
+    "connor4312.nodejs-testing",
+    "vscjava.vscode-java-pack",
+    "hediet.vscode-drawio",
   ]
 }
