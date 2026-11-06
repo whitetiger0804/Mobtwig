@@ -39,6 +39,7 @@ Swagger UI는 자신을 제공한 서버에 요청합니다. 관리자 POST 요�
 | --- | --- | --- | --- |
 | GET | `/sdui/home?kind=all` | 공개 조회이며 kind가 필수입니다. | 200 홈 SDUI입니다. |
 | GET | `/works/{slug}` | 공개 작품만 조회합니다. | 200 작품 상세입니다. |
+| GET | `/works/{slug}/chapters/{chapterId}` | 공개 작품의 공개된 회차만 조회합니다. | 200 텍스트 본문·목차·회차 이동 정보입니다. |
 | GET | `/api/admin/csrf` | 로그인 전에도 호출합니다. | 200 CSRF 토큰입니다. |
 | POST | `/api/admin/login` | 같은 세션의 CSRF 토큰과 폼을 보냅니다. | 204이며 본문은 없습니다. |
 | POST | `/api/admin/logout` | 같은 세션의 CSRF 토큰을 보냅니다. | 204이며 본문은 없습니다. |
@@ -53,7 +54,7 @@ Swagger UI는 자신을 제공한 서버에 요청합니다. 관리자 POST 요�
 | POST | `/api/admin/works/{id}/status` | ADMIN 세션과 CSRF가 필요합니다. | 204이며 본문은 없습니다. |
 | GET | `/actuator/health/readiness` | 공개 조회입니다. | 200 `{ "status": "UP" }`입니다. |
 
-회원 가입, 일반 회원용 토큰 인증, 본문 열람, 검색·서재·리뷰·커뮤니티 요청은 이 명세의 구현 범위에 포함하지 않습니다. 표의 경로를 다른 기능의 API로 재사용하지 않습니다.
+회원 가입, 일반 회원용 토큰 인증, 검색·서재·리뷰·커뮤니티 요청은 이 명세의 구현 범위에 포함하지 않습니다. 표의 경로를 다른 기능의 API로 재사용하지 않습니다.
 
 ## 공개 홈 조회
 
@@ -333,3 +334,72 @@ Spring의 공통 오류는 `status`, `error`, `path` 등의 형식일 수 있으
 [OpenAPI 원본](../server/src/main/resources/static/openapi.yaml)을 수정하면 빌드 시 같은 파일이 서버 JAR에 포함됩니다. Swagger UI도 이 파일을 읽습니다. API를 변경할 때에는 요청·응답 스키마, 예제, 이 문서의 호출 순서를 함께 갱신합니다. 구현 예정 경로는 동작하는 API 목록에 추가하지 않습니다.
 
 OpenAPI 계약 검사는 시험 전용 DB에서 실제 HTTP 요청·응답을 명세와 비교합니다. Javadoc은 기존 Java 코드 설명으로 유지합니다.
+
+## 공개 텍스트 본문 열람 · #35
+
+`GET /works/{slug}/chapters/{chapterId}`를 호출합니다. `slug`는 작품 상세의 `id`, `chapterId`는 `contents[].id`를 그대로 사용합니다. 회차 ID를 숫자로 증감하지 않습니다. 인증 없는 공개 조회이며 `PUBLISHED` 작품과 현재 시각까지 공개한 같은 작품의 회차만 제공합니다. 공개 목차는 회차 번호 오름차순입니다. 조회수·진도·독서 기록을 쓰지 않습니다.
+
+| 필드 | 타입 | 의미 |
+| --- | --- | --- |
+| `workId`, `workTitle`, `kind` | 문자열 | 작품 slug·제목·`book`/`magazine`/`novel`입니다. |
+| `chapter` | 회차 객체 | 현재 회차의 `id`, `title`, `number`(실제 회차 번호)입니다. |
+| `contents` | 회차 객체 배열 | 같은 시각에 공개된 목차입니다. |
+| `currentIndex` | 정수 | 공개 목차에서 0부터 세는 현재 순서입니다. 쪽수나 독서 진도가 아닙니다. |
+| `previous`, `next` | 회차 객체 또는 `null` | 공개 목차의 이웃입니다. 첫·끝·단일 회차의 경계는 명시적 `null`입니다. |
+| `body` | 문자열 | 서버가 한 번 정규화한 실제 표시 텍스트입니다. 빈 문자열도 정상입니다. |
+| `characterCount` | 0 이상 정수 | `body`의 UTF-16 코드 단위 길이입니다. |
+| `contentVersion` | 1 이상 정수 | 기존 DB의 `chapter.content_version`입니다. 조회할 때 갱신하지 않습니다. |
+| `contentHash` | 문자열 | `body` UTF-8 바이트의 SHA-256 소문자 hex 64자리입니다. DB 버전과 구분합니다. |
+
+```json
+{
+  "workId": "sample-book",
+  "workTitle": "예시 도서",
+  "kind": "book",
+  "chapter": {
+    "id": "12",
+    "title": "첫 장",
+    "number": 1
+  },
+  "contents": [
+    {
+      "id": "12",
+      "title": "첫 장",
+      "number": 1
+    },
+    {
+      "id": "41",
+      "title": "둘째 장",
+      "number": 2
+    }
+  ],
+  "currentIndex": 0,
+  "previous": null,
+  "next": {
+    "id": "41",
+    "title": "둘째 장",
+    "number": 2
+  },
+  "body": "본문\n",
+  "characterCount": 3,
+  "contentVersion": 1,
+  "contentHash": "d0bb9a4b74de533001ce57dc13db6183b9ca93244d7e025413f6739f89265a2f"
+}
+```
+
+| HTTP 상태 | 조건 | 클라이언트 처리 |
+| --- | --- | --- |
+| 200 | 정상 본문이며 빈 파일도 포함합니다. | 본문·현재 장·목차를 표시합니다. |
+| 400 | 식별자 형식이 잘못됐습니다. | 선택 정보를 확인합니다. |
+| 404 | 작품/회차 부재, 비공개, 공개 시각 이전, 다른 작품의 회차입니다. | 다른 회차로 대신 이동하지 않습니다. |
+| 415 | HTML·EPUB·외부 URL 등 지원하지 않는 공급 형식입니다. | 텍스트 열람 미지원으로 안내합니다. |
+| 503 | 파일 부재·손상 UTF-8·경로 제한·2MiB 초과 등입니다. | 안내 후 재시도를 제공합니다. |
+| 500 | 서버 처리 오류입니다. | 안전한 오류 안내와 재시도를 제공합니다. |
+
+오류는 `message`가 있는 JSON이며 내부 파일 경로·원본 URL·SQL을 노출하지 않습니다. 클라이언트는 HTTP 성공을 먼저 확인하고 실패 응답이 JSON이라고 가정하지 않습니다.
+
+### 본문 공급과 기존 등록값 호환
+
+`CONTENT_ROOT`(로컬 기본 `./content`)는 정적 공개 폴더 밖의 관리 전용 디렉터리입니다. 기존 `chapter.content_url`이 `/content/...txt`인 회차만 그 안의 일반 파일에 대응시킵니다. 경로 탈출·심볼릭 링크를 거부하고 HTTP/리디렉션 요청은 하지 않습니다. 파일 상한은 UTF-8 원본 2MiB입니다. 기존 HTTP(S)·HTML/EPUB 주소를 DB에서 삭제하거나 바꾸지 않고, 이번 열람 API에서만 415로 구분합니다. 업로드·변환은 #25 후속입니다. 컨테이너의 지속 폴더·읽기 전용 mount 설정은 [배포 안내](배포%20안내.md#텍스트-본문-폴더--35)를 따릅니다.
+
+UTF-8 BOM 하나를 제외하고 `CRLF`/`CR`을 `LF`로 정규화한 문자열이 표시 텍스트입니다. `trim`·NFC·HTML 파싱·태그 삭제·위키 마크업 처리는 하지 않습니다. 공백·빈 줄·이모지는 보존하며 클라이언트도 `body`를 다시 정규화하지 않습니다. 기존 DB `char_count` 대신 실제 `body`에서 응답 길이를 계산하며 DB 저장값은 수정하지 않습니다. 페이지 분할·진도·독서 기록·AI·설정집은 #35 범위가 아닙니다.

@@ -106,6 +106,7 @@ jobs:
         run: |
           bash mvnw --batch-mode --no-transfer-progress clean verify
           node src/test/js/catalog-contract.mjs
+          node src/test/js/reader-contract.mjs --with-db
           cp target/mobtwig-server-*.jar target/app.jar
       - name: 시험 DB에 마이그레이션을 적용하고 서버 상태를 검사합니다
         env:

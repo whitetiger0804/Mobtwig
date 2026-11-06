@@ -113,7 +113,7 @@ function Shell() {
   const ownScroll = ['reader', 'media', 'world', 'worldTerms', 'imageFull', 'search', 'library', 'community', 'post', 'writePost', 'report', 'reviews', 'reviewWrite', 'reviewComments', 'login', 'signup', 'password'].includes(route.screen);
   const centeredTitle = ['signup', 'account', 'password', 'share', 'records', 'report', 'reviewWrite', 'reviewComments', 'writePost'].includes(route.screen);
   const hideTitle = route.screen === 'login' || route.screen === 'detail';
-  const routeKey = [route.screen, route.kind, route.mode, route.workId].join(':');
+  const routeKey = [route.screen, route.kind, route.mode, route.workId, route.chapterId].join(':');
 
   return (
     <SafeAreaView style={[styles.shell, route.screen === 'imageFull' && styles.darkShell]} edges={['top', 'bottom']}>

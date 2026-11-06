@@ -51,6 +51,8 @@ export interface Route {
   mode?: CommunityTab;
   /** 작품 상세를 조회할 식별자입니다. 상세 화면으로 이동할 때 지정합니다. */
   workId?: string;
+  /** 본문에서 선택한 공개 회차의 식별자입니다. 숫자 순서로 해석하지 않습니다. */
+  chapterId?: string;
 }
 // #endregion
 
@@ -84,9 +86,10 @@ export interface AppContextValue {
    *
    * @param route - 이동할 화면과 선택 탭입니다.
    * @param reset - `true`이면 일반 화면 스택을 새 화면 하나로 교체합니다. 생략하면 `false`입니다.
+   * @param replace - 현재 화면만 교체합니다. 회차 이동 시 독서 화면을 중복 적재하지 않습니다.
    * @returns 값을 반환하지 않고 화면 상태를 변경합니다.
    */
-  navigate: (route: Route, reset?: boolean) => void;
+  navigate: (route: Route, reset?: boolean, replace?: boolean) => void;
   /**
    * 열린 패널을 닫거나 이전 일반 화면으로 돌아갑니다.
    *
@@ -128,16 +131,17 @@ export function AppProvider({ children }: {
    *
    * @param next - 이동할 화면과 탭입니다.
    * @param reset - 일반 화면의 기존 스택을 교체할지 결정합니다.
+   * @param replace - 현재 일반 화면 하나만 교체할지 결정합니다.
    * @returns 값을 반환하지 않습니다.
    */
-  const navigate = useCallback((next: Route, reset = false) => {
+  const navigate = useCallback((next: Route, reset = false, replace = false) => {
     if (overlays.has(next.screen)) {
       setOverlay(next);
       return;
     }
     setOverlay(null);
     const replaceStack = reset || next.screen === 'home' || next.screen === 'community';
-    setStack(previous => replaceStack ? [next] : [...previous, next]);
+    setStack(previous => replaceStack ? [next] : replace ? [...previous.slice(0, -1), next] : [...previous, next]);
   }, []);
 
   /**

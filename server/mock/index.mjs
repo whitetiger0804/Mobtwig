@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { createServer } from 'node:http';
 import { readFile, readdir } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
@@ -67,6 +68,7 @@ function sendJson(response, status, body) {
 export async function createMockServer({
   fixturePath = join(mockDirectory, 'fixtures', 'home.json'),
   worksPath = join(mockDirectory, 'fixtures', 'works.json'),
+  chaptersPath = join(mockDirectory, 'fixtures', 'chapter-text.json'),
   assetsRoot = join(mockDirectory, '..', 'src', 'main', 'resources', 'static', 'media'),
 } = {}) {
   const assets = await collectAssets(assetsRoot);
@@ -124,6 +126,30 @@ export async function createMockServer({
         sendJson(response, 500, { error: '화면 응답 파일을 읽지 못했습니다.' });
       }
 
+      return;
+    }
+
+    const chapterMatch = /^\/works\/([^/]+)\/chapters\/([^/]+)$/.exec(pathname);
+    if (chapterMatch) {
+      if (!/^[a-z0-9-]{1,120}$/.test(chapterMatch[1]) || !/^[A-Za-z0-9_-]{1,80}$/.test(chapterMatch[2])) {
+        sendJson(response, 400, { message: '식별자가 올바르지 않습니다.' }); return;
+      }
+      try {
+        const works = JSON.parse(await readFile(worksPath, 'utf8'));
+        const work = works.find(item => item.id === chapterMatch[1]);
+        const index = work?.contents.findIndex(item => item.id === chapterMatch[2]) ?? -1;
+        if (!work || index < 0) { sendJson(response, 404, { message: '공개된 회차가 없습니다.' }); return; }
+        const texts = JSON.parse(await readFile(chaptersPath, 'utf8'));
+        const text = texts[work.id]?.[chapterMatch[2]];
+        if (!text) { sendJson(response, 503, { message: '본문이 준비되지 않았습니다.' }); return; }
+        const body = text.body.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n');
+        const contents = work.contents.map((item, i) => ({ id: item.id, title: item.title, number: i + 1 }));
+        sendJson(response, 200, { workId: work.id, workTitle: work.title, kind: work.kind,
+          chapter: contents[index], contents, currentIndex: index,
+          previous: contents[index - 1] ?? null, next: contents[index + 1] ?? null,
+          body, characterCount: body.length, contentVersion: text.contentVersion,
+          contentHash: createHash('sha256').update(body, 'utf8').digest('hex') });
+      } catch { sendJson(response, 503, { message: '본문을 제공할 수 없습니다.' }); }
       return;
     }
 

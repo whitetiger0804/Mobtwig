@@ -42,6 +42,7 @@ function global:docker {
     }
     $kind = switch -Regex ($command) {
         '^login ghcr\.io --username deploy-test-actor --password-stdin$' { 'login'; break }
+        '^compose config --format json$' { 'config-json'; break }
         '^compose config --quiet$' { 'config'; break }
         '^compose pull api$' { 'pull'; break }
         '^compose ps --all --quiet mysql$' { 'mysql-ps'; break }
@@ -68,6 +69,7 @@ function global:docker {
     Assert-DeploymentTest ($command.IndexOf($s.Token, [StringComparison]::Ordinal) -lt 0) '인증 토큰을 CLI 인수로 전달하면 안 됩니다.'
     $global:LASTEXITCODE = 0
     switch ($kind) {
+        'config-json' { @{ services = @{ api = @{ environment = @{ DB_PASSWORD = 'must-never-print' }; volumes = @(@{ type = 'bind'; source = (Join-Path $s.Root 'content'); target = '/app/content'; read_only = $true }) } } } | ConvertTo-Json -Depth 8 }
         'login' {
             Assert-DeploymentTest ($pipedInput.Count -eq 1 -and $pipedInput[0] -eq $s.Token) '로그인 토큰은 표준 입력 한 줄로만 전달해야 합니다.'
             $configPath = Join-Path $registry 'config.json'
@@ -107,6 +109,7 @@ function global:docker {
 }
 
 $labels = @{
+    'missing-content' = '본문 폴더 누락 사전 거부'; 'file-content' = '본문 경로 파일 사전 거부'
     'success' = '기존 API 배포'; 'first-deploy' = '신규 API 배포'; 'login-failure' = '로그인 실패'
     'pull-failure' = '이미지 다운로드 실패'; 'backup-failure' = '백업 명령 실패'; 'empty-backup' = '빈 백업 거부'
     'readiness-failure' = '준비 상태 실패'; 'empty-token' = '빈 인증 토큰 거부'
@@ -114,11 +117,13 @@ $labels = @{
 try {
     New-Item -ItemType Directory -Path $testDirectory | Out-Null
     if ($null -ne $originalDockerAlias) { Remove-Item -LiteralPath Alias:\docker -Force }
-    foreach ($scenario in @('success', 'first-deploy', 'login-failure', 'pull-failure', 'backup-failure', 'empty-backup', 'readiness-failure', 'empty-token')) {
+    foreach ($scenario in @('success', 'first-deploy', 'login-failure', 'pull-failure', 'backup-failure', 'empty-backup', 'readiness-failure', 'empty-token', 'missing-content', 'file-content')) {
         $caseRoot = Join-Path $testDirectory $scenario
         $configDirectory = Join-Path $caseRoot 'config'
         $stateDirectory = Join-Path $caseRoot 'state'
         New-Item -ItemType Directory -Path $configDirectory, $stateDirectory | Out-Null
+        if ($scenario -eq 'file-content') { [IO.File]::WriteAllText((Join-Path $caseRoot 'content'), 'not-a-directory') }
+        elseif ($scenario -ne 'missing-content') { New-Item -ItemType Directory -Path (Join-Path $caseRoot 'content') | Out-Null }
         [IO.File]::WriteAllText((Join-Path $configDirectory '.env'), "DB_NAME=deployment_test`nDB_USERNAME=test_user`nDB_PASSWORD=test_only_password`nDB_ROOT_PASSWORD=test_only_root_password`n", $utf8)
         $statePath = Join-Path $stateDirectory 'last-success.json'
         $priorState = '{"CommitSha":"previous","Marker":"직전 성공 기록입니다."}'
@@ -148,10 +153,12 @@ try {
         $reader = New-Object IO.StringReader -ArgumentList ($tokenInput + "`n")
         $caughtError = $null
         [Console]::SetIn($reader)
-        try { & $deploymentScript @parameters *> $null }
+        $capturedOutput = @()
+        try { $capturedOutput = @(& $deploymentScript @parameters *>&1) }
         catch { $caughtError = $_ }
         finally { [Console]::SetIn($originalInput); $reader.Dispose() }
 
+        Assert-DeploymentTest (-not (($capturedOutput | Out-String).Contains('must-never-print'))) 'Compose 환경의 비밀번호를 출력하면 안 됩니다.'
         Assert-DeploymentTest ($env:DOCKER_CONFIG -eq $expectedConfig) '종료 후 DOCKER_CONFIG를 복원해야 합니다.'
         Assert-DeploymentTest ($env:DOCKER_HOST -eq $expectedHost) '종료 후 DOCKER_HOST를 복원해야 합니다.'
         Assert-DeploymentTest ($env:API_IMAGE -eq $expectedImage) '종료 후 API_IMAGE를 복원해야 합니다.'
@@ -182,10 +189,10 @@ try {
             Assert-DeploymentTest ($null -ne $caughtError) '의도한 실패를 성공으로 처리하면 안 됩니다.'
             Assert-DeploymentTest ([IO.File]::ReadAllText($statePath) -eq $priorState) '실패 시 직전 성공 기록을 덮어쓰면 안 됩니다.'
             $expectedError = switch ($scenario) {
-                'readiness-failure' { '*UP*' }; 'empty-backup' { '*비어*' }; 'empty-token' { '*표준 입력*' }; default { '*Docker*종료 코드*' }
+                'missing-content' { '*본문 호스트 폴더*' }; 'file-content' { '*본문 호스트 폴더*' }; 'readiness-failure' { '*UP*' }; 'empty-backup' { '*비어*' }; 'empty-token' { '*표준 입력*' }; default { '*Docker*종료 코드*' }
             }
             Assert-DeploymentTest ($caughtError.Exception.Message -like $expectedError) '예정한 단계의 실패인지 확인해야 합니다.'
-            if ($scenario -in @('login-failure', 'pull-failure', 'empty-token')) {
+            if ($scenario -in @('login-failure', 'pull-failure', 'empty-token', 'missing-content', 'file-content')) {
                 Assert-DeploymentTest ($stops.Count -eq 0 -and $starts.Count -eq 0) '사전 검증 실패 시 기존 API를 정지하거나 교체하면 안 됩니다.'
             }
             if ($scenario -in @('backup-failure', 'empty-backup')) {
@@ -228,4 +235,4 @@ finally {
     $restoredCommand = Get-Command docker -ErrorAction SilentlyContinue
     Assert-DeploymentTest ($restoredCommand.CommandType -eq $originalDockerCommandType -and $restoredCommand.Definition -eq $originalDockerDefinition) '테스트 전의 Docker 명령 종류와 실행 대상을 복원해야 합니다.'
 }
-Write-Output ('배포 자체 테스트 8개와 조건 검사 {0}개를 통과했습니다.' -f $assertionCount)
+Write-Output ('배포 자체 테스트 10개와 조건 검사 {0}개를 통과했습니다.' -f $assertionCount)
