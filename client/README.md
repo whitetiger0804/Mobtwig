@@ -46,7 +46,7 @@ npm ci
 
 플랫폼별 번들 생성은 APK·IPA 빌드나 실기기 설치와 구분합니다. 개발 서버는 `Ctrl+C`로 종료합니다.
 
-### 팀원의 Android 실행 준비
+### Android 실행 준비
 
 Expo Go는 프로젝트 SDK와 호환되는 Expo Go 앱이 필요합니다. 개발 앱은 프로젝트의 네이티브 모듈을 포함하여 직접 설치하는 앱이며, `npm run android`로 처음 설치한 뒤 일반 JavaScript·TypeScript 수정은 `npm start`와 Fast Refresh로 확인합니다. 네이티브 의존성이나 네이티브 설정을 변경하면 다시 빌드합니다.
 
