@@ -11,7 +11,7 @@
     "pageCount": 216,
     "fileFormat": "EPUB · 7.2 MB",
     "quote": "잠시 멈춘 자리에서도 하루는 천천히 자랍니다.",
-    "imageUrl": "/assets/도서/고요를 연습하는 시간.png",
+    "imageUrl": "/media/covers/도서/고요를 연습하는 시간.png",
     "contents": [
       {
         "id": "book-quiet-1",
@@ -46,7 +46,7 @@
     "category": "판타지 소설",
     "pageCount": 304,
     "fileFormat": "EPUB · 10.6 MB",
-    "imageUrl": "/assets/도서/구름섬 우체부.png",
+    "imageUrl": "/media/covers/도서/구름섬 우체부.png",
     "contents": [
       {
         "id": "book-cloud-1",
@@ -82,7 +82,7 @@
     "pageCount": 248,
     "fileFormat": "EPUB · 8.4 MB",
     "quote": "나를 돌보는 일은 오늘의 마음을 듣는 일.",
-    "imageUrl": "/assets/도서/나를 돌보는 연습.png",
+    "imageUrl": "/media/covers/도서/나를 돌보는 연습.png",
     "contents": [
       {
         "id": "book-care-1",
@@ -117,7 +117,7 @@
     "category": "자기계발",
     "pageCount": 232,
     "fileFormat": "EPUB · 6.9 MB",
-    "imageUrl": "/assets/도서/느리게 사는 기술.png",
+    "imageUrl": "/media/covers/도서/느리게 사는 기술.png",
     "contents": [
       {
         "id": "book-slow-1",
@@ -148,7 +148,7 @@
     "category": "자기계발",
     "pageCount": 192,
     "fileFormat": "EPUB · 5.8 MB",
-    "imageUrl": "/assets/도서/생각을 정리하는 작은 습관.png",
+    "imageUrl": "/media/covers/도서/생각을 정리하는 작은 습관.png",
     "contents": [
       {
         "id": "book-thoughts-1",
@@ -183,7 +183,7 @@
     "category": "IT·프로그래밍",
     "pageCount": 368,
     "fileFormat": "EPUB · 16.3 MB",
-    "imageUrl": "/assets/도서/React Native 첫걸음.png",
+    "imageUrl": "/media/covers/도서/React Native 첫걸음.png",
     "contents": [
       {
         "id": "book-react-native-1",
@@ -224,7 +224,7 @@
     "fileFormat": "앱북 · 28.6 MB",
     "issue": "2026.10 · VOL.12",
     "publicationCycle": "월간",
-    "imageUrl": "/assets/매거진/FRAME 디자인 저널.png",
+    "imageUrl": "/media/covers/매거진/FRAME 디자인 저널.png",
     "contents": [
       {
         "id": "magazine-frame-1",
@@ -272,7 +272,7 @@
     "fileFormat": "앱북 · 24.8 MB",
     "issue": "2026.10 · VOL.08",
     "publicationCycle": "월간",
-    "imageUrl": "/assets/매거진/ORBIT 월간 과학.png",
+    "imageUrl": "/media/covers/매거진/ORBIT 월간 과학.png",
     "contents": [
       {
         "id": "magazine-orbit-1",
@@ -326,7 +326,7 @@
     "fileFormat": "앱북 · 19.2 MB",
     "issue": "2026 가을 · VOL.04",
     "publicationCycle": "계간",
-    "imageUrl": "/assets/매거진/PAPER 문학의 계절.png",
+    "imageUrl": "/media/covers/매거진/PAPER 문학의 계절.png",
     "contents": [
       {
         "id": "magazine-paper-1",
@@ -374,7 +374,7 @@
     "fileFormat": "앱북 · 31.5 MB",
     "issue": "2026.10 · VOL.06",
     "publicationCycle": "월간",
-    "imageUrl": "/assets/매거진/ROOM 공간과 생활.png",
+    "imageUrl": "/media/covers/매거진/ROOM 공간과 생활.png",
     "contents": [
       {
         "id": "magazine-room-1",
@@ -422,7 +422,7 @@
     "fileFormat": "앱북 · 26.1 MB",
     "issue": "2026.10 · VOL.10",
     "publicationCycle": "월간",
-    "imageUrl": "/assets/매거진/TABLE 일상의 식탁.png",
+    "imageUrl": "/media/covers/매거진/TABLE 일상의 식탁.png",
     "contents": [
       {
         "id": "magazine-table-1",
@@ -473,7 +473,7 @@
       "recommendations": 732,
       "rating": 4.7
     },
-    "imageUrl": "/assets/웹소설/계약 결혼의 마지막 페이지.png",
+    "imageUrl": "/media/covers/웹소설/계약 결혼의 마지막 페이지.png",
     "contents": [
       {
         "id": "novel-marriage-1",
@@ -523,7 +523,7 @@
       "recommendations": 486,
       "rating": 4.8
     },
-    "imageUrl": "/assets/웹소설/괴이청 야간기록관.png",
+    "imageUrl": "/media/covers/웹소설/괴이청 야간기록관.png",
     "contents": [
       {
         "id": "novel-record-1",
@@ -627,7 +627,7 @@
       "recommendations": 1056,
       "rating": 4.9
     },
-    "imageUrl": "/assets/웹소설/멸망한 세계의 도서관.png",
+    "imageUrl": "/media/covers/웹소설/멸망한 세계의 도서관.png",
     "contents": [
       {
         "id": "novel-library-1",
@@ -683,7 +683,7 @@
       "recommendations": 608,
       "rating": 4.6
     },
-    "imageUrl": "/assets/웹소설/퇴근 후 던전 관리인.png",
+    "imageUrl": "/media/covers/웹소설/퇴근 후 던전 관리인.png",
     "contents": [
       {
         "id": "novel-dungeon-1",
@@ -733,7 +733,7 @@
       "recommendations": 894,
       "rating": 4.8
     },
-    "imageUrl": "/assets/웹소설/황녀는 결말을 바꾼다.png",
+    "imageUrl": "/media/covers/웹소설/황녀는 결말을 바꾼다.png",
     "contents": [
       {
         "id": "novel-princess-1",

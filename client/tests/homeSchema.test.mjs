@@ -123,7 +123,7 @@ test('다른 구역 사이에서는 같은 작품 식별자를 재사용할 수 
 
 test('한글·공백 이미지 파일명과 HTTP(S) 이미지 주소를 수용합니다.', () => {
   for (const imageUrl of [
-    '/assets/도서/고요를 연습하는 시간.png',
+    '/media/covers/도서/고요를 연습하는 시간.png',
     '/assets/React%20Native%20첫걸음.png',
     'http://127.0.0.1:8090/assets/cover.png',
     'https://example.com/assets/cover.png?version=2',
