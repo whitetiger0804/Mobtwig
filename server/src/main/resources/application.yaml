@@ -20,12 +20,22 @@ spring:
       "[hibernate.jdbc.time_zone]": UTC
 
 mobtwig:
+  admin:
+    bootstrap-enabled: ${ADMIN_BOOTSTRAP_ENABLED:false}
   sdui:
     home-path: ${SDUI_HOME_PATH:./sdui/home.json}
 
 server:
   address: 0.0.0.0
   port: ${SERVER_PORT}
+  forward-headers-strategy: framework
+  servlet:
+    session:
+      timeout: 30m
+      cookie:
+        http-only: true
+        same-site: strict
+        secure: ${SESSION_COOKIE_SECURE:false}
 
 management:
   endpoints:

@@ -1,0 +1,16 @@
+{
+  "properties": [
+    {
+      "name": "mobtwig.admin.bootstrap-enabled",
+      "type": "java.lang.Boolean",
+      "description": "활성 관리자가 없는 DB에 최초 관리자 계정을 생성합니다.",
+      "defaultValue": false
+    },
+    {
+      "name": "mobtwig.sdui.home-path",
+      "type": "java.lang.String",
+      "description": "홈 SDUI 구성 파일 경로입니다.",
+      "defaultValue": "./sdui/home.json"
+    }
+  ]
+}
