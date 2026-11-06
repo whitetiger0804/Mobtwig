@@ -20,6 +20,8 @@ spring:
       "[hibernate.jdbc.time_zone]": UTC
 
 mobtwig:
+  auth:
+    allowed-origins: ${AUTH_ALLOWED_ORIGINS:}
   reader:
     content-root: ${CONTENT_ROOT:./content}
   admin:

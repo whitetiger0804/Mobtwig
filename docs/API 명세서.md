@@ -40,6 +40,7 @@ Swagger UI는 자신을 제공한 서버에 요청합니다. 관리자 POST 요�
 | GET | `/sdui/home?kind=all` | 공개 조회이며 kind가 필수입니다. | 200 홈 SDUI입니다. |
 | GET | `/works/{slug}` | 공개 작품만 조회합니다. | 200 작품 상세입니다. |
 | GET | `/works/{slug}/chapters/{chapterId}` | 공개 작품의 공개된 회차만 조회합니다. | 200 텍스트 본문·목차·회차 이동 정보입니다. |
+| GET | `/api/auth/csrf` | 회원 인증 영역의 익명 CSRF 세션을 사용합니다. | 200 현재 세션의 CSRF 토큰입니다. |
 | GET | `/api/admin/csrf` | 로그인 전에도 호출합니다. | 200 CSRF 토큰입니다. |
 | POST | `/api/admin/login` | 같은 세션의 CSRF 토큰과 폼을 보냅니다. | 204이며 본문은 없습니다. |
 | POST | `/api/admin/logout` | 같은 세션의 CSRF 토큰을 보냅니다. | 204이며 본문은 없습니다. |
@@ -403,3 +404,9 @@ OpenAPI 계약 검사는 시험 전용 DB에서 실제 HTTP 요청·응답을 �
 `CONTENT_ROOT`(로컬 기본 `./content`)는 정적 공개 폴더 밖의 관리 전용 디렉터리입니다. 기존 `chapter.content_url`이 `/content/...txt`인 회차만 그 안의 일반 파일에 대응시킵니다. 경로 탈출·심볼릭 링크를 거부하고 HTTP/리디렉션 요청은 하지 않습니다. 파일 상한은 UTF-8 원본 2MiB입니다. 기존 HTTP(S)·HTML/EPUB 주소를 DB에서 삭제하거나 바꾸지 않고, 이번 열람 API에서만 415로 구분합니다. 업로드·변환은 #25 후속입니다. 컨테이너의 지속 폴더·읽기 전용 mount 설정은 [배포 안내](배포%20안내.md#텍스트-본문-폴더--35)를 따릅니다.
 
 UTF-8 BOM 하나를 제외하고 `CRLF`/`CR`을 `LF`로 정규화한 문자열이 표시 텍스트입니다. `trim`·NFC·HTML 파싱·태그 삭제·위키 마크업 처리는 하지 않습니다. 공백·빈 줄·이모지는 보존하며 클라이언트도 `body`를 다시 정규화하지 않습니다. 기존 DB `char_count` 대신 실제 `body`에서 응답 길이를 계산하며 DB 저장값은 수정하지 않습니다. 페이지 분할·진도·독서 기록·AI·설정집은 #35 범위가 아닙니다.
+
+## 회원 인증 영역의 CSRF
+
+`GET /api/auth/csrf`에서 `headerName`, `parameterName`, `token`을 받고 같은 `MEMBER_SESSION` 쿠키와 `X-CSRF-TOKEN`으로 후속 변경 요청을 보냅니다. 관리자 `/api/admin/**`의 `SESSION`과 분리합니다. 두 영역의 쿠키 이름만 바꿔 재사용하면 401이며 원래 영역의 세션은 폐기하지 않습니다. 쿠키는 HttpOnly·SameSite=Strict이고 운영 HTTPS의 `SESSION_COOKIE_SECURE`를 따릅니다. 회원 쿠키 Path는 `/api`, 관리자 쿠키 Path는 기존 `/`입니다.
+
+`AUTH_ALLOWED_ORIGINS`는 정확한 웹 origin 목록이며 기본값은 비어 있습니다. 명시한 origin만 credential CORS를 허용합니다. 웹/API는 same-site 구성이 지원 대상이며 cross-site 배포는 CORS만으로 지원하지 않습니다. 현재 구현 및 후속 계약 범위는 [회원 인증 계약](회원%20인증%20계약안.md)을 참고하십시오.
