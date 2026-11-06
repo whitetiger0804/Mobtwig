@@ -113,7 +113,7 @@ test('도서 홈은 작품 목록 앞의 상단 자리에 오늘의 책 요소�
   assert.equal(home.sections[0].type, 'featuredWork');
   assert.equal(home.sections[0].items[0].label, '오늘의 책');
   assert.equal(home.sections[0].items[0].title, '나를 돌보는 연습');
-  assert.equal(home.sections[0].items[0].imageUrl, '/assets/도서/나를 돌보는 연습.png');
+  assert.equal(home.sections[0].items[0].imageUrl, '/media/covers/도서/나를 돌보는 연습.png');
   assert.ok(home.sections.findIndex((section) => section.type === 'workShelf') > 0);
 });
 
@@ -126,7 +126,7 @@ test('응답에서 사용하는 이미지 17개를 실제 PNG로 제공합니다
   assert.equal(urls.size, 17);
 
   for (const url of urls) {
-    assert.ok(url.startsWith('/assets/'));
+    assert.ok(url.startsWith('/media/'));
     const response = await fetch(new URL(url, baseUrl));
     assert.equal(response.status, 200, url);
     assert.equal(response.headers.get('content-type'), 'image/png', url);
@@ -254,7 +254,7 @@ test('잘못된 종류·메서드·없는 리소스를 명시적인 상태 코�
     assert.equal(response.status, 400);
   }
 
-  for (const path of ['/missing', '/assets/missing.png', '/fixtures/home.json']) {
+  for (const path of ['/missing', '/media/missing.png', '/fixtures/home.json']) {
     assert.equal((await fetch(`${baseUrl}${path}`)).status, 404);
   }
 
@@ -267,18 +267,18 @@ test('인코딩한 상위 경로와 Windows 구분자로 자산 외부 파일을
   const baseUrl = await startServer(context);
 
   for (const path of [
-    '/assets/../fixtures/home.json',
-    '/assets/%2e%2e/fixtures/home.json',
-    '/assets/%2e%2e%2ffixtures%2fhome.json',
-    '/assets/%2e%2e%5cfixtures%5chome.json',
-    '/assets/%00.png',
+    '/media/../fixtures/home.json',
+    '/media/%2e%2e/fixtures/home.json',
+    '/media/%2e%2e%2ffixtures%2fhome.json',
+    '/media/%2e%2e%5cfixtures%5chome.json',
+    '/media/%00.png',
   ]) {
     const response = await requestRawPath(baseUrl, path);
     assert.equal(response.status, 404, path);
     assert.deepEqual(JSON.parse(response.body), { error: '요청한 리소스가 없습니다.' });
   }
 
-  assert.equal((await requestRawPath(baseUrl, '/assets/%XX')).status, 400);
+  assert.equal((await requestRawPath(baseUrl, '/media/%XX')).status, 400);
 });
 
 test('서버 재시작 없이 제목·순서·항목 수 변경과 빈 화면을 반영합니다.', async (context) => {
