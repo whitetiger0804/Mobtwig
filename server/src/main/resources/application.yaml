@@ -17,9 +17,11 @@ spring:
       ddl-auto: validate
     open-in-view: false
     properties:
-      hibernate:
-        jdbc:
-          time_zone: UTC
+      "[hibernate.jdbc.time_zone]": UTC
+
+mobtwig:
+  sdui:
+    home-path: ${SDUI_HOME_PATH:./sdui/home.json}
 
 server:
   address: 0.0.0.0
