@@ -1,8 +1,11 @@
 package com.mobtwig.admin;
 
 import jakarta.servlet.DispatcherType;
+import com.mobtwig.auth.AuthCookies;
+import com.mobtwig.auth.AuthScopeGuard;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.authorization.AuthorizationDecision;
@@ -13,6 +16,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.security.web.savedrequest.NullRequestCache;
+import org.springframework.security.web.context.SecurityContextHolderFilter;
 
 /** 관리자 API에 DB 계정 인증, 세션과 CSRF 보호를 적용합니다. */
 @Configuration(proxyBeanMethods = false)
@@ -27,8 +31,8 @@ public class AdminSecurity {
      * @return 세션·CSRF 기반 보안 필터입니다.
      * @throws Exception 보안 필터를 구성하지 못하면 발생합니다.
      */
-    @Bean
-    public SecurityFilterChain adminFilter(HttpSecurity http, AdminAccounts accounts) throws Exception {
+    @Bean @Order(2)
+    public SecurityFilterChain adminFilter(HttpSecurity http, AdminAccounts accounts, AuthCookies cookies) throws Exception {
         return http.cors(Customizer.withDefaults())
                 .authorizeHttpRequests(authorize -> authorize
                         .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
@@ -40,11 +44,15 @@ public class AdminSecurity {
                                     && accounts.isAdmin(principal.getName()));
                         })
                         .anyRequest().permitAll())
+                .addFilterBefore(new AuthScopeGuard(AuthCookies.ADMIN, cookies), SecurityContextHolderFilter.class)
                 .exceptionHandling(exceptions -> exceptions
                         .authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)))
                 .requestCache(cache -> cache.requestCache(new NullRequestCache()))
                 .formLogin(login -> login.loginPage("/admin").loginProcessingUrl("/api/admin/login")
-                        .successHandler((request, response, authentication) -> response.setStatus(204))
+                        .successHandler((request, response, authentication) -> {
+                            request.getSession().setAttribute(AuthCookies.SCOPE, AuthCookies.ADMIN);
+                            response.setStatus(204);
+                        })
                         .failureHandler((request, response, exception) -> response.setStatus(401)))
                 .logout(logout -> logout.logoutUrl("/api/admin/logout")
                         .logoutSuccessHandler((request, response, authentication) -> response.setStatus(204)))

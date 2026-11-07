@@ -1,5 +1,6 @@
 // #region 의존성 가져오기
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
+import { useMemberAuth } from './memberAuth';
 import { BackHandler } from 'react-native';
 // #endregion
 
@@ -125,6 +126,14 @@ export function AppProvider({ children }: {
   const [stack, setStack] = useState<Route[]>([{ screen: 'home', kind: 'all' }]);
   const [overlay, setOverlay] = useState<Route | null>(null);
   const baseRoute = stack[stack.length - 1];
+  const { state: auth } = useMemberAuth();
+  useEffect(() => {
+    setOverlay(null);
+    setStack(previous => {
+      const current = previous[previous.length - 1];
+      return [['login', 'signup', 'account', 'my'].includes(current.screen) ? current : { screen: 'home', kind: 'all' }];
+    });
+  }, [auth.generation]);
 
   /**
    * 패널 여부에 따라 표시 상태 또는 화면 스택을 갱신합니다.

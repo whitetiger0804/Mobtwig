@@ -4,6 +4,7 @@ import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { AppProvider, kindLabel, useApp, type Route, type Screen } from './src/appState';
 import { EmptyState } from './src/EmptyState';
+import { MemberAuthProvider } from './src/memberAuth';
 import { ServerConnectionProvider } from './src/serverConnection';
 import { Action, colors, Icon, IconButton, s, Title } from './src/ui';
 import { DetailScreen, FallbackScreen, FiltersScreen, HomeScreen, LibraryManageScreen, LibraryScreen, RecentScreen, RecordsScreen, SearchScreen, ShareScreen } from './src/CatalogScreens';
@@ -229,7 +230,7 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <View style={styles.outer}>
-        <ServerConnectionProvider><AppProvider><Shell /></AppProvider></ServerConnectionProvider>
+        <ServerConnectionProvider><MemberAuthProvider><AppProvider><Shell /></AppProvider></MemberAuthProvider></ServerConnectionProvider>
       </View>
     </SafeAreaProvider>
   );

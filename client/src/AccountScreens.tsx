@@ -1,6 +1,7 @@
 // #region 의존성 가져오기
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { useMemberAuth } from './memberAuth';
 import { useApp } from './appState';
 import { EmptyState } from './EmptyState';
 import { Action, colors, Icon, s } from './ui';
@@ -92,24 +93,36 @@ function AccountMenu({ title, subtitle, icon, onPress, disabled = false, warm = 
  * 중앙 브랜드, 아이콘 입력란과 외부 로그인 버튼을 시안의 순서로 표시합니다.
  *
  * @remarks
- * 입력과 비밀번호 표시 여부는 화면 내부 상태입니다. 인증과 비밀번호 복구는
- * 비활성화하며, 하단 가입하기만 회원가입 화면으로 이동합니다.
+ * 입력은 화면 메모리에만 두고 쿠키와 CSRF로 이메일 로그인을 확인합니다.
+ * 비밀번호 복구와 외부 로그인은 아직 비활성 상태입니다.
  *
  * @returns 로그인 시안의 입력·동작·하단 가입 영역입니다.
  */
 export function LoginScreen() {
   const app = useApp();
+  const { state: auth, client } = useMemberAuth();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
   const [identity, setIdentity] = useState('');
   const [password, setPassword] = useState('');
+  const submit = async () => {
+    if (busy) return;
+    if (!identity.trim() || !password) { setError('이메일과 비밀번호를 입력해 주십시오.'); return; }
+    setBusy(true); setError('');
+    try { await client.login(identity, password); setPassword(''); app.navigate({ screen: 'my' }, true); }
+    catch (failure) { setError(failure instanceof Error ? failure.message : '로그인하지 못했습니다.'); }
+    finally { setBusy(false); }
+  };
   return (
     <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={[styles.authPage, styles.loginPage]}>
       <View style={styles.loginBrand}>
         <Image source={require('../assets/brand/header.png')} style={styles.loginLogo} />
         <Text style={[s.title, styles.brandName]}>모북이</Text>
       </View>
-      <AccountField label="이메일 또는 ID" value={identity} onChangeText={setIdentity} placeholder="이메일 또는 ID" tall />
+      <AccountField label="이메일" value={identity} onChangeText={setIdentity} placeholder="로그인 이메일" tall />
       <View style={styles.loginPassword}><AccountField label="비밀번호" value={password} onChangeText={setPassword} placeholder="비밀번호" password tall /></View>
-      <View style={styles.loginSubmit}><Action label="로그인" disabled style={styles.authButton} /></View>
+      <View style={styles.loginSubmit}><Action label={busy ? '로그인 중…' : '로그인'} disabled={busy || auth.status === 'checking'} onPress={() => void submit()} style={styles.authButton} /></View>
+      {!!(error || auth.error) && <Text accessibilityRole="alert" style={s.error}>{error || auth.error}</Text>}
       <View style={styles.orRow}><View style={styles.divider} /><Text style={[s.muted, styles.orText]}>또는</Text><View style={styles.divider} /></View>
       <Pressable accessibilityRole="button" accessibilityState={{ disabled: true }} disabled style={[styles.socialButton, styles.googleButton]}>
         <Text style={[s.subtitle, styles.googleMark]}>G</Text><Text style={[s.text, styles.socialLabel]}>Google 계정으로 로그인</Text>
@@ -176,7 +189,7 @@ export function SignupScreen() {
  * 회원 영역, 세 열의 개인 메뉴, 내 작품 카드와 설정 메뉴를 표시합니다.
  *
  * @remarks
- * 회원 이름·통계·작품은 {@link EmptyState}로 표시하고 숫자를 가정하지 않습니다.
+ * 회원 이름은 서버 세션에서 읽고 통계·작품은 {@link EmptyState}로 표시합니다.
  * 내 작품 영역에는 고정된 표지 자리나 작품 개수를 만들지 않습니다.
  * 서재·독서 기록·읽기 설정의 화면 이동만 제공하며 관리와 구매는 비활성화합니다.
  *
@@ -184,11 +197,14 @@ export function SignupScreen() {
  */
 export function MyScreen() {
   const app = useApp();
+  const { state, client } = useMemberAuth();
+  useEffect(() => { void client.refresh(); }, [client]);
+  if (!state.member) return <View style={s.page}><Text style={s.muted}>{state.status === 'checking' ? '로그인 상태 확인 중…' : state.error ?? '로그인이 필요합니다.'}</Text><Action label="로그인" onPress={() => app.navigate({ screen: 'login' })} /><Action label="다시 확인" onPress={() => void client.refresh()} /></View>;
   return (
     <View style={styles.myPage}>
       <View style={styles.profileRow}>
         <View style={styles.avatar}><Image source={require('../assets/brand/header.png')} style={styles.avatarLogo} /></View>
-        <View style={styles.profileText}><EmptyState compact title="회원 정보가 없습니다." style={styles.profileEmpty} /></View>
+        <View style={styles.profileText}><Text style={s.subtitle}>{state.member.nickname}</Text></View>
       </View>
       <View style={styles.stats}>
         <Pressable accessibilityRole="button" onPress={() => app.navigate({ screen: 'library' })} style={styles.stat}><EmptyState compact title="—" style={styles.statEmpty} /><Text style={[s.text, styles.statLabel]}>내 서재</Text></Pressable>
@@ -212,26 +228,37 @@ export function MyScreen() {
  * 회원 카드, 계정 정보 표와 비밀번호·탈퇴·로그아웃 메뉴를 표시합니다.
  *
  * @remarks
- * 이름·아이디·이메일·가입일 값은 빈 요소로 유지합니다. 비밀번호와 탈퇴 패널은
+ * 이름·회원 번호·이메일·가입일은 현재 서버 세션에서 읽습니다. 비밀번호와 탈퇴 패널은
  * 화면 이동만 수행하며 인증 상태를 바꾸지 않습니다.
  *
  * @returns 계정 설정 시안의 카드·정보 행·하단 동작입니다.
  */
 export function AccountScreen() {
   const app = useApp();
+  const { state, client } = useMemberAuth();
+  useEffect(() => { void client.refresh(); }, [client]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const logout = async () => {
+    setBusy(true); setError('');
+    try { await client.logout(); app.navigate({ screen: 'login' }, true); }
+    catch { setError('로그아웃 완료를 확인하지 못했습니다. 다시 시도해 주십시오.'); }
+    finally { setBusy(false); }
+  };
+  if (!state.member) return <View style={s.page}><Text accessibilityRole="alert" style={s.muted}>{error || state.error || '로그인이 필요합니다.'}</Text><Action label="로그인" onPress={() => app.navigate({ screen: 'login' })} /><Action label="로그아웃 다시 시도" disabled={busy} onPress={() => void logout()} /></View>;
   return (
     <View style={styles.accountPage}>
       <View style={styles.accountCard}>
-        <View style={styles.profileRow}><View style={[styles.avatar, styles.accountAvatar]}><Image source={require('../assets/brand/header.png')} style={styles.avatarLogo} /></View><View style={styles.profileText}><EmptyState compact title="회원 정보가 없습니다." style={styles.profileEmpty} /></View></View>
+        <View style={styles.profileRow}><View style={[styles.avatar, styles.accountAvatar]}><Image source={require('../assets/brand/header.png')} style={styles.avatarLogo} /></View><View style={styles.profileText}><Text style={s.subtitle}>{state.member.nickname}</Text></View></View>
         <View style={styles.accountDivider} />
-        <View style={styles.accountIdRow}><Text style={[s.muted, styles.accountIdLabel]}>아이디</Text><EmptyState compact title="—" style={styles.valueEmpty} /></View>
+        <View style={styles.accountIdRow}><Text style={[s.muted, styles.accountIdLabel]}>회원 번호</Text><Text style={s.text}>{state.member.id}</Text></View>
       </View>
       <Text style={[s.subtitle, styles.accountSection]}>계정 정보</Text>
-      <View style={styles.infoRow}><Text style={[s.text, styles.infoLabel]}>이메일</Text><EmptyState compact title="—" style={styles.valueEmpty} /></View>
-      <View style={styles.infoRow}><Text style={[s.text, styles.infoLabel]}>가입일</Text><EmptyState compact title="—" style={styles.valueEmpty} /></View>
+      <View style={styles.infoRow}><Text style={[s.text, styles.infoLabel]}>이메일</Text><Text style={s.text}>{state.member.email}</Text></View>
+      <View style={styles.infoRow}><Text style={[s.text, styles.infoLabel]}>가입일</Text><Text style={s.text}>{state.member.createdAt.slice(0, 10)}</Text></View>
       <View style={styles.passwordMenu}><AccountMenu title="비밀번호 변경" subtitle="새 비밀번호로 변경합니다." icon="lock" onPress={() => app.navigate({ screen: 'password' })} /><View style={styles.menuDivider} /></View>
       <Pressable accessibilityRole="button" onPress={() => app.navigate({ screen: 'withdraw' })} style={styles.withdrawLink}><Text style={[s.text, styles.withdrawLabel]}>회원 탈퇴</Text><Icon name="next" size={18} color={colors.brown} /></Pressable>
-      <View style={styles.logoutArea}><Pressable accessibilityRole="button" accessibilityState={{ disabled: true }} disabled style={styles.logout}><Text style={[s.text, styles.logoutText]}>로그아웃</Text><Icon name="logout" size={22} /></Pressable></View>
+      <View style={styles.logoutArea}><Pressable accessibilityRole="button" accessibilityState={{ disabled: busy }} disabled={busy} onPress={() => void logout()} style={styles.logout}><Text style={[s.text, styles.logoutText]}>로그아웃</Text><Icon name="logout" size={22} /></Pressable></View>
     </View>
   );
 }

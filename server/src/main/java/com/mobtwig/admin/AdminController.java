@@ -1,6 +1,8 @@
 package com.mobtwig.admin;
 
 import java.security.Principal;
+import jakarta.servlet.http.HttpServletRequest;
+import com.mobtwig.auth.AuthCookies;
 
 import jakarta.validation.Valid;
 import org.jspecify.annotations.NonNull;
@@ -40,7 +42,10 @@ public class AdminController {
      * @return 변경 요청에 사용할 토큰입니다.
      */
     @GetMapping("/api/admin/csrf")
-    public CsrfToken csrf(CsrfToken token) { return token; }
+    public CsrfToken csrf(CsrfToken token, HttpServletRequest request) {
+        request.getSession().setAttribute(AuthCookies.SCOPE, AuthCookies.ADMIN);
+        return token;
+    }
 
     /**
      * 현재 로그인한 관리자를 반환합니다.
