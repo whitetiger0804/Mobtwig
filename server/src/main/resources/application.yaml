@@ -22,6 +22,7 @@ spring:
 mobtwig:
   auth:
     allowed-origins: ${AUTH_ALLOWED_ORIGINS:}
+    signup-demo-enabled: ${SIGNUP_DEMO_ENABLED:false}
   reader:
     content-root: ${CONTENT_ROOT:./content}
   admin:

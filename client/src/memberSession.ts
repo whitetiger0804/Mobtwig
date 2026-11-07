@@ -1,3 +1,5 @@
+import { parseSignupDocuments, parseSignupProblem, parseSignupResult, type SignupDocument, type SignupInput, type SignupResult } from './memberSignup.ts';
+
 /** 서버가 현재 활성 회원에게만 제공하는 공개 계정 정보입니다. */
 export interface MemberIdentity {
   /** 정밀도 손실을 피하기 위해 문자열로 받는 회원 ID입니다. */
@@ -34,6 +36,14 @@ export interface MemberSessionClient {
   subscribe(listener: () => void): () => void;
   /** 현재 쿠키로 세션을 다시 확인하며 네트워크 실패를 인증 성공으로 간주하지 않습니다. */
   refresh(): Promise<void>;
+  /** 현재 가입에 필요한 시연 문서를 확인합니다. */
+  signupDocuments(): Promise<SignupDocument[]>;
+  /**
+   * CSRF 토큰과 동의한 문서를 보내고 가입 결과를 확인합니다.
+   * @param input - 화면에서 확인한 회원 입력과 문서 정보입니다.
+   * @returns 가입 결과이며 인증 상태는 변경하지 않습니다.
+   */
+  signup(input: SignupInput): Promise<SignupResult>;
   /**
    * 이전 회원 세션을 먼저 종료한 다음 새 계정의 인증을 확인합니다.
    * @param email - 로그인 이메일입니다.
@@ -143,6 +153,36 @@ export function createMemberSessionClient(apiUrl: string, requester: typeof fetc
   return {
     getSnapshot: () => state,
     subscribe(listener) { listeners.add(listener); return () => { listeners.delete(listener); }; },
+    async signupDocuments() {
+      return consumeRequest('/api/auth/terms', generation, {}, async response => {
+        if (response.status === 503) throw new Error('이 환경에서는 시연 회원가입을 제공하지 않습니다.');
+        if (!response.ok) throw new Error('가입 문서를 불러오지 못했습니다.');
+        return parseSignupDocuments(await response.json().catch(() => null));
+      });
+    },
+    async signup(input) {
+      if (busy) throw new Error('인증 요청을 처리하고 있습니다.');
+      const epoch = generation;
+      assertCurrent(epoch);
+      busy = true;
+      try {
+        const token = await csrf(epoch);
+        return await consumeRequest('/api/auth/signup', epoch, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': token },
+          body: JSON.stringify(input),
+        }, async response => {
+          if (response.status === 201) return parseSignupResult(await response.json());
+          if ([400, 409, 503].includes(response.status)) {
+            const body: unknown = await response.json().catch(() => null);
+            throw parseSignupProblem(response.status, body);
+          }
+          throw new Error(response.status === 403 ? '보안 확인에 실패했습니다. 다시 시도해 주세요.' : '가입을 처리하지 못했습니다. 다시 시도해 주세요.');
+        });
+      } finally {
+        busy = false;
+      }
+    },
     async refresh() {
       if (busy || disposed) return;
       const epoch = generation, sequence = ++refreshSequence;
