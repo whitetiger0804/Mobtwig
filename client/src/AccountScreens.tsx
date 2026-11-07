@@ -1,7 +1,8 @@
 // #region 의존성 가져오기
-import { useEffect, useState } from 'react';
-import { Image, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Image, Modal, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { useMemberAuth } from './memberAuth';
+import { buildSignupInput, SignupProblem, type SignupAcceptance, type SignupDocument, type SignupFields, type SignupForm } from './memberSignup';
 import { useApp } from './appState';
 import { EmptyState } from './EmptyState';
 import { Action, colors, Icon, s } from './ui';
@@ -14,7 +15,7 @@ import { Action, colors, Icon, s } from './ui';
  * @param props - 입력 레이블, 현재 문자열과 화면 내부 변경 함수입니다.
  * @returns 레이블과 테두리 입력란을 포함한 요소입니다.
  */
-function AccountField({ label, value, onChangeText, placeholder, password = false, tall = false }: {
+function AccountField({ label, value, onChangeText, placeholder, password = false, tall = false, nickname = false, disabled = false, error }: {
   /** 입력란 위와 접근성 이름에 사용하는 레이블입니다. */
   label: string;
   /** 화면에서 입력 중인 문자열입니다. */
@@ -27,13 +28,19 @@ function AccountField({ label, value, onChangeText, placeholder, password = fals
   password?: boolean;
   /** 로그인 시안의 58 높이 입력란을 사용할지 지정합니다. */
   tall?: boolean;
+  /** 닉네임 입력의 프로필 아이콘을 표시합니다. */
+  nickname?: boolean;
+  /** 제출 중 입력값을 고정합니다. */
+  disabled?: boolean;
+  /** 입력 아래에 표시할 오류입니다. */
+  error?: string;
 }) {
   const [visible, setVisible] = useState(false);
   return (
     <View style={styles.field}>
       <Text style={[s.label, styles.fieldLabel]}>{label}</Text>
       <View style={[styles.inputFrame, tall && styles.tallInput]}>
-        <Icon name={password ? 'lock' : 'mail'} size={22} color={colors.muted} />
+        <Icon name={password ? 'lock' : nickname ? 'user' : 'mail'} size={22} color={colors.muted} />
         <TextInput
           accessibilityLabel={label}
           value={value}
@@ -43,6 +50,7 @@ function AccountField({ label, value, onChangeText, placeholder, password = fals
           secureTextEntry={password && !visible}
           autoCapitalize="none"
           autoCorrect={false}
+          editable={!disabled}
           style={[s.text, styles.input]}
         />
         {password && (
@@ -51,6 +59,7 @@ function AccountField({ label, value, onChangeText, placeholder, password = fals
           </Pressable>
         )}
       </View>
+      <SignupFieldError message={error} />
     </View>
   );
 }
@@ -103,7 +112,7 @@ export function LoginScreen() {
   const { state: auth, client } = useMemberAuth();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const [identity, setIdentity] = useState('');
+  const [identity, setIdentity] = useState(app.baseRoute.registeredEmail ?? '');
   const [password, setPassword] = useState('');
   const submit = async () => {
     if (busy) return;
@@ -119,6 +128,7 @@ export function LoginScreen() {
         <Image source={require('../assets/brand/header.png')} style={styles.loginLogo} />
         <Text style={[s.title, styles.brandName]}>모북이</Text>
       </View>
+      {!!app.baseRoute.registeredEmail && <Text accessibilityRole="alert" style={s.muted}>가입했습니다. 새 계정으로 로그인해 주세요.</Text>}
       <AccountField label="이메일" value={identity} onChangeText={setIdentity} placeholder="로그인 이메일" tall />
       <View style={styles.loginPassword}><AccountField label="비밀번호" value={password} onChangeText={setPassword} placeholder="비밀번호" password tall /></View>
       <View style={styles.loginSubmit}><Action label={busy ? '로그인 중…' : '로그인'} disabled={busy || auth.status === 'checking'} onPress={() => void submit()} style={styles.authButton} /></View>
@@ -140,47 +150,152 @@ export function LoginScreen() {
 }
 
 /**
- * 계정 만들기 제목, 세 입력란, 필수 동의 선택과 하단 로그인 이동을 표시합니다.
+ * 회원 입력과 현재 필수 문서 동의를 받아 가입 요청을 제출합니다.
  *
  * @remarks
- * 입력과 체크 상태만 화면 안에 보관합니다. 실제 약관 내용 조회·회원 생성·검증은
- * 수행하지 않으며 가입과 약관 내용 열기는 비활성화합니다.
+ * 문서 원문은 서버에서 읽으며 가입 성공 후 이메일을 채운 로그인 화면으로 이동합니다.
  *
  * @returns 회원가입 시안의 입력과 선택 요소입니다.
  */
 export function SignupScreen() {
   const app = useApp();
-  const [identity, setIdentity] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmation, setConfirmation] = useState('');
-  const [terms, setTerms] = useState(false);
-  const [privacy, setPrivacy] = useState(false);
+  const { client } = useMemberAuth();
+  const [form, setForm] = useState<SignupForm>({ email: '', nickname: '', password: '', passwordConfirmation: '' });
+  const [errors, setErrors] = useState<SignupFields>({});
+  const [documents, setDocuments] = useState<SignupDocument[]>([]);
+  const [accepted, setAccepted] = useState<SignupAcceptance>({});
+  const [openDocument, setOpenDocument] = useState<SignupDocument | null>(null);
+  const [documentError, setDocumentError] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [stale, setStale] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const mounted = useRef(false);
+  const submitting = useRef(false);
+
+  const loadDocuments = useCallback(async () => {
+    setLoading(true);
+    setDocumentError('');
+    setDocuments([]);
+    setAccepted({});
+    setOpenDocument(null);
+    setStale(false);
+    setErrors(previous => ({ ...previous, terms: undefined, privacy: undefined }));
+    try {
+      const current = await client.signupDocuments();
+      if (mounted.current) setDocuments(current);
+    } catch (failure) {
+      if (mounted.current) setDocumentError(failure instanceof Error ? failure.message : '가입 문서를 불러오지 못했습니다.');
+    } finally {
+      if (mounted.current) setLoading(false);
+    }
+  }, [client]);
+
+  useEffect(() => {
+    mounted.current = true;
+    void loadDocuments();
+    return () => { mounted.current = false; };
+  }, [loadDocuments]);
+
+  const update = (field: keyof SignupForm, value: string) => {
+    setForm(previous => ({ ...previous, [field]: value }));
+    setErrors(previous => ({ ...previous, [field]: undefined }));
+  };
+
+  const submit = async () => {
+    if (submitting.current || stale || loading || documents.length !== 2) return;
+    submitting.current = true;
+    setBusy(true);
+    setErrors({});
+    try {
+      const created = await client.signup(buildSignupInput(form, documents, accepted));
+      if (mounted.current) app.navigate({ screen: 'login', registeredEmail: created.email }, true);
+    } catch (failure) {
+      if (!mounted.current) return;
+      if (failure instanceof SignupProblem) {
+        setErrors(Object.keys(failure.fields).length ? failure.fields : { request: failure.message });
+        if (failure.status === 409 && (failure.fields.terms || failure.fields.privacy)) {
+          setStale(true);
+          setAccepted({});
+        }
+      } else {
+        setErrors({ request: '가입 완료를 확인하지 못했습니다. 다시 시도해 주세요.' });
+      }
+    } finally {
+      submitting.current = false;
+      if (mounted.current) setBusy(false);
+    }
+  };
+
   return (
     <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={[styles.authPage, styles.signupPage]}>
       <View style={styles.signupIntro}>
         <View style={styles.introText}><Text style={[s.title, styles.introTitle]}>모북이 계정 만들기</Text><Text style={[s.muted, styles.introDescription]}>로그인에 사용할 정보를 입력해 주세요.</Text></View>
         <Image source={require('../assets/brand/header.png')} style={styles.signupLogo} />
       </View>
-      <AccountField label="이메일 또는 ID" value={identity} onChangeText={setIdentity} placeholder="이메일 또는 ID 입력" />
+      <AccountField label="이메일" value={form.email} onChangeText={value => update('email', value)} placeholder="로그인에 사용할 이메일" disabled={busy} error={errors.email} />
       <View style={styles.signupPassword}>
-        <AccountField label="비밀번호" value={password} onChangeText={setPassword} placeholder="비밀번호 입력" password />
+        <AccountField label="닉네임" value={form.nickname} onChangeText={value => update('nickname', value)} placeholder="앱에서 표시할 닉네임" nickname disabled={busy} error={errors.nickname} />
+      </View>
+      <View style={styles.signupPassword}>
+        <AccountField label="비밀번호" value={form.password} onChangeText={value => update('password', value)} placeholder="비밀번호 입력" password disabled={busy} error={errors.password} />
         <Text style={[s.muted, styles.fieldHint]}>영문·숫자를 포함해 8자 이상 입력해 주세요.</Text>
       </View>
-      <View style={styles.signupConfirmation}><AccountField label="비밀번호 확인" value={confirmation} onChangeText={setConfirmation} placeholder="비밀번호를 한 번 더 입력" password /></View>
-      <View style={styles.agreements}>
-        <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: terms }} onPress={() => setTerms(!terms)} style={styles.agreementRow}>
-          <View style={[styles.checkbox, terms && styles.checkboxChecked]}>{terms && <Icon name="check" color="#FFFFFF" size={16} />}</View>
-          <Text style={[s.text, styles.agreementText]}>이용약관 동의 (필수)</Text><Icon name="next" color={colors.muted} size={16} />
-        </Pressable>
-        <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: privacy }} onPress={() => setPrivacy(!privacy)} style={styles.agreementRow}>
-          <View style={[styles.checkbox, privacy && styles.checkboxChecked]}>{privacy && <Icon name="check" color="#FFFFFF" size={16} />}</View>
-          <Text style={[s.text, styles.agreementText]}>개인정보 수집·이용 동의 (필수)</Text><Icon name="next" color={colors.muted} size={16} />
-        </Pressable>
+      <View style={styles.signupConfirmation}>
+        <AccountField label="비밀번호 확인" value={form.passwordConfirmation} onChangeText={value => update('passwordConfirmation', value)} placeholder="비밀번호를 한 번 더 입력" password disabled={busy} error={errors.passwordConfirmation} />
       </View>
-      <View style={styles.signupSubmit}><Action label="가입하기" disabled style={styles.authButton} /></View>
+      <View style={styles.agreements}>
+        <Text style={s.muted}>개발·시연용 가입입니다. 두 임시 문서를 확인해 주세요.</Text>
+        {loading && <Text accessibilityLiveRegion="polite" style={s.muted}>가입 문서를 불러오는 중입니다.</Text>}
+        <SignupFieldError message={documentError} />
+        {documents.map(document => {
+          const field = document.kind === 'TERMS' ? 'terms' : 'privacy';
+          const label = document.kind === 'TERMS' ? '이용약관' : '개인정보 수집·이용 동의';
+          const checked = accepted[document.kind] === document;
+          return <View key={document.kind}>
+            <View style={styles.agreementRow}>
+              <Pressable accessibilityRole="checkbox" accessibilityState={{ checked, disabled: busy || stale }} disabled={busy || stale}
+                onPress={() => {
+                  setAccepted(previous => ({ ...previous, [document.kind]: checked ? undefined : document }));
+                  setErrors(previous => ({ ...previous, [field]: undefined }));
+                }} style={styles.agreementCheck}>
+                <View style={[styles.checkbox, checked && styles.checkboxChecked]}>{checked && <Icon name="check" color="#FFFFFF" size={16} />}</View>
+                <Text style={[s.text, styles.agreementText]}>{label} (필수)</Text>
+              </Pressable>
+              <Pressable accessibilityRole="button" accessibilityLabel={label + ' 내용 보기'} disabled={stale}
+                onPress={() => setOpenDocument(document)} hitSlop={6}>
+                <Text style={[s.text, styles.textLink]}>내용 보기</Text>
+              </Pressable>
+            </View>
+            <SignupFieldError message={errors[field]} />
+          </View>;
+        })}
+        {!!(documentError || stale) && <Action label="가입 문서 다시 불러오기" tone="secondary" onPress={() => void loadDocuments()} />}
+      </View>
+      <SignupFieldError message={errors.request} />
+      <View style={styles.signupSubmit}>
+        <Action label={busy ? '가입 중…' : '가입하기'} disabled={busy || loading || stale || documents.length !== 2}
+          onPress={() => void submit()} style={styles.authButton} />
+      </View>
       <View style={styles.authFooter}><Text style={[s.text, styles.smallText]}>이미 계정이 있으신가요?</Text><Pressable accessibilityRole="button" onPress={() => app.navigate({ screen: 'login' })}><Text style={[s.text, styles.textLink]}>로그인</Text></Pressable></View>
+      {openDocument && <Modal visible transparent animationType="fade" onRequestClose={() => setOpenDocument(null)}>
+        <View style={styles.policyBackdrop}>
+          <View accessibilityViewIsModal style={styles.policyCard}>
+            <Text accessibilityRole="header" style={s.subtitle}>{openDocument.title}</Text>
+            <Text style={s.muted}>문서 버전 {openDocument.version}</Text>
+            <ScrollView style={styles.policyScroll}>
+              <Text selectable style={[s.text, styles.policyBody]}>{openDocument.body}</Text>
+            </ScrollView>
+            <Action label="닫기" onPress={() => setOpenDocument(null)} />
+          </View>
+        </View>
+      </Modal>}
     </ScrollView>
   );
+}
+
+/** 필드에 해당하는 오류를 입력 바로 아래에 표시합니다. */
+function SignupFieldError({ message }: { message?: string }) {
+  return message ? <Text accessibilityRole="alert" style={s.error}>{message}</Text> : null;
 }
 // #endregion
 
@@ -403,10 +518,15 @@ const styles = StyleSheet.create({
   signupConfirmation: { marginTop: 22 },
   agreements: { marginTop: 22, gap: 4 },
   agreementRow: { minHeight: 36, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  agreementCheck: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 44 },
   agreementText: { fontSize: 13, flex: 1 },
   checkbox: { width: 22, height: 22, borderRadius: 6, borderWidth: 1.5, borderColor: colors.green, alignItems: 'center', justifyContent: 'center' },
   checkboxChecked: { backgroundColor: colors.green },
   signupSubmit: { marginTop: 'auto', paddingTop: 32 },
+  policyBackdrop: { flex: 1, backgroundColor: 'rgba(12,29,19,.50)', alignItems: 'center', justifyContent: 'center', padding: 20 },
+  policyCard: { width: '100%', maxWidth: 440, maxHeight: '82%', backgroundColor: '#fff', borderRadius: 20, padding: 20, gap: 12 },
+  policyScroll: { flexGrow: 0, flexShrink: 1 },
+  policyBody: { lineHeight: 23 },
   myPage: { padding: 20, paddingTop: 16, paddingBottom: 24, backgroundColor: '#FFFFFF' },
   profileRow: { flexDirection: 'row', alignItems: 'center', gap: 18 },
   avatar: { width: 64, height: 64, borderRadius: 32, backgroundColor: '#EEE3D3', alignItems: 'center', justifyContent: 'center' },

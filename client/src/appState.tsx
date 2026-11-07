@@ -54,6 +54,8 @@ export interface Route {
   workId?: string;
   /** 본문에서 선택한 공개 회차의 식별자입니다. 숫자 순서로 해석하지 않습니다. */
   chapterId?: string;
+  /** 가입 성공 후 로그인 입력란에 채울 이메일입니다. */
+  registeredEmail?: string;
 }
 // #endregion
 

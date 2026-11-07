@@ -182,6 +182,61 @@ paths:
           $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/ServerError'
+  /api/auth/terms:
+    get:
+      tags: [회원 인증]
+      operationId: getSignupTerms
+      summary: 가입 화면에 표시할 현재 시연 문서 두 종류를 조회합니다.
+      responses:
+        '200':
+          description: 이용약관과 개인정보 수집·이용 동의 원문입니다.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [documents]
+                properties:
+                  documents:
+                    type: array
+                    minItems: 2
+                    maxItems: 2
+                    items:
+                      $ref: '#/components/schemas/SignupDocument'
+        '503':
+          $ref: '#/components/responses/SignupDisabled'
+  /api/auth/signup:
+    post:
+      tags: [회원 인증]
+      operationId: signupMember
+      summary: 현재 시연 문서에 동의한 일반 회원 계정을 생성합니다.
+      description: 회원과 읽기 설정, 동의 원문을 함께 저장합니다. 성공 후 기존 익명 회원 세션을 유지합니다.
+      security: [{MemberSessionCookie: [], MemberCsrfToken: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignupInput'
+      responses:
+        '201':
+          description: 새 회원의 표시 정보입니다.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [id, email, nickname]
+                properties:
+                  id: {type: string, pattern: '^[1-9][0-9]*$'}
+                  email: {type: string, maxLength: 255}
+                  nickname: {type: string, maxLength: 30}
+        '400':
+          $ref: '#/components/responses/SignupFieldError'
+        '403': {description: 회원 CSRF 검증 실패}
+        '409':
+          $ref: '#/components/responses/SignupFieldError'
+        '503':
+          $ref: '#/components/responses/SignupDisabled'
   /api/auth/login:
     post:
       tags: [회원 인증]
@@ -625,6 +680,18 @@ components:
       schema: {type: integer, format: int64}
       example: 1
   responses:
+    SignupFieldError:
+      description: 입력 또는 문서 버전과 중복 여부를 확인하십시오.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SignupError'
+    SignupDisabled:
+      description: 시연 가입을 제공하지 않는 환경입니다.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SignupError'
     CreatedId:
       description: 새 자료를 생성했습니다.
       content:
@@ -668,6 +735,58 @@ components:
           schema:
             $ref: '#/components/schemas/HttpError'
   schemas:
+    SignupDocument:
+      type: object
+      additionalProperties: false
+      required: [kind, version, title, body, contentHash, temporary]
+      properties:
+        kind: {type: string, enum: [TERMS, PRIVACY]}
+        version: {type: string, maxLength: 80}
+        title: {type: string, maxLength: 255}
+        body: {type: string, description: LF를 사용하는 원문 전체입니다.}
+        contentHash: {type: string, pattern: '^[0-9a-f]{64}$', description: 본문 UTF-8의 SHA-256입니다.}
+        temporary: {type: boolean, enum: [true]}
+    SignupInput:
+      type: object
+      additionalProperties: false
+      required: [email, nickname, password, passwordConfirmation, consents]
+      properties:
+        email: {type: string, description: 공백을 정리한 뒤 형식과 255자 한도를 검사합니다.}
+        nickname: {type: string, description: 공백을 정리한 뒤 UTF-16 기준 30자까지 허용합니다.}
+        password: {type: string, format: password, minLength: 8, description: 영문과 숫자를 포함하며 UTF-8로 최대 72바이트입니다.}
+        passwordConfirmation: {type: string, format: password}
+        consents:
+          type: array
+          minItems: 2
+          maxItems: 2
+          description: TERMS와 PRIVACY가 하나씩 필요합니다. 버전과 해시는 현재 응답 값과 일치해야 합니다.
+          items:
+            type: object
+            additionalProperties: false
+            required: [kind, version, contentHash, agreed]
+            properties:
+              kind: {type: string, enum: [TERMS, PRIVACY]}
+              version: {type: string, maxLength: 80}
+              contentHash: {type: string, pattern: '^[0-9a-f]{64}$'}
+              agreed: {type: boolean, enum: [true]}
+    SignupError:
+      type: object
+      additionalProperties: false
+      required: [message, fieldErrors]
+      properties:
+        message: {type: string}
+        fieldErrors:
+          type: object
+          description: 입력 오류가 있는 필드만 포함합니다.
+          additionalProperties: false
+          properties:
+            email: {type: string}
+            nickname: {type: string}
+            password: {type: string}
+            passwordConfirmation: {type: string}
+            terms: {type: string}
+            privacy: {type: string}
+            request: {type: string}
     ReaderChapter:
       type: object
       required: [id, title, number]

@@ -418,4 +418,19 @@ UTF-8 BOM 하나를 제외하고 `CRLF`/`CR`을 `LF`로 정규화한 문자열�
 - POST /api/auth/logout: 같은 회원 세션의 CSRF 필요. 204 후 기존 세션 ID 재사용 불가, 관리자 세션은 유지한다.
 - MEMBER_SESSION은 HttpOnly/SameSite=Strict/Path=/api이며 30분 미사용 만료다. 웹은 same-site API 구성, 네이티브는 플랫폼 쿠키 저장소를 사용한다. 쿠키·비밀번호를 JS 영구 저장소에 저장하지 않는다.
 - 앱은 서버 확인 후에만 로그인 성공으로 표시하고 계정 변경 시 이전 요청을 취소한다. 늦은 이전 응답은 새 계정에 반영하지 않는다. 로그아웃 실패는 성공으로 표시하지 않는다.
-- #19 약관·가입은 선택 대기 상태이며 이 기능에 포함하지 않는다. 네이티브 실기기 쿠키 동작은 별도 확인이 필요하다.
+- 네이티브 실기기 쿠키 동작은 별도 확인이 필요하다.
+
+## 시연 회원가입 (#19)
+
+| 메서드와 경로 | 결과 |
+| --- | --- |
+| `GET /api/auth/terms` | 200에 `{documents: [...]}` 반환. `TERMS`와 `PRIVACY` 문서의 kind, version, title, body, contentHash, temporary(true)를 제공한다. |
+| `POST /api/auth/signup` | 같은 회원 세션의 CSRF 토큰과 JSON을 받는다. 201에 `{id, email, nickname}`을 반환하고 로그인 화면으로 이동한다. |
+
+가입 JSON 필수값은 `email`, `nickname`, `password`, `passwordConfirmation`, `consents`다. `consents`는 문서별 `{kind, version, contentHash, agreed: true}` 두 항목을 갖는다. 알 수 없는 속성, 중복 문서 종류와 현재 문서와 다른 버전 또는 해시는 거절한다. 해시는 LF로 통일한 응답 본문 전체의 UTF-8 SHA-256 소문자 64자리다.
+
+이메일은 앞뒤 공백을 제거하고 소문자로 변환한 뒤 도메인의 점과 형식, 255자 한도를 검사한다. 닉네임은 공백을 정리한 뒤 UTF-16 기준 30자까지 허용한다. 비밀번호는 영문·숫자를 포함한 유니코드 문자 8개 이상이며 UTF-8 기준 72바이트까지다. 비밀번호와 확인값은 그대로 비교한다. 계정은 `USER/ACTIVE`로 생성되고 기본 읽기 설정, 문서별 원문과 동의 시각이 같은 트랜잭션으로 저장된다.
+
+입력·미동의는 400, 중복 이메일·닉네임·구버전 문서·이미 로그인한 회원의 가입은 409다. 400/409 JSON은 `{message, fieldErrors}`이며 오류 키는 `email`, `nickname`, `password`, `passwordConfirmation`, `terms`, `privacy`, `request`다. 문서 변경 시 최신 내용을 다시 읽고 체크한다. CSRF 실패는 403이다.
+
+`SIGNUP_DEMO_ENABLED=true`를 설정한 개발·검증 환경에서 두 API를 제공한다. 기본 설정에서는 약관 조회와 CSRF·JSON 형식이 유효한 가입 요청이 503을 반환한다. 문서·가입 응답은 `Cache-Control: no-store`를 사용한다. 201 이후에도 회원 인증 상태는 익명이다. 정식 약관 교체와 기존 동의 보존·재동의는 [#96](https://github.com/whitetiger0804/Mobtwig/issues/96)에서 다룬다.
