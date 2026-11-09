@@ -35,7 +35,7 @@ export type Screen =
   | 'reviews' | 'reviewWrite' | 'reviewComments' | 'login' | 'signup' | 'my'
   | 'account' | 'password' | 'withdraw' | 'readingSettings' | 'filters' | 'share'
   | 'libraryManage' | 'postMenu' | 'report' | 'commentCompose' | 'events' | 'purchaseHistory'
-  | 'notifications' | 'webFallback';
+  | 'notifications' | 'webFallback' | 'favorites';
 
 /**
  * 화면 이동에 필요한 화면 이름, 선택 탭과 작품 식별자입니다.

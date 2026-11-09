@@ -306,7 +306,8 @@ function SignupFieldError({ message }: { message?: string }) {
  * @remarks
  * 회원 이름은 서버 세션에서 읽고 통계·작품은 {@link EmptyState}로 표시합니다.
  * 내 작품 영역에는 고정된 표지 자리나 작품 개수를 만들지 않습니다.
- * 서재·독서 기록·읽기 설정의 화면 이동만 제공하며 관리와 구매는 비활성화합니다.
+ * 서재·즐겨찾기·독서 기록·읽기 설정·구매 내역 화면 이동을 제공합니다. 작품 관리와
+ * 즐겨찾기 데이터 조회는 수행하지 않습니다.
  *
  * @returns 마이 시안의 회원·통계·작품·메뉴 영역입니다.
  */
@@ -324,7 +325,7 @@ export function MyScreen() {
       <View style={styles.stats}>
         <Pressable accessibilityRole="button" onPress={() => app.navigate({ screen: 'library' })} style={styles.stat}><EmptyState compact title="—" style={styles.statEmpty} /><Text style={[s.text, styles.statLabel]}>내 서재</Text></Pressable>
         <View style={styles.statDivider} />
-        <Pressable accessibilityRole="button" accessibilityState={{ disabled: true }} disabled style={styles.stat}><EmptyState compact title="—" style={styles.statEmpty} /><Text style={[s.text, styles.statLabel]}>즐겨찾기</Text></Pressable>
+        <Pressable accessibilityRole="button" onPress={() => app.navigate({ screen: 'favorites' })} style={styles.stat}><EmptyState compact title="—" style={styles.statEmpty} /><Text style={[s.text, styles.statLabel]}>즐겨찾기</Text></Pressable>
         <View style={styles.statDivider} />
         <Pressable accessibilityRole="button" onPress={() => app.navigate({ screen: 'records' })} style={styles.stat}><EmptyState compact title="—" style={styles.statEmpty} /><Text style={[s.text, styles.statLabel]}>독서 기록</Text></Pressable>
       </View>
@@ -354,6 +355,27 @@ export function PurchaseHistoryScreen() {
       <EmptyState
         title="구매 내역이 없어요"
         description="구매한 작품이 생기면 이곳에서 확인할 수 있어요."
+      />
+      <Action label="작품 둘러보기" onPress={() => app.navigate({ screen: 'home', kind: 'all' }, true)} />
+    </View>
+  );
+}
+
+/**
+ * 즐겨찾기 작품 데이터가 연결되지 않은 상태를 안내합니다.
+ *
+ * @remarks
+ * 즐겨찾기 목록을 조회하거나 변경하지 않고 빈 상태와 홈 이동만 제공합니다.
+ *
+ * @returns 즐겨찾기 미연동 빈 상태 화면입니다.
+ */
+export function FavoritesScreen() {
+  const app = useApp();
+  return (
+    <View style={s.page}>
+      <EmptyState
+        title="즐겨찾기한 작품이 없어요"
+        description="마음에 드는 작품을 즐겨찾기에 담으면 이곳에서 모아볼 수 있어요."
       />
       <Action label="작품 둘러보기" onPress={() => app.navigate({ screen: 'home', kind: 'all' }, true)} />
     </View>
