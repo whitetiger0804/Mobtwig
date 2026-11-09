@@ -99,6 +99,8 @@ export interface AppContextValue {
   searchHistory: string[];
   /** 검색어를 최근 검색 기록 맨 앞에 추가하고 중복을 정리합니다. */
   addSearchHistory: (query: string) => void;
+  /** 지정한 검색어 하나를 최근 검색 기록에서 제거합니다. */
+  removeSearchHistory: (query: string) => void;
   /** 최근 검색 기록을 모두 비웁니다. */
   clearSearchHistory: () => void;
   /**
@@ -185,6 +187,10 @@ export function AppProvider({ children }: {
     setSearchHistory(previous => [normalized, ...previous.filter(item => item.toLocaleLowerCase() !== normalized.toLocaleLowerCase())].slice(0, 8));
   }, []);
 
+  const removeSearchHistory = useCallback((query: string) => {
+    setSearchHistory(previous => previous.filter(item => item !== query));
+  }, []);
+
   const clearSearchHistory = useCallback(() => setSearchHistory([]), []);
 
   /**
@@ -216,7 +222,7 @@ export function AppProvider({ children }: {
   }, [back, overlay, stack.length, baseRoute.screen]);
 
   return (
-    <AppContext.Provider value={{ route: overlay ?? baseRoute, baseRoute, overlay, readingPreferences, setReadingPreferences, searchHistory, addSearchHistory, clearSearchHistory, navigate, back }}>
+    <AppContext.Provider value={{ route: overlay ?? baseRoute, baseRoute, overlay, readingPreferences, setReadingPreferences, searchHistory, addSearchHistory, removeSearchHistory, clearSearchHistory, navigate, back }}>
       {children}
     </AppContext.Provider>
   );
