@@ -333,8 +333,29 @@ export function MyScreen() {
       <View style={styles.myMenus}>
         <AccountMenu title="읽기 설정" subtitle="글꼴 · 글자 크기 · 배경 · 읽기 효과" icon="book" onPress={() => app.navigate({ screen: 'readingSettings' })} />
         <View style={styles.menuDivider} />
-        <AccountMenu title="구매 내역" subtitle="구매한 작품과 결제 내역" icon="receipt" warm disabled />
+        <AccountMenu title="구매 내역" subtitle="구매한 작품과 결제 내역" icon="receipt" warm onPress={() => app.navigate({ screen: 'purchaseHistory' })} />
       </View>
+    </View>
+  );
+}
+
+/**
+ * 구매 기록이 아직 연결되지 않은 상태를 안내합니다.
+ *
+ * @remarks
+ * 구매 데이터/API를 조회하지 않고 빈 상태와 홈 이동만 제공합니다.
+ *
+ * @returns 구매내역 미연동 빈 상태 화면입니다.
+ */
+export function PurchaseHistoryScreen() {
+  const app = useApp();
+  return (
+    <View style={s.page}>
+      <EmptyState
+        title="구매 내역이 없어요"
+        description="구매한 작품이 생기면 이곳에서 확인할 수 있어요."
+      />
+      <Action label="작품 둘러보기" onPress={() => app.navigate({ screen: 'home', kind: 'all' }, true)} />
     </View>
   );
 }

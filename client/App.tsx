@@ -8,7 +8,7 @@ import { MemberAuthProvider } from './src/memberAuth';
 import { ServerConnectionProvider } from './src/serverConnection';
 import { Action, colors, Icon, IconButton, s, Title } from './src/ui';
 import { DetailScreen, FallbackScreen, FiltersScreen, HomeScreen, LibraryManageScreen, LibraryScreen, RecentScreen, RecordsScreen, SearchScreen, ShareScreen } from './src/CatalogScreens';
-import { AccountScreen, LoginScreen, MyScreen, PasswordScreen, ReadingSettingsScreen, SignupScreen, WithdrawScreen } from './src/AccountScreens';
+import { AccountScreen, LoginScreen, MyScreen, PasswordScreen, PurchaseHistoryScreen, ReadingSettingsScreen, SignupScreen, WithdrawScreen } from './src/AccountScreens';
 import { CommentComposeScreen, CommunityScreen, PostMenuScreen, PostScreen, ReportScreen, WritePostScreen } from './src/CommunityScreens';
 import { ReviewCommentsScreen, ReviewsScreen, ReviewWriteScreen } from './src/ReviewScreens';
 import { ImageFullScreen, ReadingScreen, WorldScreen, WorldTermsScreen } from './src/ReadingScreens';
@@ -23,7 +23,7 @@ const titles: Record<Screen, string> = {
   community: '커뮤니티', post: '게시글', writePost: '글쓰기',
   reviews: '독자 리뷰', reviewWrite: '리뷰 쓰기', reviewComments: '댓글',
   login: '로그인', signup: '회원가입', my: '마이', account: '계정 설정',
-  password: '비밀번호 변경', withdraw: '회원 탈퇴', readingSettings: '읽기 설정',
+  password: '비밀번호 변경', withdraw: '회원 탈퇴', readingSettings: '읽기 설정', purchaseHistory: '구매 내역',
   filters: '검색 설정', share: '공유', libraryManage: '서재 관리',
   postMenu: '게시글 메뉴', report: '게시글 신고', commentCompose: '댓글 작성',
   events: '이벤트', notifications: '알림', webFallback: '공유 작품',
@@ -71,6 +71,7 @@ function Content({ route }: {
     case 'login': return <LoginScreen />;
     case 'signup': return <SignupScreen />;
     case 'my': return <MyScreen />;
+    case 'purchaseHistory': return <PurchaseHistoryScreen />;
     case 'account': return <AccountScreen />;
     case 'password': return <PasswordScreen />;
     case 'withdraw': return <WithdrawScreen />;
