@@ -12,6 +12,7 @@ import { AccountScreen, LoginScreen, MyScreen, PasswordScreen, ReadingSettingsSc
 import { CommentComposeScreen, CommunityScreen, PostMenuScreen, PostScreen, ReportScreen, WritePostScreen } from './src/CommunityScreens';
 import { ReviewCommentsScreen, ReviewsScreen, ReviewWriteScreen } from './src/ReviewScreens';
 import { ImageFullScreen, ReadingScreen, WorldScreen, WorldTermsScreen } from './src/ReadingScreens';
+import { NotificationsScreen } from './src/NotificationScreens';
 // #endregion
 
 // #region 화면 제목
@@ -82,12 +83,7 @@ function Content({ route }: {
         <EmptyState title="표시할 이벤트가 없습니다." />
       </View>
     );
-    case 'notifications': return (
-      <View style={s.page}>
-        <Title>알림</Title>
-        <EmptyState title="표시할 알림이 없습니다." />
-      </View>
-    );
+    case 'notifications': return <NotificationsScreen />;
   }
 }
 // #endregion
