@@ -1,5 +1,6 @@
 // #region 의존성 가져오기
 import { useEffect, useState } from 'react';
+import { parseHomeResponse, type SduiSection } from './homeSchema';
 import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { kindLabel, useApp, type Route } from './appState';
 import { EmptyState } from './EmptyState';
@@ -48,6 +49,29 @@ export function SearchScreen({ route }: {
   const [kind, setKind] = useState(route.kind);
   const [query, setQuery] = useState('');
   const [genre, setGenre] = useState('로맨스');
+  const apiUrl = useApiUrl();
+  const [recommended, setRecommended] = useState<Extract<SduiSection, { type: 'workShelf' }>['items'] | null>(null);
+  const [recommendError, setRecommendError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setRecommended(null);
+    setRecommendError(null);
+    fetch(`${apiUrl}/sdui/home?kind=all`, { signal: controller.signal })
+      .then(result => {
+        if (!result.ok) throw new Error(`서버가 요청을 처리하지 못했습니다. (HTTP ${result.status})`);
+        return result.json();
+      })
+      .then(parseHomeResponse)
+      .then(home => {
+        const shelf = home.sections.find(section => section.id === 'recommended-works');
+        if (!controller.signal.aborted) setRecommended(shelf?.type === 'workShelf' ? shelf.items : []);
+      })
+      .catch((reason: unknown) => {
+        if (!controller.signal.aborted) setRecommendError(reason instanceof Error ? reason.message : '서버 연결을 확인해 주십시오.');
+      });
+    return () => controller.abort();
+  }, [apiUrl]);
 
   return <View style={s.grow}>
     <View style={c.searchTop}>
@@ -67,8 +91,24 @@ export function SearchScreen({ route }: {
           <Title action={<Pressable disabled accessibilityRole="button" accessibilityState={{ disabled: true }}><Text style={s.muted}>전체 삭제</Text></Pressable>}>검색 기록</Title>
           <EmptyState compact title="검색 기록이 없습니다." />
         </View>
-        <View style={c.section}><Title>추천 작품</Title><EmptyState title="표시할 추천 작품이 없습니다." /></View>
-      </> : kind === 'all' ? <>
+              <View style={c.section}>
+          <Title>추천 작품</Title>
+          {recommendError !== null
+            ? <EmptyState title="추천 작품을 불러오지 못했습니다." description={recommendError} />
+            : recommended === null
+              ? <ActivityIndicator color={colors.green} />
+              : recommended.length === 0
+                ? <EmptyState title="표시할 추천 작품이 없습니다." />
+                : <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={c.recommendRow}>
+                    {recommended.map(work => (
+                      <Pressable key={work.id} accessibilityRole="button" accessibilityLabel={work.title + ' 상세 보기'} onPress={() => navigate({ screen: 'detail', workId: work.id })} style={c.recommendItem}>
+                        <Image accessibilityLabel={`${work.title} 표지`} source={{ uri: new URL(work.imageUrl, `${apiUrl}/`).href }} resizeMode="cover" style={c.recommendCover} />
+                        <Text style={c.recommendTitle} numberOfLines={2}>{work.title}</Text>
+                      </Pressable>
+                    ))}
+                  </ScrollView>}
+        </View>
+                  </> : kind === 'all' ? <>
         <Text style={s.subtitle}>통합 검색 결과</Text>
         <View style={c.section}>
           <Title action={<IconButton icon="next" label="도서 검색 결과 더 보기" onPress={() => setKind('book')} />}>도서</Title>
@@ -91,6 +131,7 @@ export function SearchScreen({ route }: {
         <EmptyState title="표시할 검색 결과가 없습니다." />
       </>}
     </ScrollView>
+
   </View>;
 }
 
@@ -399,6 +440,10 @@ const c = StyleSheet.create({
   horizontalStrip: { flexGrow: 0, flexShrink: 0 },
   selectedLabel: { fontWeight: '700', color: colors.green },
   section: { gap: 8 },
+  recommendRow: { gap: 16 },
+recommendItem: { width: 120, gap: 8 },
+recommendCover: { width: '100%', aspectRatio: 2 / 3, borderRadius: 7, backgroundColor: colors.pale },
+recommendTitle: { fontSize: 14, fontWeight: '700', color: colors.ink },
   searchTop: { paddingTop: 16, paddingHorizontal: 20, backgroundColor: '#fff' },
   searchField: { height: 52, borderRadius: 26, backgroundColor: '#F0F1E8', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 7, marginBottom: 16 },
   searchInput: { flex: 1, minWidth: 0, fontSize: 14, color: colors.ink, paddingVertical: 12 },
