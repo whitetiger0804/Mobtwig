@@ -59,6 +59,18 @@ export interface Route {
 }
 // #endregion
 
+/** 독서 화면에서 즉시 반영하는 앱 실행 중 읽기 설정입니다. */
+export interface ReadingPreferences {
+  /** 독서 화면 배경 테마입니다. */
+  theme: '크림' | '연노랑' | '연회색' | '다크';
+  /** 기기 기본 명조·고딕 계열 중 선택한 글꼴입니다. */
+  font: string;
+  /** 글자 크기 단계입니다. 0부터 4까지입니다. */
+  size: number;
+}
+
+const defaultReadingPreferences: ReadingPreferences = { theme: '크림', font: '기본 명조', size: 2 };
+
 // #region 화면 컨텍스트
 /** 바탕 화면을 유지한 채 하단 패널로 여는 화면 이름의 집합입니다. */
 const overlays = new Set<Screen>([
@@ -79,6 +91,10 @@ export interface AppContextValue {
   baseRoute: Route;
   /** 열린 하단 패널입니다. 패널이 닫혀 있으면 `null`입니다. */
   overlay: Route | null;
+  /** 현재 앱 실행 중 적용된 독서 설정입니다. */
+  readingPreferences: ReadingPreferences;
+  /** 독서 설정 패널에서 적용한 설정을 갱신합니다. */
+  setReadingPreferences: (preferences: ReadingPreferences) => void;
   /**
    * 일반 화면으로 이동하거나 현재 화면 위에 하단 패널을 엽니다.
    *
@@ -127,6 +143,7 @@ export function AppProvider({ children }: {
 }) {
   const [stack, setStack] = useState<Route[]>([{ screen: 'home', kind: 'all' }]);
   const [overlay, setOverlay] = useState<Route | null>(null);
+  const [readingPreferences, setReadingPreferences] = useState(defaultReadingPreferences);
   const baseRoute = stack[stack.length - 1];
   const { state: auth } = useMemberAuth();
   useEffect(() => {
@@ -184,7 +201,7 @@ export function AppProvider({ children }: {
   }, [back, overlay, stack.length, baseRoute.screen]);
 
   return (
-    <AppContext.Provider value={{ route: overlay ?? baseRoute, baseRoute, overlay, navigate, back }}>
+    <AppContext.Provider value={{ route: overlay ?? baseRoute, baseRoute, overlay, readingPreferences, setReadingPreferences, navigate, back }}>
       {children}
     </AppContext.Provider>
   );

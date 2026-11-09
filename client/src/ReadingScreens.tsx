@@ -1,6 +1,6 @@
 // #region 의존성 가져오기
 import { useEffect, useRef, useState, type ComponentRef } from 'react';
-import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from './appState';
 import { useApiUrl } from './serverConnection';
@@ -32,6 +32,15 @@ function TextReader() {
   const app = useApp(), apiUrl = useApiUrl();
   const insets = useSafeAreaInsets();
   const { workId, chapterId } = app.baseRoute;
+  const readingPalette = {
+    '크림': { background: '#F7F8F2', text: colors.ink, muted: colors.muted },
+    '연노랑': { background: '#FFF8DE', text: '#3D3526', muted: '#82765D' },
+    '연회색': { background: '#ECEEF1', text: '#29323B', muted: '#68717C' },
+    '다크': { background: '#233B2F', text: '#F5F1E6', muted: '#C5CEC5' },
+  }[app.readingPreferences.theme];
+  const bodySize = [13, 15, 17, 19, 21][app.readingPreferences.size] ?? 17;
+  const serif = ['기본 명조', '나눔명조', '고운바탕', '함렛'].includes(app.readingPreferences.font);
+  const bodyFont = serif ? Platform.select({ ios: 'Georgia', default: 'serif' }) : Platform.select({ ios: 'System', default: 'sans-serif' });
   const [data, setData] = useState<ChapterText | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0), [contentsOpen, setContentsOpen] = useState(false);
@@ -52,25 +61,25 @@ function TextReader() {
     if (!data || id === data.chapter.id) { setContentsOpen(false); return; }
     app.navigate({ screen: 'reader', workId: data.workId, chapterId: id, kind: data.kind }, false, true);
   };
-  return <View style={styles.reader}>
-    <View style={styles.readerHeader}>
+  return <View style={[styles.reader, { backgroundColor: readingPalette.background }]}>
+    <View style={[styles.readerHeader, { backgroundColor: readingPalette.background }]}>
       <View style={styles.roundTool}><IconButton icon="back" label="읽기 화면에서 돌아가기" onPress={app.back} /></View>
-      <Text numberOfLines={1} style={[s.subtitle, styles.readerTitle]}>{data?.workTitle ?? '독서'}</Text>
+      <Text numberOfLines={1} style={[s.subtitle, styles.readerTitle, { color: readingPalette.text }]}>{data?.workTitle ?? '독서'}</Text>
       <View style={styles.roundTool}><IconButton icon="list" label="목차" disabled={!data} onPress={() => setContentsOpen(true)} /></View>
       <View style={styles.roundTool}><IconButton icon="bookmark" label="밑줄과 책갈피" onPress={() => app.navigate({ screen: 'records', workId })} /></View>
       <Pressable accessibilityRole="button" accessibilityLabel="읽기 설정" onPress={() => app.navigate({ screen: 'readingSettings' })} style={styles.roundTool}><Text style={[s.text, styles.typeTool]}>가</Text></Pressable>
     </View>
     <ScrollView ref={scroll} contentContainerStyle={styles.readerBody} showsVerticalScrollIndicator={false}>
-      {error ? <View accessibilityLiveRegion="polite"><Text style={s.subtitle}>본문을 불러오지 못했습니다.</Text><Text style={s.error}>{error}</Text>{workId && chapterId && <Action label="다시 불러오기" onPress={() => setAttempt(v => v + 1)} />}{workId && <Action label="작품 상세로" onPress={() => app.navigate({ screen: 'detail', workId }, false, true)} />}</View>
-        : !data ? <View accessibilityLiveRegion="polite"><ActivityIndicator color={colors.green} /><Text style={s.muted}>본문을 불러오고 있습니다.</Text></View>
-        : <View testID="chapter-text"><Text style={s.muted}>공개 목차 {data.currentIndex + 1} / {data.contents.length}</Text><Text accessibilityRole="header" style={[s.title, { marginVertical: 24 }]}>{data.chapter.number}{data.kind === 'novel' ? '화' : '장'} · {data.chapter.title}</Text>{data.body.length === 0 ? <EmptyState title="이 회차의 본문이 비어 있습니다." /> : <Text selectable testID="reader-body-text" style={[s.text, { fontSize: 17, lineHeight: 32 }]}>{data.body}</Text>}</View>}
+      {error ? <View accessibilityLiveRegion="polite"><Text style={[s.subtitle, { color: readingPalette.text }]}>본문을 불러오지 못했습니다.</Text><Text style={s.error}>{error}</Text>{workId && chapterId && <Action label="다시 불러오기" onPress={() => setAttempt(v => v + 1)} />}{workId && <Action label="작품 상세로" onPress={() => app.navigate({ screen: 'detail', workId }, false, true)} />}</View>
+        : !data ? <View accessibilityLiveRegion="polite"><ActivityIndicator color={colors.green} /><Text style={[s.muted, { color: readingPalette.muted }]}>본문을 불러오고 있습니다.</Text></View>
+        : <View testID="chapter-text"><Text style={[s.muted, { color: readingPalette.muted }]}>공개 목차 {data.currentIndex + 1} / {data.contents.length}</Text><Text accessibilityRole="header" style={[s.title, { marginVertical: 24, color: readingPalette.text }]}>{data.chapter.number}{data.kind === 'novel' ? '화' : '장'} · {data.chapter.title}</Text>{data.body.length === 0 ? <EmptyState title="이 회차의 본문이 비어 있습니다." tone={app.readingPreferences.theme === '다크' ? 'dark' : 'light'} /> : <Text selectable testID="reader-body-text" style={[s.text, { color: readingPalette.text, fontFamily: bodyFont, fontSize: bodySize, lineHeight: bodySize + 15 }]}>{data.body}</Text>}</View>}
     </ScrollView>
-    <View style={styles.readerFooter}><View style={styles.readerActions}>
-      <Pressable accessibilityRole="button" accessibilityLabel="이전 회차" accessibilityState={{ disabled: !selection?.previous }} disabled={!selection?.previous} onPress={() => selection?.previous && move(selection.previous.id)} style={styles.footerAction}><Icon name="back" size={14} color={selection?.previous ? colors.green : colors.muted} /><Text style={[s.text, styles.footerLabel]}>이전화</Text></Pressable>
-      <Pressable accessibilityRole="button" accessibilityLabel="현재 장 처음으로" disabled={!data} accessibilityState={{ disabled: !data }} onPress={() => scroll.current?.scrollTo({ y: 0, animated: true })} style={styles.footerAction}><Text style={[s.text, styles.footerLabel]}>현재 장</Text></Pressable>
-      <Pressable accessibilityRole="button" onPress={() => app.navigate({ screen: 'world', workId, chapterId, kind: data?.kind })} style={styles.footerAction}><Text style={[s.text, styles.footerLabel]}>세계관</Text></Pressable>
-      <Pressable accessibilityRole="button" onPress={() => app.navigate({ screen: 'reviews', workId, chapterId, kind: data?.kind })} style={styles.footerAction}><Text style={[s.text, styles.footerLabel]}>댓글</Text></Pressable>
-      <Pressable accessibilityRole="button" accessibilityLabel="다음 회차" accessibilityState={{ disabled: !selection?.next }} disabled={!selection?.next} onPress={() => selection?.next && move(selection.next.id)} style={styles.footerAction}><Text style={[s.text, styles.footerLabel]}>다음화</Text><Icon name="next" size={14} color={selection?.next ? colors.green : colors.muted} /></Pressable>
+    <View style={[styles.readerFooter, { backgroundColor: readingPalette.background, borderColor: readingPalette.muted }]}><View style={styles.readerActions}>
+      <Pressable accessibilityRole="button" accessibilityLabel="이전 회차" accessibilityState={{ disabled: !selection?.previous }} disabled={!selection?.previous} onPress={() => selection?.previous && move(selection.previous.id)} style={styles.footerAction}><Icon name="back" size={14} color={selection?.previous ? colors.green : readingPalette.muted} /><Text style={[s.text, styles.footerLabel, { color: readingPalette.text }]}>이전화</Text></Pressable>
+      <Pressable accessibilityRole="button" accessibilityLabel="현재 장 처음으로" disabled={!data} accessibilityState={{ disabled: !data }} onPress={() => scroll.current?.scrollTo({ y: 0, animated: true })} style={styles.footerAction}><Text style={[s.text, styles.footerLabel, { color: readingPalette.text }]}>현재 장</Text></Pressable>
+      <Pressable accessibilityRole="button" onPress={() => app.navigate({ screen: 'world', workId, chapterId, kind: data?.kind })} style={styles.footerAction}><Text style={[s.text, styles.footerLabel, { color: readingPalette.text }]}>세계관</Text></Pressable>
+      <Pressable accessibilityRole="button" onPress={() => app.navigate({ screen: 'reviews', workId, chapterId, kind: data?.kind })} style={styles.footerAction}><Text style={[s.text, styles.footerLabel, { color: readingPalette.text }]}>댓글</Text></Pressable>
+      <Pressable accessibilityRole="button" accessibilityLabel="다음 회차" accessibilityState={{ disabled: !selection?.next }} disabled={!selection?.next} onPress={() => selection?.next && move(selection.next.id)} style={styles.footerAction}><Text style={[s.text, styles.footerLabel, { color: readingPalette.text }]}>다음화</Text><Icon name="next" size={14} color={selection?.next ? colors.green : readingPalette.muted} /></Pressable>
     </View></View>
     <Modal visible={contentsOpen} transparent animationType="fade" onRequestClose={() => setContentsOpen(false)}>
       <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: '#0006' }}><View style={{ backgroundColor: '#fff', maxWidth: 480, width: '100%', alignSelf: 'center', maxHeight: '85%', padding: 24, paddingBottom: 24 + insets.bottom }}><Text style={s.title}>목차</Text><ScrollView showsVerticalScrollIndicator={false}>{data?.contents.map(chapter => <Pressable key={chapter.id} accessibilityRole="button" accessibilityState={{ selected: chapter.id === chapterId }} accessibilityLabel={chapter.title + ' 열기'} onPress={() => move(chapter.id)} style={{ paddingVertical: 18, borderBottomWidth: 1, borderColor: colors.line }}><Text style={s.text}>{chapter.number}{data?.kind === 'novel' ? '화' : '장'} · {chapter.title}{chapter.id === chapterId ? ' · 현재 장' : ''}</Text></Pressable>)}</ScrollView><Action label="목차 닫기" onPress={() => setContentsOpen(false)} /></View></View>
