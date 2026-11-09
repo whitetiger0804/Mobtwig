@@ -48,6 +48,11 @@ export function SearchScreen({ route }: {
   const [kind, setKind] = useState(route.kind);
   const [query, setQuery] = useState('');
   const [genre, setGenre] = useState('로맨스');
+  const recommended = [
+  { id: 'r1', title: '고요를 연습하는 시간' },
+  { id: 'r2', title: '구름섬 우체부' },
+  { id: 'r3', title: '나를 돌보는 연습' },
+];
 
   return <View style={s.grow}>
     <View style={c.searchTop}>
@@ -67,8 +72,20 @@ export function SearchScreen({ route }: {
           <Title action={<Pressable disabled accessibilityRole="button" accessibilityState={{ disabled: true }}><Text style={s.muted}>전체 삭제</Text></Pressable>}>검색 기록</Title>
           <EmptyState compact title="검색 기록이 없습니다." />
         </View>
-        <View style={c.section}><Title>추천 작품</Title><EmptyState title="표시할 추천 작품이 없습니다." /></View>
-      </> : kind === 'all' ? <>
+       <View style={c.section}>
+  <Title>추천 작품</Title>
+  {recommended.length === 0
+    ? <EmptyState title="표시할 추천 작품이 없습니다." />
+    : <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={c.recommendRow}>
+        {recommended.map(work => (
+          <View key={work.id} style={c.recommendItem}>
+            <View style={c.recommendCover} />
+            <Text style={c.recommendTitle} numberOfLines={2}>{work.title}</Text>
+          </View>
+        ))}
+      </ScrollView>}
+</View>
+                  </> : kind === 'all' ? <>
         <Text style={s.subtitle}>통합 검색 결과</Text>
         <View style={c.section}>
           <Title action={<IconButton icon="next" label="도서 검색 결과 더 보기" onPress={() => setKind('book')} />}>도서</Title>
@@ -91,6 +108,7 @@ export function SearchScreen({ route }: {
         <EmptyState title="표시할 검색 결과가 없습니다." />
       </>}
     </ScrollView>
+
   </View>;
 }
 
@@ -399,6 +417,10 @@ const c = StyleSheet.create({
   horizontalStrip: { flexGrow: 0, flexShrink: 0 },
   selectedLabel: { fontWeight: '700', color: colors.green },
   section: { gap: 8 },
+  recommendRow: { gap: 16 },
+recommendItem: { width: 160, gap: 10 },
+recommendCover: { width: 160, height: 240, borderRadius: 8, backgroundColor: colors.pale },
+recommendTitle: { fontSize: 14, fontWeight: '700', color: colors.ink },
   searchTop: { paddingTop: 16, paddingHorizontal: 20, backgroundColor: '#fff' },
   searchField: { height: 52, borderRadius: 26, backgroundColor: '#F0F1E8', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 7, marginBottom: 16 },
   searchInput: { flex: 1, minWidth: 0, fontSize: 14, color: colors.ink, paddingVertical: 12 },
