@@ -433,18 +433,19 @@ export function WithdrawScreen() {
  * 테마 미리보기, 글꼴 타일, 글자 크기와 읽기 효과 선택을 표시합니다.
  *
  * @remarks
- * 각 선택값은 패널의 임시 UI 상태입니다. 회원 설정 객체나 서버 응답을 만들지 않으며,
- * 적용 버튼은 비활성화되어 본문 설정 변경·저장을 수행하지 않습니다.
+ * 테마·글꼴 계열·글자 크기는 현재 앱 실행 중에 적용합니다. 서버 계정 설정으로
+ * 저장하지 않으며, 페이지 넘김 방식과 효과 설정은 독서 화면 지원 전까지 비활성화합니다.
  *
  * @returns 읽기 설정 시안의 미리보기와 선택 도구입니다.
  */
 export function ReadingSettingsScreen() {
-  const [theme, setTheme] = useState('크림');
-  const [font, setFont] = useState('기본 명조');
-  const [size, setSize] = useState(2);
-  const [mode, setMode] = useState('스크롤');
-  const [animation, setAnimation] = useState(true);
-  const [sound, setSound] = useState(true);
+  const app = useApp();
+  const [theme, setTheme] = useState(app.readingPreferences.theme);
+  const [font, setFont] = useState(app.readingPreferences.font);
+  const [size, setSize] = useState(app.readingPreferences.size);
+  const mode = '스크롤';
+  const animation = false;
+  const sound = false;
   return (
     <View style={styles.settingsPage}>
       <Text style={[s.title, styles.settingsTitle]}>읽기 설정</Text>
@@ -467,10 +468,11 @@ export function ReadingSettingsScreen() {
       </View>
       <Text style={[s.label, styles.settingsLabel]}>글자 크기</Text>
       <View style={styles.sizeRow}>{[13, 15, 17, 19, 21].map((fontSize, index) => <Pressable key={fontSize} accessibilityRole="radio" accessibilityLabel={`글자 크기 ${index + 1}단계`} accessibilityState={{ checked: size === index }} onPress={() => setSize(index)} style={[styles.sizeOption, size === index && styles.sizeSelected]}><Text style={[s.text, { fontSize }, size === index && styles.selectedText]}>가</Text></Pressable>)}</View>
-      <View style={styles.settingRow}><Text numberOfLines={1} style={[s.text, styles.settingName]}>읽기 방식</Text><View style={styles.modeRow}>{['스크롤', '책장'].map(label => <Pressable key={label} accessibilityRole="radio" accessibilityState={{ checked: mode === label }} onPress={() => setMode(label)} style={[styles.modeOption, mode === label && styles.modeSelected]}><Text numberOfLines={1} style={[s.text, styles.modeLabel, mode === label && styles.lightText]}>{label}</Text></Pressable>)}</View></View>
-      <View style={styles.settingRow}><Text numberOfLines={1} style={[s.text, styles.settingName]}>페이지 전환 애니메이션</Text><Switch accessibilityLabel="페이지 전환 애니메이션" value={animation} onValueChange={setAnimation} trackColor={{ false: '#E3E8DC', true: colors.green }} thumbColor="#FFFFFF" /></View>
-      <View style={styles.settingRow}><Text numberOfLines={1} style={[s.text, styles.settingName]}>페이지 전환 효과음</Text><Switch accessibilityLabel="페이지 전환 효과음" value={sound} onValueChange={setSound} trackColor={{ false: '#E3E8DC', true: colors.green }} thumbColor="#FFFFFF" /></View>
-      <Action label="적용" disabled style={styles.applyButton} />
+      <View style={styles.settingRow}><Text numberOfLines={1} style={[s.text, styles.settingName, styles.unsupportedSetting]}>읽기 방식</Text><View style={styles.modeRow}>{['스크롤', '책장'].map(label => <Pressable key={label} disabled accessibilityRole="radio" accessibilityState={{ checked: mode === label, disabled: true }} style={[styles.modeOption, styles.unsupportedSetting, mode === label && styles.modeSelected]}><Text numberOfLines={1} style={[s.text, styles.modeLabel, styles.unsupportedSetting, mode === label && styles.lightText]}>{label}</Text></Pressable>)}</View></View>
+      <View style={styles.settingRow}><Text numberOfLines={1} style={[s.text, styles.settingName, styles.unsupportedSetting]}>페이지 전환 애니메이션</Text><Switch disabled accessibilityLabel="페이지 전환 애니메이션" accessibilityState={{ disabled: true }} value={animation} trackColor={{ false: '#E3E8DC', true: colors.green }} thumbColor="#FFFFFF" /></View>
+      <View style={styles.settingRow}><Text numberOfLines={1} style={[s.text, styles.settingName, styles.unsupportedSetting]}>페이지 전환 효과음</Text><Switch disabled accessibilityLabel="페이지 전환 효과음" accessibilityState={{ disabled: true }} value={sound} trackColor={{ false: '#E3E8DC', true: colors.green }} thumbColor="#FFFFFF" /></View>
+      <Text style={[s.muted, styles.unsupportedHint]}>페이지 넘김과 효과 설정은 아직 사용할 수 없습니다.</Text>
+      <Action label="적용" onPress={() => { app.setReadingPreferences({ theme, font, size }); app.back(); }} style={styles.applyButton} />
     </View>
   );
 }
@@ -600,6 +602,8 @@ const styles = StyleSheet.create({
   sizeSelected: { backgroundColor: '#FFFFFF' },
   settingRow: { minHeight: 34, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
   settingName: { fontSize: 12, flexShrink: 1 },
+  unsupportedSetting: { opacity: 0.45 },
+  unsupportedHint: { fontSize: 11, textAlign: 'center' },
   modeRow: { width: '64%', maxWidth: 204, flexShrink: 0, flexDirection: 'row', backgroundColor: '#F2F6ED', borderRadius: 24, padding: 4, minHeight: 44 },
   modeOption: { flex: 1, alignItems: 'center', justifyContent: 'center', borderRadius: 20 },
   modeSelected: { backgroundColor: colors.green },
