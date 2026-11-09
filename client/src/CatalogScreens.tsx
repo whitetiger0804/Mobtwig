@@ -45,7 +45,7 @@ export function SearchScreen({ route }: {
   /** 생략하면 검색 전 화면, 지정하면 해당 분류의 결과 화면을 표시합니다. */
   route: Route;
 }) {
-  const { navigate, searchHistory, addSearchHistory, clearSearchHistory } = useApp();
+  const { navigate, searchHistory, addSearchHistory, removeSearchHistory, clearSearchHistory } = useApp();
   const [kind, setKind] = useState(route.kind);
   const [query, setQuery] = useState('');
   const [genre, setGenre] = useState('로맨스');
@@ -101,10 +101,15 @@ export function SearchScreen({ route }: {
           {searchHistory.length === 0
             ? <EmptyState compact title="검색 기록이 없습니다." />
             : <View style={c.searchHistoryList}>
-                {searchHistory.map(term => <Pressable key={term} accessibilityRole="button" accessibilityLabel={`최근 검색어 ${term} 검색`} onPress={() => { setQuery(term); setKind('all'); }} style={c.searchHistoryItem}>
-                  <Icon name="search" size={16} color={colors.muted} />
-                  <Text numberOfLines={1} style={[s.text, s.grow]}>{term}</Text>
-                </Pressable>)}
+                {searchHistory.map(term => <View key={term} style={c.searchHistoryItem}>
+                  <Pressable accessibilityRole="button" accessibilityLabel={`최근 검색어 ${term} 검색`} onPress={() => { setQuery(term); setKind('all'); }} style={c.searchHistorySearch}>
+                    <Icon name="search" size={16} color={colors.muted} />
+                    <Text numberOfLines={1} style={[s.text, s.grow]}>{term}</Text>
+                  </Pressable>
+                  <Pressable accessibilityRole="button" accessibilityLabel={`최근 검색어 ${term} 삭제`} onPress={() => removeSearchHistory(term)} style={c.searchHistoryRemove}>
+                    <Icon name="close" size={16} color={colors.red} />
+                  </Pressable>
+                </View>)}
               </View>}
         </View>
               <View style={c.section}>
@@ -472,7 +477,9 @@ recommendTitle: { fontSize: 14, fontWeight: '700', color: colors.ink },
   clearHistory: { paddingHorizontal: 8, paddingVertical: 6 },
   disabledHistory: { opacity: 0.45 },
   searchHistoryList: { gap: 4 },
-  searchHistoryItem: { minHeight: 42, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 8 },
+  searchHistoryItem: { minHeight: 42, flexDirection: 'row', alignItems: 'center', gap: 8, paddingLeft: 8, paddingRight: 4 },
+  searchHistorySearch: { minHeight: 42, flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  searchHistoryRemove: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
   searchFilters: { gap: 8, alignItems: 'center' },
   sortButton: { flexDirection: 'row', alignItems: 'center', gap: 7, paddingVertical: 8 },
   downIcon: { transform: [{ rotate: '90deg' }] },
