@@ -34,7 +34,7 @@ export type Screen =
   | 'library' | 'records' | 'recent' | 'community' | 'post' | 'writePost'
   | 'reviews' | 'reviewWrite' | 'reviewComments' | 'login' | 'signup' | 'my'
   | 'account' | 'password' | 'withdraw' | 'readingSettings' | 'filters' | 'share'
-  | 'libraryManage' | 'postMenu' | 'report' | 'commentCompose' | 'events'
+  | 'libraryManage' | 'postMenu' | 'report' | 'commentCompose' | 'events' | 'purchaseHistory'
   | 'notifications' | 'webFallback';
 
 /**
