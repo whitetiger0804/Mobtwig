@@ -95,6 +95,12 @@ export interface AppContextValue {
   readingPreferences: ReadingPreferences;
   /** 독서 설정 패널에서 적용한 설정을 갱신합니다. */
   setReadingPreferences: (preferences: ReadingPreferences) => void;
+  /** 현재 앱 실행 중 검색 화면에 표시할 최근 검색어입니다. */
+  searchHistory: string[];
+  /** 검색어를 최근 검색 기록 맨 앞에 추가하고 중복을 정리합니다. */
+  addSearchHistory: (query: string) => void;
+  /** 최근 검색 기록을 모두 비웁니다. */
+  clearSearchHistory: () => void;
   /**
    * 일반 화면으로 이동하거나 현재 화면 위에 하단 패널을 엽니다.
    *
@@ -144,6 +150,7 @@ export function AppProvider({ children }: {
   const [stack, setStack] = useState<Route[]>([{ screen: 'home', kind: 'all' }]);
   const [overlay, setOverlay] = useState<Route | null>(null);
   const [readingPreferences, setReadingPreferences] = useState(defaultReadingPreferences);
+  const [searchHistory, setSearchHistory] = useState<string[]>([]);
   const baseRoute = stack[stack.length - 1];
   const { state: auth } = useMemberAuth();
   useEffect(() => {
@@ -171,6 +178,14 @@ export function AppProvider({ children }: {
     const replaceStack = reset || next.screen === 'home' || next.screen === 'community';
     setStack(previous => replaceStack ? [next] : replace ? [...previous.slice(0, -1), next] : [...previous, next]);
   }, []);
+
+  const addSearchHistory = useCallback((query: string) => {
+    const normalized = query.trim();
+    if (!normalized) return;
+    setSearchHistory(previous => [normalized, ...previous.filter(item => item.toLocaleLowerCase() !== normalized.toLocaleLowerCase())].slice(0, 8));
+  }, []);
+
+  const clearSearchHistory = useCallback(() => setSearchHistory([]), []);
 
   /**
    * 패널을 우선 닫고, 패널이 없으면 화면 스택에서 뒤로 이동합니다.
@@ -201,7 +216,7 @@ export function AppProvider({ children }: {
   }, [back, overlay, stack.length, baseRoute.screen]);
 
   return (
-    <AppContext.Provider value={{ route: overlay ?? baseRoute, baseRoute, overlay, readingPreferences, setReadingPreferences, navigate, back }}>
+    <AppContext.Provider value={{ route: overlay ?? baseRoute, baseRoute, overlay, readingPreferences, setReadingPreferences, searchHistory, addSearchHistory, clearSearchHistory, navigate, back }}>
       {children}
     </AppContext.Provider>
   );

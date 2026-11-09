@@ -34,9 +34,9 @@ export function HomeScreen({ route }: {
  * 검색 전 화면과 분류별 검색 결과 화면의 배치를 구성합니다.
  *
  * @remarks
- * 입력란과 결과 분류 탭은 본문 스크롤 위에 고정합니다. 검색 제출은 빈 결과
- * 화면으로 이동하는 UI 동작이며 검색어를 요청하거나 저장하지 않습니다.
- * 분류를 지정하지 않은 경로에서는 검색 기록과 추천 작품의 빈 영역을 표시합니다.
+ * 입력란과 결과 분류 탭은 본문 스크롤 위에 고정합니다. 검색어는 현재 앱 실행 중
+ * 최근 검색 기록에 저장하며, 실제 검색 결과 조회는 수행하지 않습니다.
+ * 분류를 지정하지 않은 경로에서는 최근 검색 기록과 추천 작품을 표시합니다.
  *
  * @param props - 검색 전 화면 또는 결과 분류를 구분하는 화면 속성입니다.
  * @returns 검색 입력란과 탭, 검색 전 안내 또는 빈 결과 목록입니다.
@@ -45,13 +45,22 @@ export function SearchScreen({ route }: {
   /** 생략하면 검색 전 화면, 지정하면 해당 분류의 결과 화면을 표시합니다. */
   route: Route;
 }) {
-  const { navigate } = useApp();
+  const { navigate, searchHistory, addSearchHistory, clearSearchHistory } = useApp();
   const [kind, setKind] = useState(route.kind);
   const [query, setQuery] = useState('');
   const [genre, setGenre] = useState('로맨스');
   const apiUrl = useApiUrl();
   const [recommended, setRecommended] = useState<Extract<SduiSection, { type: 'workShelf' }>['items'] | null>(null);
   const [recommendError, setRecommendError] = useState<string | null>(null);
+
+  const submitSearch = () => {
+    const normalized = query.trim();
+    if (normalized) {
+      setQuery(normalized);
+      addSearchHistory(normalized);
+    }
+    setKind(kind ?? 'all');
+  };
 
   useEffect(() => {
     const controller = new AbortController();
@@ -76,8 +85,8 @@ export function SearchScreen({ route }: {
   return <View style={s.grow}>
     <View style={c.searchTop}>
       <View style={c.searchField}>
-        <IconButton icon="search" label="검색" onPress={() => setKind(kind ?? 'all')} />
-        <TextInput accessibilityLabel="작품명·작가명·출판사 검색" value={query} onChangeText={setQuery} placeholder="작품명·작가명·출판사 검색" placeholderTextColor={colors.muted} returnKeyType="search" onSubmitEditing={() => setKind(kind ?? 'all')} style={c.searchInput} />
+        <IconButton icon="search" label="검색" onPress={submitSearch} />
+        <TextInput accessibilityLabel="작품명·작가명·출판사 검색" value={query} onChangeText={value => { setQuery(value); if (!value.trim()) setKind(undefined); }} placeholder="작품명·작가명·출판사 검색" placeholderTextColor={colors.muted} returnKeyType="search" onSubmitEditing={submitSearch} style={c.searchInput} />
       </View>
       {kind !== undefined && <View style={c.categoryTabs}>
         {(['all', 'book', 'magazine', 'novel'] as const).map(value => <Pressable key={value} accessibilityRole="tab" accessibilityState={{ selected: kind === value }} onPress={() => setKind(value)} style={[c.categoryTab, kind === value && c.categoryTabSelected]}>
@@ -88,8 +97,15 @@ export function SearchScreen({ route }: {
     <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={[c.searchBody, kind !== undefined && kind !== 'all' && { paddingTop: 12 }]}>
       {kind === undefined ? <>
         <View style={c.searchHistory}>
-          <Title action={<Pressable disabled accessibilityRole="button" accessibilityState={{ disabled: true }}><Text style={s.muted}>전체 삭제</Text></Pressable>}>검색 기록</Title>
-          <EmptyState compact title="검색 기록이 없습니다." />
+          <Title action={<Pressable accessibilityRole="button" accessibilityState={{ disabled: searchHistory.length === 0 }} disabled={searchHistory.length === 0} onPress={clearSearchHistory} style={c.clearHistory}><Text style={[s.muted, searchHistory.length === 0 && c.disabledHistory]}>전체 삭제</Text></Pressable>}>검색 기록</Title>
+          {searchHistory.length === 0
+            ? <EmptyState compact title="검색 기록이 없습니다." />
+            : <View style={c.searchHistoryList}>
+                {searchHistory.map(term => <Pressable key={term} accessibilityRole="button" accessibilityLabel={`최근 검색어 ${term} 검색`} onPress={() => { setQuery(term); setKind('all'); }} style={c.searchHistoryItem}>
+                  <Icon name="search" size={16} color={colors.muted} />
+                  <Text numberOfLines={1} style={[s.text, s.grow]}>{term}</Text>
+                </Pressable>)}
+              </View>}
         </View>
               <View style={c.section}>
           <Title>추천 작품</Title>
@@ -453,6 +469,10 @@ recommendTitle: { fontSize: 14, fontWeight: '700', color: colors.ink },
   categoryTabLabel: { fontSize: 16, color: colors.muted },
   searchBody: { padding: 20, paddingTop: 20, gap: 28, paddingBottom: 40 },
   searchHistory: { minHeight: 118, gap: 12 },
+  clearHistory: { paddingHorizontal: 8, paddingVertical: 6 },
+  disabledHistory: { opacity: 0.45 },
+  searchHistoryList: { gap: 4 },
+  searchHistoryItem: { minHeight: 42, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 8 },
   searchFilters: { gap: 8, alignItems: 'center' },
   sortButton: { flexDirection: 'row', alignItems: 'center', gap: 7, paddingVertical: 8 },
   downIcon: { transform: [{ rotate: '90deg' }] },
