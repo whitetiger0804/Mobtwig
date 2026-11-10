@@ -77,8 +77,8 @@ public class ReadingProgressService {
         if (chapter.version() != version) throw ReadingProgressFailure.contentChanged();
         if (work.magazine()) {
             if (hash != null) throw ReadingProgressFailure.invalid();
-            var pages = pages(work, chapter);
-            if (offset < pages.start() || pages.end() != null && offset > pages.end()) throw ReadingProgressFailure.invalid();
+            var pages = MagazineLayout.range(work, chapter);
+            if (!pages.contains(offset)) throw ReadingProgressFailure.invalid();
             return new Checked(chapter, offset, pages.start(), pages.end(), null);
         }
         if (hash == null) throw ReadingProgressFailure.invalid();
@@ -96,7 +96,7 @@ public class ReadingProgressService {
         if (chapter == null) return null;
         try {
             if (work.magazine()) {
-                var pages = pages(work, chapter);
+                var pages = MagazineLayout.range(work, chapter);
                 return new Checked(chapter, pages.start(), pages.start(), pages.end(), null);
             }
             var text = source.read(chapter.url());
@@ -104,26 +104,6 @@ public class ReadingProgressService {
         } catch (ResponseStatusException unavailable) {
             return null;
         }
-    }
-
-    private Pages pages(Work work, Chapter selected) {
-        int last = 0;
-        Integer end = work.pageCount();
-        boolean afterSelected = false;
-        for (var chapter : work.chapters()) {
-            Integer start = chapter.startPage();
-            if (start == null || start <= last || work.pageCount() != null && start > work.pageCount()) {
-                throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "매거진 쪽 범위를 확인할 수 없습니다.");
-            }
-            // 비공개 아티클도 앞 공개 아티클의 범위를 제한하지만 자체 정보는 반환하지 않습니다.
-            if (afterSelected) {
-                end = start - 1;
-                afterSelected = false;
-            }
-            if (chapter.id() == selected.id()) afterSelected = true;
-            last = start;
-        }
-        return new Pages(selected.startPage(), end);
     }
 
     private boolean completed(Work work, Checked position) {
@@ -180,6 +160,5 @@ public class ReadingProgressService {
 
     /** 쓰기 요청은 소유자와 진행률을 받지 않습니다. */
     public record Input(long chapterId, int offset, int contentVersion, String contentHash, Long expectedRevision) { }
-    private record Pages(int start, Integer end) { }
     private record Checked(Chapter chapter, int offset, int start, Integer end, String hash) { }
 }

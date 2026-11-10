@@ -200,6 +200,68 @@ class ReadingProgressApiTest {
         assertEquals("COMPLETED", one.get("libraryStatus").asString());
     }
 
+    @Test void opensVerifiedPngAndRestoresSixthPageInAnotherSession() throws Exception {
+        byte[] expected = registerPng(-9621, "issue-one/article-two", 6);
+        registerPng(-9622, "issue-one/hidden", 9);
+        registerPng(-9660, "issue-single/article-one", 1);
+        var manifest = get("/works/" + MAG + "/magazine", null);
+        var issue = ok(manifest);
+        assertEquals("한 호", issue.get("title").asString());
+        assertEquals(10, issue.get("pageCount").asInt());
+        assertEquals(2, issue.get("articles").size());
+        assertEquals(4, issue.get("articles").get(0).get("endPage").asInt());
+        assertEquals(8, issue.get("articles").get(1).get("endPage").asInt());
+        assertFalse(manifest.body().contains("-9622"));
+        assertFalse(manifest.body().contains("issue-one"));
+        assertEquals("no-store", manifest.headers().firstValue("Cache-Control").orElseThrow());
+        contract("/works/" + MAG + "/magazine", manifest, Request.Method.GET);
+
+        var loaded = http.send(base("/works/" + MAG + "/magazine/pages/6?contentVersion=1").GET().build(), HttpResponse.BodyHandlers.ofByteArray());
+        assertEquals(200, loaded.statusCode());
+        assertArrayEquals(expected, loaded.body());
+        assertEquals("image/png", loaded.headers().firstValue("Content-Type").orElseThrow());
+        assertEquals("no-store", loaded.headers().firstValue("Cache-Control").orElseThrow());
+        assertEquals(200, get("/works/progress-one-page/magazine/pages/1?contentVersion=1", null).statusCode());
+        assertEquals(404, get("/works/" + MAG + "/magazine/pages/9?contentVersion=1", null).statusCode());
+        assertEquals(404, get("/works/" + MAG + "/magazine/pages/11?contentVersion=1", null).statusCode());
+        assertEquals(404, get("/works/" + TEXT + "/magazine", null).statusCode());
+        assertEquals(404, get("/works/progress-hidden/magazine", null).statusCode());
+        assertEquals(503, get("/works/" + MAG_TWO + "/magazine", null).statusCode());
+        assertEquals(0L, jdbc.queryForObject("SELECT view_count FROM book WHERE id=-9602", Long.class));
+        assertEquals(0L, jdbc.queryForObject("SELECT COUNT(*) FROM reading_progress WHERE book_id=-9602", Long.class));
+
+        var one = login("a");
+        assertEquals("new", ok(get(path(MAG), one)).get("state").asString());
+        var stored = ok(post(MAG, one, input(-9621, 6, 1, null, null), true));
+        var two = login("a");
+        assertEquals(stored, ok(get(path(MAG), two)));
+        assertEquals("new", ok(get(path(MAG_TWO), two)).get("state").asString());
+        assertEquals("new", ok(get(path(MAG), login("b"))).get("state").asString());
+    }
+
+    @Test void rejectsInvalidPageQueriesChangedVersionsAndLegacySources() throws Exception {
+        registerPng(-9621, "issue-one/article-two", 6);
+        String page = "/works/" + MAG + "/magazine/pages/";
+        for (String invalid : List.of("0?contentVersion=1", "2147483648?contentVersion=1", "6", "6?contentVersion=0",
+                "6?contentVersion=1&contentVersion=1", "6?contentVersion=1,2")) {
+            assertEquals(400, get(page + invalid, null).statusCode(), invalid);
+        }
+        var a = login("a");
+        ok(post(MAG, a, input(-9621, 6, 1, null, null), true));
+        jdbc.update("UPDATE chapter SET content_version=2 WHERE id=-9621");
+        assertEquals(409, get(page + "6?contentVersion=1", null).statusCode());
+        assertEquals(200, get(page + "6?contentVersion=2", null).statusCode());
+        assertEquals("stale", ok(get(path(MAG), a)).get("state").asString());
+        assertEquals(6, jdbc.queryForObject("SELECT chapter_offset FROM reading_progress WHERE book_id=-9602", Integer.class));
+        assertEquals(503, get(page + "7?contentVersion=2", null).statusCode());
+        String legacy = "https://external.example/private.pdf";
+        jdbc.update("UPDATE chapter SET content_url=? WHERE id=-9621", legacy);
+        var unavailable = get(page + "6?contentVersion=2", null);
+        assertEquals(503, unavailable.statusCode());
+        assertFalse(unavailable.body().contains(legacy));
+        assertEquals(legacy, jdbc.queryForObject("SELECT content_url FROM chapter WHERE id=-9621", String.class));
+    }
+
     @Test void rollsBackTheRevisionAndLibraryWhenTheSecondWriteFails() throws Exception {
         var a = login("a");
         String hash = hash(TEXT, -9610);
@@ -256,10 +318,22 @@ class ReadingProgressApiTest {
         return mapper.readTree(response.body());
     }
     private void contract(HttpResponse<String> response, Request.Method method) throws Exception {
+        contract(path(TEXT), response, method);
+    }
+    private void contract(String path, HttpResponse<String> response, Request.Method method) throws Exception {
         String spec = new ClassPathResource("static/openapi.yaml").getContentAsString(StandardCharsets.UTF_8);
-        var report = OpenApiInteractionValidator.createForInlineApiSpecification(spec).build().validateResponse(path(TEXT), method,
+        var report = OpenApiInteractionValidator.createForInlineApiSpecification(spec).build().validateResponse(path, method,
                 SimpleResponse.Builder.ok().withContentType("application/json").withBody(response.body()).build());
         assertFalse(report.hasErrors(), () -> report.getMessages().toString());
+    }
+    private byte[] registerPng(long article, String directory, int page) throws Exception {
+        Path folder = Files.createDirectories(CONTENT.resolve("magazine").resolve(directory));
+        Path file = folder.resolve(page + ".png");
+        var image = new java.awt.image.BufferedImage(8, 12, java.awt.image.BufferedImage.TYPE_INT_RGB);
+        image.setRGB(1, 1, (int) article);
+        assertTrue(javax.imageio.ImageIO.write(image, "PNG", file.toFile()));
+        jdbc.update("UPDATE chapter SET content_url=? WHERE id=?", "/content/magazine/" + directory + "/", article);
+        return Files.readAllBytes(file);
     }
     private void assertError(HttpResponse<String> response, int status, String code) {
         assertEquals(status, response.statusCode(), response.body());

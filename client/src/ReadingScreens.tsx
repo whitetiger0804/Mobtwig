@@ -1,6 +1,6 @@
 // #region 의존성 가져오기
-import { useEffect, useMemo, useRef, useState, type ComponentRef } from 'react';
-import { ActivityIndicator, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentRef } from 'react';
+import { ActivityIndicator, Image, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from './appState';
 import { useApiUrl } from './serverConnection';
@@ -8,6 +8,8 @@ import { fetchChapterText, type ChapterText } from './chapterText';
 import { selectChapter } from './readerNavigation';
 import { useMemberAuth } from './memberAuth';
 import { MemberRequestError } from './memberSession';
+import { adjacentMagazinePage, fetchMagazineIssue, magazineArticle, magazinePageUrl, startMagazinePage,
+  type MagazineIssue } from './magazineReader';
 import { matchesReadingResume, readReadingProgress, readingSegments, restoreReadingOffset, sameReadingPosition, saveReadingProgress,
   type ReadingPosition, type ReadingProgress } from './readingProgress';
 import { EmptyState } from './EmptyState';
@@ -20,7 +22,7 @@ import { Action, colors, Icon, IconButton, s } from './ui';
  *
  * @remarks
  * 본문 화면은 상단 목차·기록·설정과 하단 회차 이동 도구를 유지합니다.
- * 공개 본문을 표시하고 텍스트 회원 위치를 문단 경계로 저장·복원합니다.
+ * 텍스트 위치는 문단 경계로, 매거진 위치는 호 기준 쪽 번호로 저장·복원합니다.
  * 이전/다음은 공개 목차의 이웃이며 경계에서 비활성화합니다.
  *
  * @returns 현재 독서 종류에 맞는 본문 또는 미디어 화면입니다.
@@ -28,6 +30,7 @@ import { Action, colors, Icon, IconButton, s } from './ui';
 export function ReadingScreen() {
   const app = useApp();
   if (app.baseRoute.screen === 'media') return <MediaScreen />;
+  if (app.baseRoute.kind === 'magazine') return <MagazineReader />;
   return <TextReader />;
 }
 
@@ -137,6 +140,176 @@ function useReadingSave(workId: string | undefined, eligible: boolean, resume?: 
     const draft = run.current?.draft;
     if (draft) void save(draft);
   } };
+}
+
+/** 명시적으로 연 PNG가 표시된 뒤에만 새 쪽을 저장합니다. */
+function MagazineReader() {
+  const app = useApp();
+  const apiUrl = useApiUrl();
+  const { workId, chapterId, resumePosition, resumeRevision } = app.baseRoute;
+  const [issue, setIssue] = useState<MagazineIssue | null>(null);
+  const [page, setPage] = useState<number | null>(null);
+  const [contentsOpen, setContentsOpen] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+  const [image, setImage] = useState<{ key: string; ratio: number | null } | null>(null);
+  const [resumeAdjusted, setResumeAdjusted] = useState(false);
+  const requested = useRef<ReadingPosition | null>(null);
+  const target = useRef('');
+  const saveIntent = useRef<number | null>(null);
+  const article = issue && page !== null ? magazineArticle(issue, page) : null;
+  const key = issue && article && page !== null ? [issue.workId, page, article.contentVersion, attempt].join(':') : '';
+  const position: ReadingPosition | null = article && page !== null ? {
+    chapterId: article.chapterId, offset: page, unit: 'page', contentVersion: article.contentVersion, contentHash: null,
+  } : null;
+  const storage = useReadingSave(workId, !!position, attempt === 0 ? resumePosition : undefined, resumeRevision);
+  const ready = !!key && image?.key === key && image.ratio !== null;
+  const failed = !!key && image?.key === key && image.ratio === null;
+
+  useEffect(() => {
+    if (!workId) { setError('열람할 매거진을 선택해 주세요.'); return; }
+    const controller = new AbortController();
+    const wanted = requested.current ?? resumePosition;
+    fetchMagazineIssue(apiUrl, workId, controller.signal).then(current => {
+      if (controller.signal.aborted) return;
+      const selected = startMagazinePage(current, wanted?.chapterId ?? chapterId, wanted);
+      const selectedArticle = selected === null ? null : magazineArticle(current, selected);
+      setResumeAdjusted(attempt === 0 && !!resumePosition && (selected !== resumePosition.offset
+        || selectedArticle?.contentVersion !== resumePosition.contentVersion));
+      setIssue(current);
+      setPage(selected ?? (attempt > 0 ? startMagazinePage(current) : null));
+    }).catch((failure: unknown) => {
+      if (!controller.signal.aborted) setError(failure instanceof Error ? failure.message : '매거진을 불러오지 못했습니다.');
+    });
+    return () => controller.abort();
+  }, [apiUrl, workId, chapterId, resumePosition, attempt]);
+
+  useLayoutEffect(() => {
+    target.current = key;
+    return () => { target.current = ''; };
+  }, [key]);
+
+  useEffect(() => {
+    if (!key || ready || failed) return;
+    const timer = setTimeout(() => {
+      if (target.current === key) {
+        target.current = '';
+        setImage({ key, ratio: null });
+      }
+    }, 15_000);
+    return () => clearTimeout(timer);
+  }, [key, ready, failed]);
+
+  useEffect(() => {
+    if (!ready || !position || !storage.canAutoSave || saveIntent.current !== position.offset) return;
+    saveIntent.current = null;
+    void storage.save(position, true);
+  }, [ready, key, storage.canAutoSave]);
+
+  function turn(next: number) {
+    setContentsOpen(false);
+    if (page === next || storage.status.busy) return;
+    saveIntent.current = storage.canAutoSave ? next : null;
+    setResumeAdjusted(false);
+    target.current = '';
+    setImage(null);
+    setPage(next);
+  }
+
+  function reload() {
+    requested.current = position;
+    saveIntent.current = null;
+    target.current = '';
+    setError(null);
+    setIssue(null);
+    setPage(null);
+    setImage(null);
+    setAttempt(value => value + 1);
+  }
+
+  const previous = issue && page !== null ? adjacentMagazinePage(issue, page, -1) : null;
+  const next = issue && page !== null ? adjacentMagazinePage(issue, page, 1) : null;
+  const loadingImage = !!key && !ready && !failed;
+  const canTurn = !loadingImage && !storage.status.busy;
+  return <View style={styles.magazine}>
+    <View style={styles.readerHeader}>
+      <IconButton icon="back" label="매거진에서 돌아가기" onPress={() => {
+        const pending = storage.wait();
+        if (pending) void pending.then(saved => { if (saved) app.back(); });
+        else app.back();
+      }} />
+      <Text numberOfLines={1} style={[s.subtitle, styles.readerTitle]}>{issue?.title ?? '매거진'}</Text>
+      <IconButton icon="list" label="매거진 목차" disabled={!issue?.articles.length} onPress={() => setContentsOpen(true)} />
+    </View>
+    <ScrollView key={key || 'magazine-status'} style={styles.magazineScroll} contentContainerStyle={styles.magazinePage}
+      showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false}>
+      {error ? <View style={s.grow}>
+        <Text accessibilityRole="alert" style={s.error}>{error}</Text>
+        <Action label="호 다시 불러오기" onPress={reload} />
+      </View> : !issue ? <ActivityIndicator color={colors.green} />
+        : !article || page === null ? <View>
+          <EmptyState title="선택한 공개 쪽을 열 수 없습니다." />
+          {!!issue.articles.length && <Action label="공개 첫 기사 확인" onPress={reload} />}
+        </View>
+        : <>
+          <Text accessibilityRole="header" style={s.subtitle}>{article.title}</Text>
+          <Text accessibilityLiveRegion="polite" style={s.muted}>{page} / {issue.pageCount}쪽</Text>
+          {resumeAdjusted && <Text style={s.muted}>저장한 쪽을 다시 확인할 수 있도록 공개 기사 처음을 표시합니다.</Text>}
+          {loadingImage && <ActivityIndicator accessibilityLabel="쪽 불러오는 중" color={colors.green} />}
+          {failed ? <View>
+            <Text accessibilityRole="alert" style={s.error}>쪽을 불러오지 못했습니다. 최신 목차와 쪽을 다시 확인해 주세요.</Text>
+            <Action label="쪽 다시 불러오기" onPress={reload} />
+          </View> : <Image key={key} source={{ uri: magazinePageUrl(apiUrl, issue, page), cache: 'reload' }}
+            accessibilityLabel={article.title + ' ' + page + '쪽'} resizeMode="contain"
+            style={[styles.magazineImage, { aspectRatio: image?.key === key && image.ratio ? image.ratio : 0.72 }]}
+            onLoad={event => {
+              if (target.current !== key) return;
+              const { width, height } = event.nativeEvent.source ?? { width: 0, height: 0 };
+              const ratio = width > 0 && height > 0 ? width / height : 0.72;
+              setImage({ key, ratio });
+            }}
+            onError={() => {
+              if (target.current !== key) return;
+              target.current = '';
+              setImage({ key, ratio: null });
+            }} />}
+        </>}
+    </ScrollView>
+    {storage.enabled && <View style={styles.readerSave}>
+      {!!storage.status.message && <Text accessibilityLiveRegion="polite" style={s.muted}>{storage.status.message}</Text>}
+      {storage.status.problem === 'resume' ? <View style={styles.readerSaveActions}>
+        {storage.latest?.position?.unit === 'page' && <Action compact label="서버 쪽으로 이동" onPress={() => {
+          const latest = storage.latest;
+          if (latest?.position) app.navigate({ screen: 'reader', kind: 'magazine', workId: latest.workId,
+            chapterId: latest.position.chapterId, resumePosition: latest.position, resumeRevision: latest.revision }, false, true);
+        }} />}
+        <Action compact tone="secondary" label="이 쪽에서 계속 읽기" onPress={storage.continueHere} />
+      </View> : storage.status.problem === 'body' ? <Action compact label="최신 쪽 다시 불러오기" onPress={reload} />
+        : storage.status.problem === 'review' ? <Action compact label="서버 위치 확인" onPress={() => void storage.review()} />
+        : storage.status.retry ? <Action compact label="이전에 실패한 쪽 다시 저장" disabled={storage.status.busy} onPress={storage.retry} />
+        : <Action compact tone="secondary" label="현재 쪽 저장" disabled={!ready || storage.status.busy}
+          onPress={() => { if (ready && position) void storage.save(position); }} />}
+    </View>}
+    <View style={styles.magazineControls}>
+      <Action compact tone="secondary" label="이전 쪽" disabled={!canTurn || previous === null} onPress={() => { if (previous !== null) turn(previous); }} />
+      <Action compact tone="secondary" label="다음 쪽" disabled={!canTurn || next === null} onPress={() => { if (next !== null) turn(next); }} />
+    </View>
+    <Modal visible={contentsOpen} transparent animationType="fade" onRequestClose={() => setContentsOpen(false)}>
+      <View style={styles.magazineBackdrop}>
+        <View accessibilityViewIsModal style={styles.magazineContents}>
+          <Text style={s.title}>매거진 목차</Text>
+          <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false}>
+            {issue?.articles.map(item => <Pressable key={item.chapterId} accessibilityRole="button"
+              accessibilityState={{ selected: item.chapterId === article?.chapterId, disabled: !canTurn }} disabled={!canTurn}
+              style={styles.magazineArticle} onPress={() => turn(item.startPage)}>
+              <Text style={s.subtitle}>{item.title}</Text><Text style={s.muted}>{item.startPage}~{item.endPage}쪽</Text>
+            </Pressable>)}
+          </ScrollView>
+          <Action label="목차 닫기" onPress={() => setContentsOpen(false)} />
+        </View>
+      </View>
+    </Modal>
+  </View>;
 }
 
 /** 선택이 바뀌면 요청을 취소하고 이전 본문을 새 회차로 표시하지 않습니다. */
@@ -490,6 +663,14 @@ const styles = StyleSheet.create({
   readerBody: { flexGrow: 1, paddingHorizontal: 28, paddingTop: 10 },
   readerSave: { paddingHorizontal: 16, paddingVertical: 7, gap: 6 },
   readerSaveActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  magazine: { flex: 1, minHeight: 0, backgroundColor: '#F7F8F2' },
+  magazineScroll: { flex: 1, minHeight: 0 },
+  magazinePage: { paddingHorizontal: 16, paddingBottom: 18, gap: 10 },
+  magazineImage: { width: '100%', backgroundColor: '#ECEFE8' },
+  magazineControls: { flexDirection: 'row', justifyContent: 'space-between', gap: 8, paddingHorizontal: 16, paddingVertical: 12 },
+  magazineBackdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: '#0006' },
+  magazineContents: { width: '100%', maxWidth: 480, alignSelf: 'center', maxHeight: '82%', padding: 22, gap: 12, backgroundColor: '#fff' },
+  magazineArticle: { paddingVertical: 14, gap: 4, borderBottomWidth: 1, borderColor: colors.line },
   summaryButton: { alignSelf: 'flex-start', minHeight: 32, borderRadius: 16, paddingHorizontal: 12, gap: 8, backgroundColor: '#EEE3D3', flexDirection: 'row', alignItems: 'center' },
   summaryLabel: { color: colors.brown, fontSize: 12, fontWeight: '600' },
   turnUp: { transform: [{ rotate: '180deg' }] },
