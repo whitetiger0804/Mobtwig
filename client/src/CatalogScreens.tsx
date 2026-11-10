@@ -249,7 +249,7 @@ export function DetailScreen({ route }: {
   useEffect(() => {
     setReading(null);
     setReadingFailed(false);
-    if (auth.status !== 'authenticated' || !work || work.kind === 'magazine') return;
+    if (auth.status !== 'authenticated' || !work) return;
     let active = true;
     readReadingProgress(member, work.id).then(value => {
       if (active && value.kind === work.kind) setReading(value);
@@ -288,12 +288,13 @@ export function DetailScreen({ route }: {
 
   const kind = work.kind;
   const firstChapter = work.contents[0];
-  const resumePosition = reading?.position?.unit === 'utf16' && work.contents.some(chapter => chapter.id === reading.position?.chapterId)
+  const resumePosition = reading?.position?.unit === (kind === 'magazine' ? 'page' : 'utf16')
+    && work.contents.some(chapter => chapter.id === reading.position?.chapterId)
     ? reading.position : undefined;
   const startChapter = resumePosition?.chapterId ?? firstChapter?.id;
-  const readingLoading = auth.status === 'authenticated' && kind !== 'magazine' && !reading && !readingFailed;
+  const readingLoading = auth.status === 'authenticated' && !reading && !readingFailed;
   const readingLabel = readingLoading ? '읽기 위치 확인 중…' : reading?.state === 'stale' ? '확인 후 읽기'
-    : reading?.state === 'saved' && resumePosition ? '이어보기' : kind === 'novel' ? '첫 화 읽기' : '첫 장 읽기';
+    : reading?.state === 'saved' && resumePosition ? '이어보기' : kind === 'magazine' ? '이번 호 읽기' : kind === 'novel' ? '첫 화 읽기' : '첫 장 읽기';
   return <View testID={'detail-' + work.id} style={c.detail}>
     <View style={c.detailSummary}>
       <Image accessibilityLabel={work.title + ' 표지'} source={{ uri: new URL(work.imageUrl, apiUrl + '/').href }} resizeMode="contain" style={c.detailCover} />
@@ -311,7 +312,7 @@ export function DetailScreen({ route }: {
             <View style={c.stat}><Text style={s.muted}>평점</Text><Text style={c.statValue}>{work.statistics.rating}</Text></View>
           </View>
           : <EmptyState compact title="표시할 통계가 없습니다." />)
-          : <Action label={kind === 'book' ? '구매하기' : '이번 호 읽기'} style={{ minHeight: 46 }} disabled />}
+          : kind === 'book' && <Action label="구매하기" style={{ minHeight: 46 }} disabled />}
       </View>
     </View>
     <Action label={readingLabel} disabled={!startChapter || readingLoading}
