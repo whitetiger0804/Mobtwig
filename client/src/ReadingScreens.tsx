@@ -1,11 +1,15 @@
 // #region 의존성 가져오기
-import { useEffect, useRef, useState, type ComponentRef } from 'react';
-import { ActivityIndicator, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useMemo, useRef, useState, type ComponentRef } from 'react';
+import { ActivityIndicator, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from './appState';
 import { useApiUrl } from './serverConnection';
 import { fetchChapterText, type ChapterText } from './chapterText';
 import { selectChapter } from './readerNavigation';
+import { useMemberAuth } from './memberAuth';
+import { MemberRequestError } from './memberSession';
+import { matchesReadingResume, readReadingProgress, readingSegments, restoreReadingOffset, sameReadingPosition, saveReadingProgress,
+  type ReadingPosition, type ReadingProgress } from './readingProgress';
 import { EmptyState } from './EmptyState';
 import { Action, colors, Icon, IconButton, s } from './ui';
 // #endregion
@@ -16,7 +20,7 @@ import { Action, colors, Icon, IconButton, s } from './ui';
  *
  * @remarks
  * 본문 화면은 상단 목차·기록·설정과 하단 회차 이동 도구를 유지합니다.
- * 본문 API의 작품·공개 회차·실제 텍스트를 표시합니다. 페이지 분할·진도 기록·요약 생성은 수행하지 않습니다.
+ * 공개 본문을 표시하고 텍스트 회원 위치를 문단 경계로 저장·복원합니다.
  * 이전/다음은 공개 목차의 이웃이며 경계에서 비활성화합니다.
  *
  * @returns 현재 독서 종류에 맞는 본문 또는 미디어 화면입니다.
@@ -27,11 +31,119 @@ export function ReadingScreen() {
   return <TextReader />;
 }
 
+type SaveView = { busy: boolean; problem: 'review' | 'body' | 'resume' | null; message: string; retry: boolean };
+type SaveRun = { current: ReadingProgress | null; draft: ReadingPosition | null; busy: boolean; reviewRequired: boolean; write: Promise<boolean> | null };
+const emptySaveView: SaveView = { busy: false, problem: null, message: '', retry: false };
+
+/** 실패한 좌표는 보존하고, 서버 확인 뒤 명시적 재시도를 받습니다. */
+function useReadingSave(workId: string | undefined, eligible: boolean, resume?: ReadingPosition, revision?: string | null) {
+  const { state: auth, client } = useMemberAuth();
+  const enabled = !!workId && eligible && auth.status === 'authenticated';
+  const run = useRef<SaveRun | null>(null);
+  const [status, setStatus] = useState(emptySaveView);
+
+  async function review() {
+    const active = run.current;
+    if (!active || !workId || active.busy) return;
+    active.busy = true;
+    setStatus({ ...emptySaveView, busy: true, message: '서버 위치 확인 중…' });
+    try {
+      const previous = active.current;
+      const actual = await readReadingProgress(client, workId);
+      if (run.current !== active) return;
+      active.current = actual;
+      active.reviewRequired = false;
+      if (!previous && resume && !matchesReadingResume(actual, resume, revision)) {
+        active.reviewRequired = true;
+        setStatus({ ...emptySaveView, problem: 'resume', message: '상세에서 확인한 위치가 바뀌었습니다. 어디에서 읽을지 선택해 주세요.' });
+      } else if (active.draft && actual.state === 'saved' && sameReadingPosition(actual.position, active.draft)) {
+        active.draft = null;
+        setStatus({ ...emptySaveView, message: '서버에서 저장 위치를 확인했습니다.' });
+      } else if (active.draft) {
+        setStatus({ ...emptySaveView, retry: true, message: previous?.revision === actual.revision
+          ? '이 화면에 남긴 위치를 다시 저장할 수 있습니다.'
+          : '서버 위치가 바뀌었습니다. 이 화면의 위치를 저장하려면 다시 저장을 선택해 주세요.' });
+      } else {
+        setStatus(emptySaveView);
+      }
+    } catch {
+      if (run.current === active) setStatus({ ...emptySaveView, problem: 'review', message: '서버 위치를 확인하지 못했습니다.' });
+    } finally {
+      active.busy = false;
+    }
+  }
+
+  useEffect(() => {
+    run.current = enabled ? { current: null, draft: null, busy: false, reviewRequired: false, write: null } : null;
+    setStatus(emptySaveView);
+    if (enabled) void review();
+    return () => { run.current = null; };
+  }, [enabled, workId, client, auth.generation, resume, revision]);
+
+  async function save(position: ReadingPosition, automatic = false): Promise<boolean> {
+    const active = run.current;
+    if (!active || !workId || !active.current || active.reviewRequired) return false;
+    if (automatic && active.draft && !active.write) return false; // 확인 후 수동 재시도를 기다립니다.
+    if (active.busy && !active.write) return false;
+    active.draft = position;
+    if (active.write) return active.write;
+    active.busy = true;
+    const task = writePending(active, workId, automatic);
+    active.write = task;
+    try {
+      return await task;
+    } finally {
+      active.busy = false;
+      active.write = null;
+    }
+  }
+
+  async function writePending(active: SaveRun, slug: string, automatic: boolean): Promise<boolean> {
+    while (run.current === active && active.draft && active.current) {
+      const target = active.draft;
+      active.draft = null;
+      if (active.current.state === 'saved' && sameReadingPosition(active.current.position, target)) {
+        if (!automatic) setStatus({ ...emptySaveView, message: '이 위치가 이미 저장되어 있습니다.' });
+        continue;
+      }
+      setStatus({ ...emptySaveView, busy: true, message: '읽기 위치 저장 중…' });
+      try {
+        const result = await saveReadingProgress(client, slug, target, active.current.revision);
+        if (run.current !== active) return false;
+        active.current = result;
+        setStatus({ ...emptySaveView, message: '읽기 위치를 저장했습니다.' });
+      } catch (error) {
+        if (run.current !== active) return false;
+        active.draft ??= target;
+        active.reviewRequired = true;
+        const changed = error instanceof MemberRequestError && error.code === 'CONTENT_CHANGED';
+        const conflict = error instanceof MemberRequestError && error.status === 409;
+        setStatus({ ...emptySaveView, problem: changed ? 'body' : 'review',
+          message: changed ? '본문이 바뀌었습니다. 최신 본문에서 위치를 다시 확인해 주세요.'
+            : conflict ? '다른 기기의 위치가 먼저 저장되었습니다. 현재 위치를 이 화면에 남겼습니다.'
+              : '저장을 확인하지 못했습니다. 현재 위치를 이 화면에 남겼습니다.' });
+        return false;
+      }
+    }
+    return run.current === active;
+  }
+
+  const canAutoSave = !!run.current?.current && !run.current.reviewRequired && (!run.current.draft || !!run.current.write);
+  return { enabled, canAutoSave, status, review, save, latest: run.current?.current ?? null, wait: () => run.current?.write,
+    continueHere: () => {
+      if (run.current) run.current.reviewRequired = false;
+      setStatus(emptySaveView);
+    }, retry: () => {
+    const draft = run.current?.draft;
+    if (draft) void save(draft);
+  } };
+}
+
 /** 선택이 바뀌면 요청을 취소하고 이전 본문을 새 회차로 표시하지 않습니다. */
 function TextReader() {
   const app = useApp(), apiUrl = useApiUrl();
   const insets = useSafeAreaInsets();
-  const { workId, chapterId } = app.baseRoute;
+  const { workId, chapterId, resumePosition, resumeRevision } = app.baseRoute;
   const readingPalette = {
     '크림': { background: '#F7F8F2', text: colors.ink, muted: colors.muted },
     '연노랑': { background: '#FFF8DE', text: '#3D3526', muted: '#82765D' },
@@ -45,12 +157,112 @@ function TextReader() {
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0), [contentsOpen, setContentsOpen] = useState(false);
   const scroll = useRef<ComponentRef<typeof ScrollView>>(null);
+  const [restart, setRestart] = useState(false);
+  const storage = useReadingSave(workId, !!data && data.kind !== 'magazine', restart ? undefined : resumePosition, resumeRevision);
+  const segments = useMemo(() => readingSegments(data?.body ?? ''), [data?.body]);
+  const geometry = useRef({ y: 0, viewport: 0, height: 0, chapterY: 0, textY: 0 });
+  const anchors = useRef(new Map<number, number>());
+  const restored = useRef(false);
+  const gestureUntil = useRef(0);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const frame = useRef<number | null>(null);
+  const leaving = useRef(false);
+  const validResume = !restart && data && resumePosition?.chapterId === data.chapter.id
+    && resumePosition.contentVersion === data.contentVersion && resumePosition.contentHash === data.contentHash
+    && resumePosition.offset <= data.body.length ? resumePosition : null;
+  const autoPositionReady = !resumePosition || restart || !!validResume;
+
+  const clearGesture = () => {
+    gestureUntil.current = 0;
+    if (timer.current !== null) clearTimeout(timer.current);
+    timer.current = null;
+  };
+  const startGesture = () => {
+    if (restored.current && !app.overlay) gestureUntil.current = Date.now() + 1_500;
+  };
+  useEffect(() => {
+    clearGesture();
+    return clearGesture;
+  }, [app.overlay, bodySize, bodyFont, app.readingPreferences.theme, data]);
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const node = scroll.current?.getScrollableNode() as unknown as HTMLElement | undefined;
+    if (!node?.addEventListener) return;
+    const key = (event: KeyboardEvent) => {
+      if (['ArrowDown', 'ArrowUp', 'PageDown', 'PageUp', 'Home', 'End', ' '].includes(event.key)) startGesture();
+    };
+    node.addEventListener('wheel', startGesture, { passive: true });
+    node.addEventListener('keydown', key);
+    return () => { node.removeEventListener('wheel', startGesture); node.removeEventListener('keydown', key); };
+  }, [app.overlay, data]);
+  useEffect(() => () => { if (frame.current !== null) cancelAnimationFrame(frame.current); }, []);
+
+  function restore() {
+    if (!data || restored.current || geometry.current.viewport <= 0 || geometry.current.height <= 0) return;
+    const anchor = restoreReadingOffset(segments, validResume?.offset ?? 0, data.body.length);
+    if (anchor > 0 && anchor < data.body.length && !anchors.current.has(anchor)) return;
+    if (frame.current !== null) cancelAnimationFrame(frame.current);
+    frame.current = requestAnimationFrame(() => {
+      frame.current = null;
+      const { chapterY, textY, height, viewport } = geometry.current;
+      const y = anchor === 0 ? 0 : anchor === data.body.length ? Math.max(0, height - viewport)
+        : chapterY + textY + (anchors.current.get(anchor) ?? 0);
+      clearGesture();
+      restored.current = true;
+      geometry.current.y = y;
+      scroll.current?.scrollTo({ y, animated: false });
+    });
+  }
+
+  function saveVisible(automatic = false, atEnd = false): Promise<boolean> {
+    if (!data || data.kind === 'magazine' || !restored.current || automatic && !autoPositionReady) {
+      return Promise.resolve(false);
+    }
+    const { y, viewport, height, chapterY, textY } = geometry.current;
+    let offset = 0;
+    if (atEnd || height > viewport + 4 && y + viewport >= height - 4) offset = data.body.length;
+    else {
+      for (const part of segments) {
+        const top = anchors.current.get(part.offset);
+        if (top !== undefined && chapterY + textY + top <= y + 12) offset = part.offset;
+      }
+    }
+    return storage.save({ chapterId: data.chapter.id, offset, unit: 'utf16', contentVersion: data.contentVersion, contentHash: data.contentHash }, automatic);
+  }
+
+  function leave(next: () => void) {
+    if (leaving.current) return;
+    const flush = timer.current !== null && storage.canAutoSave && autoPositionReady;
+    clearGesture();
+    const pending = flush ? saveVisible(true) : storage.wait();
+    if (!pending) { next(); return; }
+    leaving.current = true;
+    void pending.then(saved => { if (saved) next(); }).finally(() => { leaving.current = false; });
+  }
+
+  function onScroll(event: NativeSyntheticEvent<NativeScrollEvent>) {
+    const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+    geometry.current.y = contentOffset.y;
+    geometry.current.height = contentSize.height;
+    geometry.current.viewport = layoutMeasurement.height;
+    if (gestureUntil.current < Date.now() || !restored.current || app.overlay || !storage.canAutoSave || !autoPositionReady) return;
+    gestureUntil.current = Date.now() + 1_500;
+    if (timer.current !== null) clearTimeout(timer.current);
+    timer.current = setTimeout(() => { clearGesture(); void saveVisible(true); }, 450);
+  }
+
   useEffect(() => {
     setData(null); setError(null); setContentsOpen(false);
+    if (frame.current !== null) cancelAnimationFrame(frame.current);
+    frame.current = null;
+    anchors.current.clear();
+    restored.current = false;
+    geometry.current.y = 0;
+    clearGesture();
     if (!workId || !chapterId) { setError('작품 상세의 목차에서 읽을 회차를 선택해 주십시오.'); return; }
     const controller = new AbortController();
     fetchChapterText(apiUrl, workId, chapterId, controller.signal).then(value => {
-      if (!controller.signal.aborted) { setData(value); scroll.current?.scrollTo({ y: 0, animated: false }); }
+      if (!controller.signal.aborted) setData(value);
     }).catch((reason: unknown) => {
       if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : '본문을 불러오지 못했습니다.');
     });
@@ -59,24 +271,67 @@ function TextReader() {
   const selection = data ? selectChapter(data.contents, data.chapter.id) : null;
   const move = (id: string) => {
     if (!data || id === data.chapter.id) { setContentsOpen(false); return; }
-    app.navigate({ screen: 'reader', workId: data.workId, chapterId: id, kind: data.kind }, false, true);
+    leave(() => app.navigate({ screen: 'reader', workId: data.workId, chapterId: id, kind: data.kind }, false, true));
   };
   return <View style={[styles.reader, { backgroundColor: readingPalette.background }]}>
     <View style={[styles.readerHeader, { backgroundColor: readingPalette.background }]}>
-      <View style={styles.roundTool}><IconButton icon="back" label="읽기 화면에서 돌아가기" onPress={app.back} /></View>
+      <View style={styles.roundTool}><IconButton icon="back" label="읽기 화면에서 돌아가기" onPress={() => leave(app.back)} /></View>
       <Text numberOfLines={1} style={[s.subtitle, styles.readerTitle, { color: readingPalette.text }]}>{data?.workTitle ?? '독서'}</Text>
       <View style={styles.roundTool}><IconButton icon="list" label="목차" disabled={!data} onPress={() => setContentsOpen(true)} /></View>
       <View style={styles.roundTool}><IconButton icon="bookmark" label="밑줄과 책갈피" onPress={() => app.navigate({ screen: 'records', workId })} /></View>
       <Pressable accessibilityRole="button" accessibilityLabel="읽기 설정" onPress={() => app.navigate({ screen: 'readingSettings' })} style={styles.roundTool}><Text style={[s.text, styles.typeTool]}>가</Text></Pressable>
     </View>
-    <ScrollView ref={scroll} contentContainerStyle={styles.readerBody} showsVerticalScrollIndicator={false}>
+    <ScrollView ref={scroll} contentContainerStyle={styles.readerBody} showsVerticalScrollIndicator={false}
+      onLayout={event => { geometry.current.viewport = event.nativeEvent.layout.height; restore(); }}
+      onContentSizeChange={(_, height) => { clearGesture(); geometry.current.height = height; restore(); }}
+      onScrollBeginDrag={startGesture} scrollEventThrottle={16} onScroll={onScroll}>
       {error ? <View accessibilityLiveRegion="polite"><Text style={[s.subtitle, { color: readingPalette.text }]}>본문을 불러오지 못했습니다.</Text><Text style={s.error}>{error}</Text>{workId && chapterId && <Action label="다시 불러오기" onPress={() => setAttempt(v => v + 1)} />}{workId && <Action label="작품 상세로" onPress={() => app.navigate({ screen: 'detail', workId }, false, true)} />}</View>
         : !data ? <View accessibilityLiveRegion="polite"><ActivityIndicator color={colors.green} /><Text style={[s.muted, { color: readingPalette.muted }]}>본문을 불러오고 있습니다.</Text></View>
-        : <View testID="chapter-text"><Text style={[s.muted, { color: readingPalette.muted }]}>공개 목차 {data.currentIndex + 1} / {data.contents.length}</Text><Text accessibilityRole="header" style={[s.title, { marginVertical: 24, color: readingPalette.text }]}>{data.chapter.number}{data.kind === 'novel' ? '화' : '장'} · {data.chapter.title}</Text>{data.body.length === 0 ? <EmptyState title="이 회차의 본문이 비어 있습니다." tone={app.readingPreferences.theme === '다크' ? 'dark' : 'light'} /> : <Text selectable testID="reader-body-text" style={[s.text, { color: readingPalette.text, fontFamily: bodyFont, fontSize: bodySize, lineHeight: bodySize + 15 }]}>{data.body}</Text>}</View>}
+        : <View testID="chapter-text" onLayout={event => { geometry.current.chapterY = event.nativeEvent.layout.y; restore(); }}>
+          <Text style={[s.muted, { color: readingPalette.muted }]}>공개 목차 {data.currentIndex + 1} / {data.contents.length}</Text>
+          <Text accessibilityRole="header" style={[s.title, { marginVertical: 24, color: readingPalette.text }]}>{data.chapter.number}{data.kind === 'novel' ? '화' : '장'} · {data.chapter.title}</Text>
+          {!restart && resumePosition && !validResume && <Text style={s.muted}>본문이 바뀌어 회차 처음을 표시합니다.</Text>}
+          {data.body.length === 0 ? <EmptyState title="이 회차의 본문이 비어 있습니다." tone={app.readingPreferences.theme === '다크' ? 'dark' : 'light'} />
+            : <View testID="reader-body-text" onLayout={event => { geometry.current.textY = event.nativeEvent.layout.y; restore(); }}>
+              {segments.map(part => <Text key={part.offset} selectable onLayout={event => {
+                anchors.current.set(part.offset, event.nativeEvent.layout.y);
+                restore();
+              }} style={[s.text, { color: readingPalette.text, fontFamily: bodyFont, fontSize: bodySize, lineHeight: bodySize + 15 }]}>{part.text}</Text>)}
+            </View>}
+        </View>}
     </ScrollView>
+    {storage.enabled && <View style={[styles.readerSave, { backgroundColor: readingPalette.background }]}>
+      {!!storage.status.message && <Text accessibilityLiveRegion="polite" style={[s.muted, { color: readingPalette.text }]}>{storage.status.message}</Text>}
+      {storage.status.problem === 'review' ? <Action compact tone="secondary" label="서버 위치 확인" onPress={() => void storage.review()} />
+        : storage.status.problem === 'resume' ? <View style={styles.readerSaveActions}>
+          {storage.latest?.position?.unit === 'utf16' && <Action compact label="서버 위치로 이동" onPress={() => {
+            const latest = storage.latest;
+            if (latest?.position) app.navigate({ screen: 'reader', workId: latest.workId, chapterId: latest.position.chapterId,
+              kind: latest.kind, resumePosition: latest.position, resumeRevision: latest.revision }, false, true);
+          }} />}
+          <Action compact tone="secondary" label="이 위치에서 계속 읽기" onPress={storage.continueHere} />
+        </View>
+        : storage.status.problem === 'body' ? <Action compact tone="secondary" label="최신 본문 다시 불러오기" onPress={() => {
+          setRestart(true);
+          setAttempt(value => value + 1);
+        }} />
+        : <View style={styles.readerSaveActions}>
+          {storage.status.retry ? <Action compact label="이 위치 다시 저장" disabled={storage.status.busy} onPress={storage.retry} />
+            : <Action compact tone="secondary" label="현재 위치 저장" disabled={storage.status.busy} onPress={() => { clearGesture(); void saveVisible(); }} />}
+          {!!data?.body.length && !storage.status.retry && <Action compact tone="secondary" label="회차 끝 저장" disabled={storage.status.busy}
+            onPress={() => {
+              clearGesture();
+              scroll.current?.scrollToEnd({ animated: false });
+              saveVisible(false, true);
+            }} />}
+        </View>}
+    </View>}
     <View style={[styles.readerFooter, { backgroundColor: readingPalette.background, borderColor: readingPalette.muted }]}><View style={styles.readerActions}>
       <Pressable accessibilityRole="button" accessibilityLabel="이전 회차" accessibilityState={{ disabled: !selection?.previous }} disabled={!selection?.previous} onPress={() => selection?.previous && move(selection.previous.id)} style={styles.footerAction}><Icon name="back" size={14} color={selection?.previous ? colors.green : readingPalette.muted} /><Text style={[s.text, styles.footerLabel, { color: readingPalette.text }]}>이전화</Text></Pressable>
-      <Pressable accessibilityRole="button" accessibilityLabel="현재 장 처음으로" disabled={!data} accessibilityState={{ disabled: !data }} onPress={() => scroll.current?.scrollTo({ y: 0, animated: true })} style={styles.footerAction}><Text style={[s.text, styles.footerLabel, { color: readingPalette.text }]}>현재 장</Text></Pressable>
+      <Pressable accessibilityRole="button" accessibilityLabel="현재 장 처음으로" disabled={!data} accessibilityState={{ disabled: !data }} onPress={() => {
+        clearGesture();
+        scroll.current?.scrollTo({ y: 0, animated: true });
+      }} style={styles.footerAction}><Text style={[s.text, styles.footerLabel, { color: readingPalette.text }]}>현재 장</Text></Pressable>
       <Pressable accessibilityRole="button" onPress={() => app.navigate({ screen: 'world', workId, chapterId, kind: data?.kind })} style={styles.footerAction}><Text style={[s.text, styles.footerLabel, { color: readingPalette.text }]}>세계관</Text></Pressable>
       <Pressable accessibilityRole="button" onPress={() => app.navigate({ screen: 'reviews', workId, chapterId, kind: data?.kind })} style={styles.footerAction}><Text style={[s.text, styles.footerLabel, { color: readingPalette.text }]}>댓글</Text></Pressable>
       <Pressable accessibilityRole="button" accessibilityLabel="다음 회차" accessibilityState={{ disabled: !selection?.next }} disabled={!selection?.next} onPress={() => selection?.next && move(selection.next.id)} style={styles.footerAction}><Text style={[s.text, styles.footerLabel, { color: readingPalette.text }]}>다음화</Text><Icon name="next" size={14} color={selection?.next ? colors.green : readingPalette.muted} /></Pressable>
@@ -233,6 +488,8 @@ const styles = StyleSheet.create({
   readerTitle: { flex: 1, marginLeft: 5, fontSize: 15 },
   typeTool: { fontSize: 21 },
   readerBody: { flexGrow: 1, paddingHorizontal: 28, paddingTop: 10 },
+  readerSave: { paddingHorizontal: 16, paddingVertical: 7, gap: 6 },
+  readerSaveActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   summaryButton: { alignSelf: 'flex-start', minHeight: 32, borderRadius: 16, paddingHorizontal: 12, gap: 8, backgroundColor: '#EEE3D3', flexDirection: 'row', alignItems: 'center' },
   summaryLabel: { color: colors.brown, fontSize: 12, fontWeight: '600' },
   turnUp: { transform: [{ rotate: '180deg' }] },

@@ -6,6 +6,18 @@
 
 후속 본문·독서 기록 API의 식별자·표시 텍스트·UTF-16 offset·매거진 쪽 번호·개정 시 처리 기준은 [본문·독서위치 규약 v1](본문·독서위치%20규약.md)(#18)을 따릅니다. 해당 문서의 논리 필드 예시는 현재 HTTP API에 추가된 경로/응답이 아니며, 후속 구현 시 OpenAPI에 반영합니다.
 
+## 읽기 위치 · #38
+
+`GET /api/members/works/{slug}/reading-progress`와 같은 경로의 `POST`는 활성 회원 본인의 저장 기록에만 접근합니다. POST는 같은 회원 세션의 CSRF 토큰을 사용합니다. GET은 조회수·진도·서재를 변경하지 않습니다.
+
+두 메서드의 200 응답은 `workId`(slug), `kind`, `state`, `position`, `revision`, `lastReadAt`, `chapterPercent`, `workPercent`, `maxChapterId`, `libraryStatus`, `hasNewChapters`를 반환합니다. 위치는 `chapterId`, `offset`, `unit`(`utf16` 또는 `page`), `contentVersion`, `contentHash`를 포함합니다.
+
+- `new`는 이력이 없으며 첫 공개 회차 시작을 제안합니다. `saved`는 복원 가능한 저장 위치입니다. `stale`은 이전 위치의 버전·해시·공개 범위가 바뀌었거나 검증할 수 없음을 뜻합니다. 기존 회차가 공개 상태이고 읽을 수 있으면 그 시작, 아니면 읽을 수 있는 첫 공개 회차 시작을 제안합니다. 읽을 위치가 없으면 `position`은 null입니다.
+- revision은 저장본의 십진 문자열이며 최초에는 null입니다. POST JSON은 `chapterId`, 정수 `offset`, `contentVersion`, `contentHash`(매거진은 null), `expectedRevision`(최초에는 null)을 모두 보냅니다. 성공 응답의 revision과 UTC 저장 시각은 서버가 부여합니다.
+- 잘못된 좌표는 400, 미인증은 401, CSRF 실패는 403, 비공개/타 작품 회차는 404입니다. 409의 `code`는 `PROGRESS_CONFLICT` 또는 `CONTENT_CHANGED`입니다. 충돌 시 기존 기록은 유지되며 GET으로 다시 확인합니다. 선택 회차의 파일을 제공할 수 없으면 415 또는 503입니다.
+- 진행률은 0~100의 소수점 둘째 자리까지이며 산정 불가는 null입니다. 텍스트는 원문과 같은 UTF-16 길이를 사용합니다. 작품 전체 계산은 한 조회의 공개 본문을 최대 64회차·합계 200만 UTF-16 단위까지 검증하며 한도를 넘거나 자료를 확인할 수 없으면 null입니다. 매거진은 아티클 쪽 범위와 호 전체 쪽 수로 계산합니다. 끝 쪽 수가 없는 경우 해당 진행률은 null입니다.
+- 마지막 정상 위치·시각·최고 도달 회차·서재 상태를 한 트랜잭션에서 반영합니다. 마지막 공개 회차의 비어 있지 않은 본문 끝, 또는 마지막 공개 아티클의 호 끝 쪽에서 완독으로 저장합니다. 재독은 마지막 위치를 바꾸되 최고 도달 회차를 보존합니다. 매거진 고정 페이지 공급과 뷰어는 별도입니다.
+
 ## 문서와 접속 주소
 
 | 용도 | 주소와 사용 방법 |

@@ -182,6 +182,51 @@ paths:
           $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/ServerError'
+  /api/members/works/{slug}/reading-progress:
+    parameters:
+      - name: slug
+        in: path
+        required: true
+        schema: {type: string, pattern: '^[a-z0-9-]+$', maxLength: 120}
+    get:
+      tags: [회원 인증]
+      operationId: getReadingProgress
+      summary: 회원 본인의 시작 또는 저장 위치를 확인합니다.
+      description: 조회수와 읽기 기록을 변경하지 않습니다. new, saved, stale을 구분합니다.
+      security: [{MemberSessionCookie: []}]
+      responses:
+        '200': {$ref: '#/components/responses/ReadingProgress'}
+        '400': {$ref: '#/components/responses/ReadingProgressError'}
+        '401': {description: 활성 회원 세션 필요}
+        '404': {$ref: '#/components/responses/ReadingProgressError'}
+    post:
+      tags: [회원 인증]
+      operationId: saveReadingProgress
+      summary: 위치와 서재 상태를 함께 저장합니다.
+      security: [{MemberSessionCookie: [], MemberCsrfToken: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [chapterId, offset, contentVersion, contentHash, expectedRevision]
+              properties:
+                chapterId: {type: string, pattern: '^-?[1-9][0-9]*$', maxLength: 20}
+                offset: {type: integer, format: int32, minimum: 0}
+                contentVersion: {type: integer, format: int32, minimum: 1}
+                contentHash: {type: string, nullable: true, pattern: '^[0-9a-f]{64}$'}
+                expectedRevision: {type: string, nullable: true, pattern: '^[1-9][0-9]*$', maxLength: 19}
+      responses:
+        '200': {$ref: '#/components/responses/ReadingProgress'}
+        '400': {$ref: '#/components/responses/ReadingProgressError'}
+        '401': {description: 활성 회원 세션 필요}
+        '403': {description: 회원 CSRF 검증 실패}
+        '404': {$ref: '#/components/responses/ReadingProgressError'}
+        '409': {$ref: '#/components/responses/ReadingProgressError'}
+        '415': {$ref: '#/components/responses/ReadingProgressError'}
+        '503': {$ref: '#/components/responses/ReadingProgressError'}
   /api/auth/terms:
     get:
       tags: [회원 인증]
@@ -680,6 +725,21 @@ components:
       schema: {type: integer, format: int64}
       example: 1
   responses:
+    ReadingProgress:
+      description: 서버의 현재 읽기 상태입니다.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ReadingProgress'}
+    ReadingProgressError:
+      description: 입력·공개 범위·본문 또는 저장 충돌 안내입니다.
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [code, message]
+            properties:
+              code: {type: string, enum: [INVALID_POSITION, NOT_FOUND, PROGRESS_CONFLICT, CONTENT_CHANGED, BODY_UNAVAILABLE]}
+              message: {type: string}
     SignupFieldError:
       description: 입력 또는 문서 버전과 중복 여부를 확인하십시오.
       content:
@@ -735,6 +795,32 @@ components:
           schema:
             $ref: '#/components/schemas/HttpError'
   schemas:
+    ReadingProgress:
+      type: object
+      additionalProperties: false
+      required: [workId, kind, state, position, revision, lastReadAt, chapterPercent, workPercent, maxChapterId, libraryStatus, hasNewChapters]
+      properties:
+        workId: {type: string}
+        kind: {type: string, enum: [book, novel, magazine]}
+        state: {type: string, enum: [new, saved, stale]}
+        position:
+          type: object
+          nullable: true
+          additionalProperties: false
+          required: [chapterId, offset, unit, contentVersion, contentHash]
+          properties:
+            chapterId: {type: string}
+            offset: {type: integer, format: int32, minimum: 0}
+            unit: {type: string, enum: [utf16, page]}
+            contentVersion: {type: integer, format: int32, minimum: 1}
+            contentHash: {type: string, nullable: true, pattern: '^[0-9a-f]{64}$'}
+        revision: {type: string, nullable: true, pattern: '^[1-9][0-9]*$'}
+        lastReadAt: {type: string, nullable: true, format: date-time}
+        chapterPercent: {type: number, minimum: 0, maximum: 100, nullable: true}
+        workPercent: {type: number, minimum: 0, maximum: 100, nullable: true}
+        maxChapterId: {type: string, nullable: true}
+        libraryStatus: {type: string, nullable: true, enum: [WANT_TO_READ, READING, COMPLETED, null]}
+        hasNewChapters: {type: boolean}
     SignupDocument:
       type: object
       additionalProperties: false

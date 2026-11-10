@@ -6,6 +6,8 @@ import { kindLabel, useApp, type Route } from './appState';
 import { EmptyState } from './EmptyState';
 import { HomeContent } from './HomeContent';
 import { useApiUrl } from './serverConnection';
+import { useMemberAuth } from './memberAuth';
+import { readReadingProgress, type ReadingProgress } from './readingProgress';
 import { fetchWorkDetail, type WorkDetail } from './workDetails';
 import { Action, Chip, colors, Icon, IconButton, s, Title } from './ui';
 // #endregion
@@ -239,6 +241,22 @@ export function DetailScreen({ route }: {
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
   const [tab, setTab] = useState('회차');
+  const { state: auth, client: member } = useMemberAuth();
+  const [reading, setReading] = useState<ReadingProgress | null>(null);
+  const [readingFailed, setReadingFailed] = useState(false);
+  const [readingAttempt, setReadingAttempt] = useState(0);
+
+  useEffect(() => {
+    setReading(null);
+    setReadingFailed(false);
+    if (auth.status !== 'authenticated' || !work || work.kind === 'magazine') return;
+    let active = true;
+    readReadingProgress(member, work.id).then(value => {
+      if (active && value.kind === work.kind) setReading(value);
+      else if (active) setReadingFailed(true);
+    }).catch(() => { if (active) setReadingFailed(true); });
+    return () => { active = false; };
+  }, [auth.status, auth.generation, member, work, readingAttempt]);
 
   useEffect(() => {
     setWork(null);
@@ -270,6 +288,12 @@ export function DetailScreen({ route }: {
 
   const kind = work.kind;
   const firstChapter = work.contents[0];
+  const resumePosition = reading?.position?.unit === 'utf16' && work.contents.some(chapter => chapter.id === reading.position?.chapterId)
+    ? reading.position : undefined;
+  const startChapter = resumePosition?.chapterId ?? firstChapter?.id;
+  const readingLoading = auth.status === 'authenticated' && kind !== 'magazine' && !reading && !readingFailed;
+  const readingLabel = readingLoading ? '읽기 위치 확인 중…' : reading?.state === 'stale' ? '확인 후 읽기'
+    : reading?.state === 'saved' && resumePosition ? '이어보기' : kind === 'novel' ? '첫 화 읽기' : '첫 장 읽기';
   return <View testID={'detail-' + work.id} style={c.detail}>
     <View style={c.detailSummary}>
       <Image accessibilityLabel={work.title + ' 표지'} source={{ uri: new URL(work.imageUrl, apiUrl + '/').href }} resizeMode="contain" style={c.detailCover} />
@@ -290,7 +314,12 @@ export function DetailScreen({ route }: {
           : <Action label={kind === 'book' ? '구매하기' : '이번 호 읽기'} style={{ minHeight: 46 }} disabled />}
       </View>
     </View>
-    <Action label={kind === 'novel' ? '첫 화 읽기' : '첫 장 읽기'} disabled={!firstChapter} onPress={() => firstChapter && navigate({ screen: 'reader', kind, workId: work.id, chapterId: firstChapter.id })} />
+    <Action label={readingLabel} disabled={!startChapter || readingLoading}
+      onPress={() => startChapter && navigate({ screen: 'reader', kind, workId: work.id, chapterId: startChapter, resumePosition,
+        resumeRevision: resumePosition ? reading?.revision : undefined })} />
+    {reading?.state === 'stale' && <Text accessibilityLiveRegion="polite" style={s.muted}>저장한 위치를 복원할 수 없어 공개 회차의 처음을 제안합니다.</Text>}
+    {reading?.state === 'saved' && reading.workPercent !== null && <Text style={s.muted}>저장한 진행률 {reading.workPercent}%</Text>}
+    {readingFailed && <Action compact tone="secondary" label="저장 위치 다시 확인" onPress={() => setReadingAttempt(value => value + 1)} />}
     {kind === 'novel' ? <>
       <View style={c.detailTags}><Text style={c.kindPill}>웹소설</Text><Text style={c.kindPill}>{work.category}</Text></View>
       <View style={c.novelIntroduction}>
