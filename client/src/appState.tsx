@@ -2,6 +2,7 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 import { useMemberAuth } from './memberAuth';
 import { BackHandler } from 'react-native';
+import type { ReadingPosition } from './readingProgress';
 // #endregion
 
 // #region 화면 이동 타입
@@ -54,6 +55,10 @@ export interface Route {
   workId?: string;
   /** 본문에서 선택한 공개 회차의 식별자입니다. 숫자 순서로 해석하지 않습니다. */
   chapterId?: string;
+  /** 작품 상세의 이어보기에서 확인한 표시 위치입니다. */
+  resumePosition?: ReadingPosition;
+  /** 이어보기 위치와 같은 응답에서 받은 revision입니다. 최초 기록은 null입니다. */
+  resumeRevision?: string | null;
   /** 가입 성공 후 로그인 입력란에 채울 이메일입니다. */
   registeredEmail?: string;
 }
@@ -93,13 +98,19 @@ export interface AppContextValue {
   overlay: Route | null;
   /** 현재 앱 실행 중 적용된 독서 설정입니다. */
   readingPreferences: ReadingPreferences;
-  /** 독서 설정 패널에서 적용한 설정을 갱신합니다. */
+  /** 독서 설정 패널에서 적용한 설정을 갱신합니다.
+   * @param preferences - 화면에 반영할 독서 설정입니다.
+   */
   setReadingPreferences: (preferences: ReadingPreferences) => void;
   /** 현재 앱 실행 중 검색 화면에 표시할 최근 검색어입니다. */
   searchHistory: string[];
-  /** 검색어를 최근 검색 기록 맨 앞에 추가하고 중복을 정리합니다. */
+  /** 검색어를 최근 검색 기록 맨 앞에 추가하고 중복을 정리합니다.
+   * @param query - 검색에 사용한 문자열입니다.
+   */
   addSearchHistory: (query: string) => void;
-  /** 지정한 검색어 하나를 최근 검색 기록에서 제거합니다. */
+  /** 지정한 검색어 하나를 최근 검색 기록에서 제거합니다.
+   * @param query - 제거할 검색어입니다.
+   */
   removeSearchHistory: (query: string) => void;
   /** 최근 검색 기록을 모두 비웁니다. */
   clearSearchHistory: () => void;

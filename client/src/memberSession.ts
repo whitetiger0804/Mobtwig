@@ -1,5 +1,25 @@
 import { parseSignupDocuments, parseSignupProblem, parseSignupResult, type SignupDocument, type SignupInput, type SignupResult } from './memberSignup.ts';
 
+/** 회원 API가 반환한 HTTP 오류의 상태와 고정 코드를 제공합니다. */
+export class MemberRequestError extends Error {
+  /** HTTP 상태입니다. */
+  readonly status: number;
+  /** 서비스 오류 코드입니다. */
+  readonly code: string | null;
+
+  /**
+   * 실패한 요청을 화면이 구분하도록 만듭니다.
+   * @param status - HTTP 상태입니다.
+   * @param code - 서버의 짧은 오류 코드입니다.
+   */
+  constructor(status: number, code: string | null) {
+    super('회원 요청을 처리하지 못했습니다. (HTTP ' + status + ')');
+    this.name = 'MemberRequestError';
+    this.status = status;
+    this.code = code;
+  }
+}
+
 /** 서버가 현재 활성 회원에게만 제공하는 공개 계정 정보입니다. */
 export interface MemberIdentity {
   /** 정밀도 손실을 피하기 위해 문자열로 받는 회원 ID입니다. */
@@ -238,7 +258,13 @@ export function createMemberSessionClient(apiUrl: string, requester: typeof fetc
       if (!['GET', 'HEAD'].includes(method)) headers.set('X-CSRF-TOKEN', await csrf(epoch));
       return consumeRequest(path, epoch, { ...init, headers }, async response => {
         if (response.status === 401) { assertCurrent(epoch); forget('anonymous'); throw new Error('로그인이 만료됐습니다. 다시 로그인해 주십시오.'); }
-        if (!response.ok) throw new Error('회원 요청을 처리하지 못했습니다. (HTTP ' + response.status + ')');
+        if (!response.ok) {
+          const body: unknown = await response.json().catch(() => null);
+          assertCurrent(epoch);
+          const code = body && typeof body === 'object' && 'code' in body && typeof body.code === 'string'
+            && /^[A-Z_]{1,40}$/.test(body.code) ? body.code : null;
+          throw new MemberRequestError(response.status, code);
+        }
         if (response.status === 204) return null;
         try { return await response.json(); } catch { throw new Error('회원 응답의 형식이 올바르지 않습니다.'); }
       });

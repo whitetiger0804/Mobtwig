@@ -30,7 +30,7 @@
     "ios:go": "node scripts/start-expo.mjs --go --ios",
     "web": "node scripts/start-expo.mjs --web",
     "typecheck": "tsc --noEmit",
-    "test": "node --test tests/memberSignup.test.mjs tests/memberSession.test.mjs tests/homeSchema.test.mjs tests/workDetails.test.mjs tests/readerNavigation.test.mjs tests/chapterText.test.mjs ../server/mock/server.test.mjs",
+    "test": "node --test tests/readingProgress.test.mjs tests/memberSignup.test.mjs tests/memberSession.test.mjs tests/homeSchema.test.mjs tests/workDetails.test.mjs tests/readerNavigation.test.mjs tests/chapterText.test.mjs ../server/mock/server.test.mjs",
     "docs": "typedoc"
   },
   "engines": {
