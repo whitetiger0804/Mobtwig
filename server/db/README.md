@@ -49,7 +49,7 @@ Copy-Item .env.example .env
 
 ```powershell
 docker compose --env-file .env -f db/compose.yaml config --quiet
-docker compose --env-file .env -f db/compose.yaml up -d --wait --wait-timeout 180
+.\mvnw.cmd exec:exec@db-up
 docker compose --env-file .env -f db/compose.yaml ps
 ```
 
@@ -94,9 +94,9 @@ py -3.13 -m venv db/.venv
 ## 중지와 데이터 유지
 
 ```powershell
-docker compose --env-file .env -f db/compose.yaml down
+.\mvnw.cmd exec:exec@db-stop
 ```
 
-컨테이너를 제거해도 named volume의 DB 데이터는 유지됩니다. 재실행은 같은 `up` 명령을 사용합니다. `down --volumes`는 DB 데이터를 삭제하므로 일상적인 중지에는 사용하지 않습니다. 개발 환경을 되돌릴 때는 먼저 `down`으로 중지하고 추가한 설정 파일을 되돌립니다. 데이터 볼륨 삭제는 필요한 데이터를 백업한 뒤 별도로 판단합니다.
+`db-stop`은 컨테이너를 중지하며 컨테이너와 named volume의 DB 데이터를 유지합니다. 재실행은 `db-up` 명령을 사용합니다. 두 목표는 직접 호출할 때만 실행되며 일반 빌드·테스트에는 자동 실행되지 않습니다. `down --volumes`는 DB 데이터를 삭제하므로 일상적인 중지에는 사용하지 않습니다. 데이터 볼륨 삭제는 필요한 데이터를 백업한 뒤 별도로 판단합니다.
 
 이미지 초기화와 데이터 유지 동작은 [MySQL 공식 Docker 이미지](https://hub.docker.com/_/mysql), 환경변수 필수값 처리와 이중 달러 표기는 [Compose 환경변수 처리](https://docs.docker.com/reference/compose-file/interpolation/), PyMySQL 인증 의존성은 [PyMySQL 공식 배포 안내](https://pypi.org/project/PyMySQL/)를 기준으로 합니다.

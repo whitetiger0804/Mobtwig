@@ -9,6 +9,23 @@ const b = { id: '2', email: 'b@example.test', nickname: '다른 회원', created
 const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 const deferred = () => { let resolve; const promise = new Promise(r => { resolve = r; }); return { promise, resolve }; };
 
+test('로그인 확인 실패는 미인증 화면의 세대를 바꾸지 않으며 재시도 중에는 확인 상태를 표시합니다.', async () => {
+  let requester = async () => { throw new Error('연결 실패'); };
+  const client = createMemberSessionClient('https://api.example.test', (...args) => requester(...args));
+  await client.refresh();
+  assert.equal(client.getSnapshot().status, 'error');
+  assert.equal(client.getSnapshot().generation, 0);
+  const response = deferred();
+  requester = () => response.promise;
+  const retry = client.refresh();
+  assert.equal(client.getSnapshot().status, 'checking');
+  response.resolve(json({}, 401));
+  await retry;
+  assert.equal(client.getSnapshot().status, 'anonymous');
+  assert.equal(client.getSnapshot().generation, 0);
+  client.dispose();
+});
+
 test('실제 HTTP 쿠키 전송으로 CSRF·세션 교체·종료를 연결합니다.', async () => {
   const sessions = new Map();
   const server = createServer(async (request, response) => {
@@ -52,6 +69,11 @@ test('실제 HTTP 쿠키 전송으로 CSRF·세션 교체·종료를 연결합�
     await client.refresh(); assert.equal(client.getSnapshot().status, 'anonymous');
     await client.login(a.email, 'Password123'); const firstCookie = cookie;
     assert.equal(client.getSnapshot().member.id, a.id);
+    const reopened = createMemberSessionClient(base, fetchWithPlatformJar);
+    await reopened.refresh();
+    assert.equal(reopened.getSnapshot().status, 'authenticated');
+    assert.equal(reopened.getSnapshot().member.id, a.id);
+    reopened.dispose();
     await client.login(b.email, 'Password123'); assert.notEqual(cookie, firstCookie);
     assert.equal((await fetch(base + '/api/auth/session', { headers: { Cookie: firstCookie } })).status, 401);
     assert.equal(client.getSnapshot().member.id, b.id);

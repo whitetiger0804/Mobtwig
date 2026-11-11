@@ -81,6 +81,53 @@
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
             </plugin>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>3.7.0</version>
+                <configuration>
+                    <executable>docker</executable>
+                    <workingDirectory>${project.basedir}</workingDirectory>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>db-up</id>
+                        <goals>
+                            <goal>exec</goal>
+                        </goals>
+                        <configuration>
+                            <arguments>
+                                <argument>compose</argument>
+                                <argument>--env-file</argument>
+                                <argument>.env</argument>
+                                <argument>-f</argument>
+                                <argument>db/compose.yaml</argument>
+                                <argument>up</argument>
+                                <argument>-d</argument>
+                                <argument>--wait</argument>
+                                <argument>--wait-timeout</argument>
+                                <argument>180</argument>
+                            </arguments>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>db-stop</id>
+                        <goals>
+                            <goal>exec</goal>
+                        </goals>
+                        <configuration>
+                            <arguments>
+                                <argument>compose</argument>
+                                <argument>--env-file</argument>
+                                <argument>.env</argument>
+                                <argument>-f</argument>
+                                <argument>db/compose.yaml</argument>
+                                <argument>stop</argument>
+                            </arguments>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
         </plugins>
     </build>
 </project>
