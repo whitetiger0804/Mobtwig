@@ -118,7 +118,7 @@ export function LoginScreen() {
     if (busy) return;
     if (!identity.trim() || !password) { setError('이메일과 비밀번호를 입력해 주십시오.'); return; }
     setBusy(true); setError('');
-    try { await client.login(identity, password); setPassword(''); app.navigate({ screen: 'my' }, true); }
+    try { await client.login(identity, password); setPassword(''); app.navigate({ screen: 'home', kind: 'all' }, true); }
     catch (failure) { setError(failure instanceof Error ? failure.message : '로그인하지 못했습니다.'); }
     finally { setBusy(false); }
   };
@@ -486,6 +486,27 @@ export function ReadingSettingsScreen() {
   const [theme, setTheme] = useState(app.readingPreferences.theme);
   const [font, setFont] = useState(app.readingPreferences.font);
   const [size, setSize] = useState(app.readingPreferences.size);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
+  const settingsMounted = useRef(true);
+  useEffect(() => {
+    settingsMounted.current = true;
+    return () => { settingsMounted.current = false; };
+  }, []);
+  /** 기기 저장에 성공한 뒤 설정 패널을 닫습니다. */
+  const apply = async () => {
+    if (saving) return;
+    setSaving(true);
+    setSaveError('');
+    try {
+      await app.setReadingPreferences({ theme, font, size });
+      if (settingsMounted.current) app.back();
+    } catch {
+      if (settingsMounted.current) setSaveError('읽기 설정을 저장하지 못했습니다. 다시 적용해 주십시오.');
+    } finally {
+      if (settingsMounted.current) setSaving(false);
+    }
+  };
   const mode = '스크롤';
   const animation = false;
   const sound = false;
@@ -515,7 +536,8 @@ export function ReadingSettingsScreen() {
       <View style={styles.settingRow}><Text numberOfLines={1} style={[s.text, styles.settingName, styles.unsupportedSetting]}>페이지 전환 애니메이션</Text><Switch disabled accessibilityLabel="페이지 전환 애니메이션" accessibilityState={{ disabled: true }} value={animation} trackColor={{ false: '#E3E8DC', true: colors.green }} thumbColor="#FFFFFF" /></View>
       <View style={styles.settingRow}><Text numberOfLines={1} style={[s.text, styles.settingName, styles.unsupportedSetting]}>페이지 전환 효과음</Text><Switch disabled accessibilityLabel="페이지 전환 효과음" accessibilityState={{ disabled: true }} value={sound} trackColor={{ false: '#E3E8DC', true: colors.green }} thumbColor="#FFFFFF" /></View>
       <Text style={[s.muted, styles.unsupportedHint]}>페이지 넘김과 효과 설정은 아직 사용할 수 없습니다.</Text>
-      <Action label="적용" onPress={() => { app.setReadingPreferences({ theme, font, size }); app.back(); }} style={styles.applyButton} />
+      {!!saveError && <Text accessibilityRole="alert" style={s.error}>{saveError}</Text>}
+      <Action label={saving ? '저장 중…' : '적용'} disabled={saving} onPress={() => void apply()} style={styles.applyButton} />
     </View>
   );
 }

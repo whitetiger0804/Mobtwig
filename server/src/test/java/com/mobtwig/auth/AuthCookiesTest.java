@@ -9,7 +9,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class AuthCookiesTest {
     @Test void namesPathsAndFlagsAreIndependentAndEachRequestReadsOnlyItsCookie() {
-        var resolver = new AuthCookies(true);
+        var resolver = new AuthCookies(true, 604800);
         var admin = request("/api/admin/csrf"); var member = request("/api/auth/csrf");
         var adminResponse = new MockHttpServletResponse(); var memberResponse = new MockHttpServletResponse();
         resolver.setSessionId(admin, adminResponse, "admin-private-id");
@@ -35,7 +35,7 @@ class AuthCookiesTest {
             var session = request.getSession(); session.setAttribute(AuthCookies.SCOPE, scope);
             var response = new MockHttpServletResponse();
             String expected = scope.equals(AuthCookies.MEMBER) ? AuthCookies.ADMIN : AuthCookies.MEMBER;
-            new AuthScopeGuard(expected, new AuthCookies(false)).doFilter(request, response,
+            new AuthScopeGuard(expected, new AuthCookies(false, 604800)).doFilter(request, response,
                     (req, res) -> fail("다른 인증 영역으로 전달하면 안 됩니다."));
             assertEquals(401, response.getStatus()); assertEquals(scope, session.getAttribute(AuthCookies.SCOPE));
             assertTrue(response.getHeader("Set-Cookie").startsWith(expected.equals(AuthCookies.MEMBER) ? "MEMBER_SESSION=" : "SESSION="));
@@ -46,9 +46,9 @@ class AuthCookiesTest {
         var request = request("/api/auth/session");
         request.getSession().setAttribute(HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY, "legacy-authentication");
         var response = new MockHttpServletResponse();
-        new AuthScopeGuard(AuthCookies.MEMBER, new AuthCookies(false)).doFilter(request, response, (req, res) -> fail());
+        new AuthScopeGuard(AuthCookies.MEMBER, new AuthCookies(false, 604800)).doFilter(request, response, (req, res) -> fail());
         assertEquals(401, response.getStatus());
-        new AuthScopeGuard(AuthCookies.ADMIN, new AuthCookies(false)).doFilter(request, new MockHttpServletResponse(), (req, res) -> {});
+        new AuthScopeGuard(AuthCookies.ADMIN, new AuthCookies(false, 604800)).doFilter(request, new MockHttpServletResponse(), (req, res) -> {});
     }
 
     @Test void credentialCorsRejectsWildcardAndNonOriginConfiguration() {
@@ -56,6 +56,23 @@ class AuthCookiesTest {
             assertThrows(IllegalArgumentException.class, () -> new MemberWebSecurity().memberCors(origin));
         }
         assertNotNull(new MemberWebSecurity().memberCors("http://localhost:8081,https://app.example.test"));
+    }
+
+    @Test void memberCookiePersistsForSevenDaysAndLogoutExpiresIt() {
+        var resolver = new AuthCookies(true, 604800);
+        var member = request("/api/auth/session");
+        member.getSession().setMaxInactiveInterval(1800);
+        var response = new MockHttpServletResponse();
+        resolver.renewMemberSession(member, response);
+        assertEquals(604800, member.getSession().getMaxInactiveInterval());
+        assertTrue(response.getHeader("Set-Cookie").contains("Max-Age=604800"));
+        assertTrue(response.getHeader("Set-Cookie").contains("Expires="));
+        var adminResponse = new MockHttpServletResponse();
+        resolver.setSessionId(request("/api/admin/session"), adminResponse, "admin-private-id");
+        assertFalse(adminResponse.getHeader("Set-Cookie").contains("Max-Age="));
+        var logout = new MockHttpServletResponse();
+        resolver.expireSession(member, logout);
+        assertTrue(logout.getHeader("Set-Cookie").contains("Max-Age=0"));
     }
 
     private MockHttpServletRequest request(String uri) { var request = new MockHttpServletRequest(); request.setRequestURI(uri); return request; }

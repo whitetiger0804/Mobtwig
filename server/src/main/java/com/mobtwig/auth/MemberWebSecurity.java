@@ -35,6 +35,7 @@ public class MemberWebSecurity {
                         .usernameParameter("email")
                         .successHandler((request, response, authentication) -> {
                             request.getSession().setAttribute(AuthCookies.SCOPE, AuthCookies.MEMBER);
+                            request.getSession().setMaxInactiveInterval(cookies.memberSessionTimeoutSeconds());
                             response.setHeader("Cache-Control", "no-store"); response.setStatus(204);
                         })
                         .failureHandler((request, response, exception) -> { response.setHeader("Cache-Control", "no-store"); response.setStatus(401); }))

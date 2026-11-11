@@ -1,6 +1,8 @@
 // #region 의존성 가져오기
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useMemberAuth } from './memberAuth';
+import { saveReadingPreferences, type ReadingPreferences } from './readingPreferences';
 import { BackHandler } from 'react-native';
 import type { ReadingPosition } from './readingProgress';
 // #endregion
@@ -64,17 +66,7 @@ export interface Route {
 }
 // #endregion
 
-/** 독서 화면에서 즉시 반영하는 앱 실행 중 읽기 설정입니다. */
-export interface ReadingPreferences {
-  /** 독서 화면 배경 테마입니다. */
-  theme: '크림' | '연노랑' | '연회색' | '다크';
-  /** 기기 기본 명조·고딕 계열 중 선택한 글꼴입니다. */
-  font: string;
-  /** 글자 크기 단계입니다. 0부터 4까지입니다. */
-  size: number;
-}
-
-const defaultReadingPreferences: ReadingPreferences = { theme: '크림', font: '기본 명조', size: 2 };
+export type { ReadingPreferences } from './readingPreferences';
 
 // #region 화면 컨텍스트
 /** 바탕 화면을 유지한 채 하단 패널로 여는 화면 이름의 집합입니다. */
@@ -87,7 +79,7 @@ const overlays = new Set<Screen>([
  * {@link AppProvider}가 하위 컴포넌트에 제공하는 화면 상태와 이동 동작입니다.
  *
  * @remarks
- * {@link useApp}으로 읽습니다. 업무 데이터 조회·인증·영구 저장 기능은 포함하지 않습니다.
+ * {@link useApp}으로 읽으며 읽기 설정은 기기에 저장한 뒤 화면에 적용합니다.
  */
 export interface AppContextValue {
   /** 패널이 열려 있으면 패널을, 그렇지 않으면 바탕 화면을 가리킵니다. */
@@ -96,12 +88,12 @@ export interface AppContextValue {
   baseRoute: Route;
   /** 열린 하단 패널입니다. 패널이 닫혀 있으면 `null`입니다. */
   overlay: Route | null;
-  /** 현재 앱 실행 중 적용된 독서 설정입니다. */
+  /** 기기 저장소에서 복원하거나 저장을 마친 독서 설정입니다. */
   readingPreferences: ReadingPreferences;
-  /** 독서 설정 패널에서 적용한 설정을 갱신합니다.
+  /** 기기 저장이 성공하면 설정을 갱신하며 실패하면 오류를 전달합니다.
    * @param preferences - 화면에 반영할 독서 설정입니다.
    */
-  setReadingPreferences: (preferences: ReadingPreferences) => void;
+  setReadingPreferences: (preferences: ReadingPreferences) => Promise<void>;
   /** 현재 앱 실행 중 검색 화면에 표시할 최근 검색어입니다. */
   searchHistory: string[];
   /** 검색어를 최근 검색 기록 맨 앞에 추가하고 중복을 정리합니다.
@@ -132,7 +124,7 @@ export interface AppContextValue {
    * 열린 패널을 닫거나 이전 일반 화면으로 돌아갑니다.
    *
    * @remarks
-   * 패널을 먼저 닫습니다. 상단 탭이 루트이면 현재 탭을 유지합니다.
+   * 패널을 먼저 닫습니다. 상단 탭 또는 로그인 화면이 루트이면 현재 화면을 유지합니다.
    * 그 외의 독립 화면에서 이전 화면이 없으면 전체 홈으로 돌아갑니다.
    *
    * @returns 값을 반환하지 않고 화면 상태를 변경합니다.
@@ -149,20 +141,24 @@ const AppContext = createContext<AppContextValue | null>(null);
  * 하위 컴포넌트에 화면 스택과 하단 패널의 이동 동작을 제공합니다.
  *
  * @remarks
- * 전체 홈에서 시작하며 화면 상태는 컴포넌트가 유지되는 동안 메모리에만 보관합니다.
+ * 시작 단계에서 결정한 경로와 복원된 읽기 설정을 사용합니다.
  * Android 뒤로 가기를 연결하고 해제 시 이벤트 구독을 정리합니다.
- * 데이터 조회·인증·영구 저장은 수행하지 않습니다.
+ * 화면 이동 상태는 메모리에 두고 읽기 설정은 기기에 저장합니다.
  *
  * @param props - 화면 상태를 공유할 하위 요소입니다.
  * @returns 하위 요소를 감싸는 화면 컨텍스트 공급자입니다.
  */
-export function AppProvider({ children }: {
+export function AppProvider({ children, initialRoute, initialReadingPreferences }: {
   /** 화면 상태와 이동 함수를 공유하는 하위 React 요소입니다. */
   children: ReactNode;
+  /** 최초 로그인 확인 결과로 결정한 시작 화면입니다. */
+  initialRoute: Route;
+  /** 시작 단계에서 기기 저장소로부터 복원한 읽기 설정입니다. */
+  initialReadingPreferences: ReadingPreferences;
 }) {
-  const [stack, setStack] = useState<Route[]>([{ screen: 'home', kind: 'all' }]);
+  const [stack, setStack] = useState<Route[]>([initialRoute]);
   const [overlay, setOverlay] = useState<Route | null>(null);
-  const [readingPreferences, setReadingPreferences] = useState(defaultReadingPreferences);
+  const [readingPreferences, updateReadingPreferences] = useState(initialReadingPreferences);
   const [searchHistory, setSearchHistory] = useState<string[]>([]);
   const baseRoute = stack[stack.length - 1];
   const { state: auth } = useMemberAuth();
@@ -173,6 +169,17 @@ export function AppProvider({ children }: {
       return [['login', 'signup', 'account', 'my'].includes(current.screen) ? current : { screen: 'home', kind: 'all' }];
     });
   }, [auth.generation]);
+
+  /**
+   * 저장이 완료된 읽기 설정을 현재 화면에 적용합니다.
+   * @param preferences - 사용자가 적용할 설정입니다.
+   * @returns 기기 저장과 화면 상태 갱신이 완료되면 이행됩니다.
+   * @throws Error - 기기 저장에 실패하면 발생합니다.
+   */
+  const setReadingPreferences = useCallback(async (preferences: ReadingPreferences) => {
+    const saved = await saveReadingPreferences(AsyncStorage, preferences);
+    updateReadingPreferences(saved);
+  }, []);
 
   /**
    * 패널 여부에 따라 표시 상태 또는 화면 스택을 갱신합니다.
@@ -216,14 +223,14 @@ export function AppProvider({ children }: {
     }
     setStack(previous => previous.length > 1
       ? previous.slice(0, -1)
-      : previous[0].screen === 'home' || previous[0].screen === 'community'
+      : ['home', 'community', 'login'].includes(previous[0].screen)
         ? previous
         : [{ screen: 'home', kind: 'all' }]);
   }, [overlay]);
 
   useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
-      if (overlay || stack.length > 1 || (baseRoute.screen !== 'home' && baseRoute.screen !== 'community')) {
+      if (overlay || stack.length > 1 || !['home', 'community', 'login'].includes(baseRoute.screen)) {
         back();
         return true;
       }

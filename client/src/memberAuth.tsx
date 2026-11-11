@@ -14,8 +14,11 @@ export interface MemberAuthValue {
 /** 현재 서버에만 속하는 메모리 전용 세션 클라이언트입니다. */
 const MemberContext = createContext<MemberSessionClient | null>(null);
 
+/** 앱이 활성 상태인 동안 한 시간마다 회원 세션을 갱신합니다. */
+const sessionRefreshIntervalMs = 60 * 60 * 1000;
+
 /**
- * 앱 시작과 foreground 복귀 시 서버의 세션을 확인합니다.
+ * 앱 시작·활성 복귀와 활성 상태의 정기 확인으로 서버 세션을 갱신합니다.
  * @param props - 인증 상태를 공유할 하위 화면입니다.
  * @returns 회원 인증 공급자입니다.
  */
@@ -27,8 +30,11 @@ export function MemberAuthProvider({ children }: {
   const client = useMemo(() => createMemberSessionClient(url), [url]);
   useEffect(() => {
     void client.refresh();
+    const interval = setInterval(() => {
+      if (AppState.currentState === 'active') void client.refresh();
+    }, sessionRefreshIntervalMs);
     const subscription = AppState.addEventListener('change', state => { if (state === 'active') void client.refresh(); });
-    return () => { subscription.remove(); client.dispose(); };
+    return () => { clearInterval(interval); subscription.remove(); client.dispose(); };
   }, [client]);
   return <MemberContext.Provider value={client}>{children}</MemberContext.Provider>;
 }
