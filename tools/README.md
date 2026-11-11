@@ -1,0 +1,1 @@
+컨테이너 올리고 node tools/db-seed.mjs seed
