@@ -1,4 +1,5 @@
 // #region 의존성 가져오기
+import { readRecentWorks, type RecentWork } from './recentWorks';
 import { useEffect, useState } from 'react';
 import { parseHomeResponse, type SduiSection } from './homeSchema';
 import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
@@ -435,15 +436,48 @@ export function RecordsScreen() {
 }
 
 /**
- * 최근 본 작품의 빈 상태 안내를 표시합니다.
+ * 현재 회원이 최근 본 작품을 서버에서 읽어 표시합니다.
  *
  * @remarks
- * 열람 이력이나 마지막 읽은 시각을 조회하지 않습니다.
+ * 로그인 전·조회 중·실패·빈 목록을 구분합니다. 화면을 떠나면 응답을 반영하지 않습니다.
  *
- * @returns 최근 본 작품 데이터가 없는 화면입니다.
+ * @returns 최근 본 작품 목록 또는 상태 안내입니다.
  */
 export function RecentScreen() {
-  return <View style={s.page}><EmptyState title="표시할 최근 본 작품이 없습니다." /></View>;
+  const { navigate } = useApp();
+  const apiUrl = useApiUrl();
+  const { state: auth, client: member } = useMemberAuth();
+  const [works, setWorks] = useState<RecentWork[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
+
+  useEffect(() => {
+    setWorks(null);
+    setError(null);
+    if (auth.status !== 'authenticated') return;
+    let active = true;
+    readRecentWorks(member)
+      .then(value => { if (active) setWorks(value); })
+      .catch((reason: unknown) => { if (active) setError(reason instanceof Error ? reason.message : '최근 본 작품을 불러오지 못했습니다.'); });
+    return () => { active = false; };
+  }, [auth.status, auth.generation, member, attempt]);
+
+  if (auth.status === 'checking') return <View style={c.detailStatus}><ActivityIndicator color={colors.green} /></View>;
+  if (auth.status !== 'authenticated') return <View style={s.page}><EmptyState title="로그인 후 최근 본 작품을 볼 수 있습니다." /></View>;
+  if (error !== null) return <View style={c.detailStatus} accessibilityLiveRegion="polite">
+    <Text style={s.subtitle}>최근 본 작품을 불러오지 못했습니다.</Text>
+    <Text style={s.error}>{error}</Text>
+    <Action label="다시 불러오기" onPress={() => setAttempt(value => value + 1)} />
+  </View>;
+  if (works === null) return <View style={c.detailStatus}><ActivityIndicator color={colors.green} /></View>;
+  if (works.length === 0) return <View style={s.page}><EmptyState title="표시할 최근 본 작품이 없습니다." /></View>;
+  return <ScrollView contentContainerStyle={c.recentList}>
+    {works.map(work => <Pressable key={work.id} accessibilityRole="button" accessibilityLabel={work.title + ' 상세 보기'}
+      onPress={() => navigate({ screen: 'detail', workId: work.id })} style={c.recentItem}>
+      <Image accessibilityLabel={`${work.title} 표지`} source={{ uri: new URL(work.imageUrl, `${apiUrl}/`).href }} resizeMode="cover" style={c.recentCover} />
+      <Text style={c.recommendTitle} numberOfLines={2}>{work.title}</Text>
+    </Pressable>)}
+  </ScrollView>;
 }
 // #endregion
 
@@ -495,6 +529,9 @@ const c = StyleSheet.create({
 recommendItem: { width: 120, gap: 8 },
 recommendCover: { width: '100%', aspectRatio: 2 / 3, borderRadius: 7, backgroundColor: colors.pale },
 recommendTitle: { fontSize: 14, fontWeight: '700', color: colors.ink },
+  recentList: { padding: 20, flexDirection: 'row', flexWrap: 'wrap', gap: 16 },
+  recentItem: { width: 120, gap: 8 },
+  recentCover: { width: '100%', aspectRatio: 2 / 3, borderRadius: 7, backgroundColor: colors.pale },
   searchTop: { paddingTop: 16, paddingHorizontal: 20, backgroundColor: '#fff' },
   searchField: { height: 52, borderRadius: 26, backgroundColor: '#F0F1E8', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 7, marginBottom: 16 },
   searchInput: { flex: 1, minWidth: 0, fontSize: 14, color: colors.ink, paddingVertical: 12 },
