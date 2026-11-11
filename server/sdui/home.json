@@ -84,6 +84,7 @@
       },
       {
         "id": "recent-works",
+        "contentSource": { "type": "recentWorks", "kind": "all" },
         "type": "workShelf",
         "title": "최근 본 작품",
         "action": {
@@ -124,6 +125,7 @@
       },
       {
         "id": "recent-books",
+        "contentSource": { "type": "recentWorks", "kind": "book" },
         "type": "workShelf",
         "title": "최근 본 도서",
         "items": []

@@ -7,6 +7,19 @@ import { parseHomeResponse } from '../src/homeSchema.ts';
 
 const fixtures = JSON.parse(await readFile(new URL('../../server/mock/fixtures/home.json', import.meta.url), 'utf8'));
 
+test('최근 본 목록 연결은 제목·ID와 독립적이며 정적 항목과 섞지 않습니다.', () => {
+  const section = { id: 'renamed-section', title: '이어 보는 이야기', type: 'workShelf', items: [],
+    contentSource: { type: 'recentWorks', kind: 'book' } };
+  const home = { version: 1, sections: [section] };
+  assert.deepEqual(parseHomeResponse(home), home);
+  for (const contentSource of [null, { type: 'unknown', kind: 'all' }, { type: 'recentWorks', kind: 'other' }]) {
+    assert.throws(() => parseHomeResponse({ version: 1, sections: [{ ...section, contentSource }] }));
+  }
+  assert.throws(() => parseHomeResponse({ version: 1, sections: [{ ...section,
+    items: [{ id: 'a', title: '작품', imageUrl: '/media/a.png' }] }] }));
+  assert.throws(() => parseHomeResponse({ version: 1, sections: [{ ...section, type: 'bannerCarousel' }] }));
+});
+
 /**
  * 원본 예시를 보존하면서 지정한 입력만 바꿉니다.
  *
