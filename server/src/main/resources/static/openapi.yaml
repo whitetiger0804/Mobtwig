@@ -361,7 +361,7 @@ paths:
       operationId: getMemberSession
       summary: 현재 활성 회원 본인의 표시 정보를 조회합니다.
       security: [{MemberSessionCookie: []}]
-      description: 30분 미사용 세션·비활성 계정은 401입니다. 응답은 no-store이며 요청의 id 파라미터로 조회 대상을 바꿀 수 없습니다.
+      description: 7일 미사용 세션·비활성 계정은 401입니다. 활성 회원의 요청에서 서버 세션과 쿠키의 유효기간을 함께 갱신합니다. 응답은 no-store이며 요청의 id 파라미터로 조회 대상을 바꿀 수 없습니다.
       responses:
         '200':
           description: 활성 회원 본인 정보
