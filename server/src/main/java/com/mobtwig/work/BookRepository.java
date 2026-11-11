@@ -31,6 +31,25 @@ public interface BookRepository extends JpaRepository<Book, Long> {
             String status, String contentType, Pageable pageable);
 
     /**
+     * 전체 공개 추천 작품을 찜 수·평점·출간일·식별자 내림차순으로 조회합니다.
+     * @param status 게시 상태입니다.
+     * @param pageable 조회 범위입니다.
+     * @return DB 집계 기준으로 정렬한 추천 작품입니다.
+     */
+    List<Book> findByPublishStatusOrderByWishlistCountDescAverageRatingDescPublishedDateDescIdDesc(
+            String status, Pageable pageable);
+
+    /**
+     * 분류별 공개 추천 작품을 찜 수·평점·출간일·식별자 내림차순으로 조회합니다.
+     * @param status 게시 상태입니다.
+     * @param contentType DB의 콘텐츠 종류입니다.
+     * @param pageable 조회 범위입니다.
+     * @return 해당 분류의 DB 추천 작품입니다.
+     */
+    List<Book> findByPublishStatusAndContentTypeOrderByWishlistCountDescAverageRatingDescPublishedDateDescIdDesc(
+            String status, String contentType, Pageable pageable);
+
+    /**
      * URL 식별자와 게시 상태가 일치하는 작품을 조회합니다.
      * @param slug URL 식별자입니다.
      * @param status 게시 상태입니다.
