@@ -76,7 +76,7 @@ export function SearchScreen({ route }: {
       })
       .then(parseHomeResponse)
       .then(home => {
-        const shelf = home.sections.find(section => section.id === 'recommended-works');
+        const shelf = home.sections.find(section => section.type === 'workShelf');
         if (!controller.signal.aborted) setRecommended(shelf?.type === 'workShelf' ? shelf.items : []);
       })
       .catch((reason: unknown) => {
