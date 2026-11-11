@@ -67,6 +67,10 @@ public class Book {
     @Column(name = "recommend_count", nullable = false)
     private int recommendCount;
 
+    /** 공개 추천 목록을 정렬할 때 사용하는 DB의 찜 수 캐시입니다. */
+    @Column(name = "wishlist_count", nullable = false)
+    private int wishlistCount;
+
     @ManyToMany
     @JoinTable(name = "book_author", joinColumns = @JoinColumn(name = "book_id"),
             inverseJoinColumns = @JoinColumn(name = "author_id"))

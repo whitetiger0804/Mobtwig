@@ -11,7 +11,6 @@ import com.mobtwig.work.Book;
 import com.mobtwig.work.BookRepository;
 import com.mobtwig.work.WorkMetadata;
 import org.springframework.beans.factory.annotation.Value;
-import org.jspecify.annotations.NonNull;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -45,7 +44,7 @@ public class HomeService {
     }
 
     /**
-     * 파일의 구역 순서를 유지하고 publishedWorks 자료원을 공개 작품으로 채웁니다.
+     * 파일의 구역 배치를 유지하고 작품·추천 목록은 DB에서 조회합니다.
      * @param kind all, book, magazine, novel 중 하나입니다.
      * @return 빈 작품 목록도 표현할 수 있는 홈 응답입니다.
      * @throws ResponseStatusException 지원하지 않는 분류이면 발생합니다.
@@ -73,7 +72,10 @@ public class HomeService {
                 continue;
             }
             String type = section.path("type").asString();
-            if (!"publishedWorks".equals(source.path("type").asString())
+            String sourceType = source.path("type").asString();
+            String sort = source.has("sort") ? source.path("sort").asString() : "latest";
+            if (!"publishedWorks".equals(sourceType)
+                    || !("latest".equals(sort) || "recommended".equals(sort))
                     || !("workShelf".equals(type) || "featuredWork".equals(type))
                     || !source.path("limit").isIntegralNumber()
                     || !source.path("limit").canConvertToInt()) {
@@ -83,26 +85,56 @@ public class HomeService {
             if (limit < 1 || limit > 20) {
                 throw new IllegalStateException("홈 작품 개수는 1개 이상 20개 이하여야 합니다.");
             }
-            ArrayNode items = mapper.valueToTree(publishedWorks(contentType, limit));
-            if ("featuredWork".equals(type)) {
-                String label = WorkMetadata.requiredText(source.path("label").asString(), "추천 문구");
-                for (JsonNode item : items) {
-                    ((ObjectNode) item).put("label", label);
+            ArrayNode items = mapper.createArrayNode();
+            for (Book book : publishedWorks(contentType, limit, sort)) {
+                ObjectNode item = mapper.valueToTree(new HomeResponse.WorkItem(
+                        WorkMetadata.slug(book.getSlug()), WorkMetadata.requiredText(book.getTitle(), "제목"),
+                        WorkMetadata.imageUrl(book.getCoverImageUrl())));
+                if ("featuredWork".equals(type)) {
+                    decorateFeatured(item, book, source);
                 }
+                items.add(item);
             }
             section.set("items", items);
         }
         return home;
     }
 
-    /** 분류와 개수에 해당하는 최신 공개 작품 카드를 조회합니다. */
-    private List<HomeResponse.@NonNull WorkItem> publishedWorks(String contentType, int limit) {
+    /**
+     * 최신 목록과 추천 목록을 DB의 공개 작품에서 계산합니다.
+     * @param contentType 작품 분류이며 null이면 전체입니다.
+     * @param limit 최대 작품 수입니다.
+     * @param sort latest는 최신순, recommended는 찜 수·평점순입니다.
+     * @return 분류와 정렬 기준에 해당하는 공개 작품입니다.
+     */
+    private List<Book> publishedWorks(String contentType, int limit, String sort) {
         PageRequest page = PageRequest.of(0, limit);
-        List<Book> books = contentType == null
+        if ("recommended".equals(sort)) {
+            return contentType == null
+                    ? bookRepository.findByPublishStatusOrderByWishlistCountDescAverageRatingDescPublishedDateDescIdDesc("PUBLISHED", page)
+                    : bookRepository.findByPublishStatusAndContentTypeOrderByWishlistCountDescAverageRatingDescPublishedDateDescIdDesc("PUBLISHED", contentType, page);
+        }
+        return contentType == null
                 ? bookRepository.findByPublishStatusOrderByPublishedDateDescIdDesc("PUBLISHED", page)
                 : bookRepository.findByPublishStatusAndContentTypeOrderByPublishedDateDescIdDesc("PUBLISHED", contentType, page);
-        return books.stream().map(book -> new HomeResponse.WorkItem(
-                WorkMetadata.slug(book.getSlug()), WorkMetadata.requiredText(book.getTitle(), "제목"),
-                WorkMetadata.imageUrl(book.getCoverImageUrl()))).toList();
+    }
+
+    /**
+     * 추천 문구는 구성에서 읽고 보조 문구와 상세 이동 대상은 DB 작품에서 만듭니다.
+     * @param item 응답에 포함할 작품 카드입니다.
+     * @param book DB에서 선택한 공개 작품입니다.
+     * @param source 추천 카드의 표시 설정입니다.
+     */
+    private void decorateFeatured(ObjectNode item, Book book, JsonNode source) {
+        item.put("label", WorkMetadata.requiredText(source.path("label").asString(), "추천 문구"));
+        if (source.path("includeSubtitle").asBoolean(false)) {
+            item.put("subtitle", WorkMetadata.authors(book.getAuthors()) + " · "
+                    + WorkMetadata.categories(book.getGenres(), book.getCategories()));
+        }
+        if (source.has("actionLabel")) {
+            ObjectNode action = item.putObject("action");
+            action.put("label", WorkMetadata.requiredText(source.path("actionLabel").asString(), "이동 문구"));
+            action.putObject("route").put("screen", "detail").put("workId", WorkMetadata.slug(book.getSlug()));
+        }
     }
 }

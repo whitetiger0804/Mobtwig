@@ -2,13 +2,40 @@ package com.mobtwig.work;
 
 import java.net.URI;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+import org.jspecify.annotations.NonNull;
 
 /** 공개 작품의 값이 클라이언트의 응답 계약을 만족하는지 검사합니다. */
 public final class WorkMetadata {
     private static final Pattern BLANK_TEXT = Pattern.compile("[\\p{Z}\\x09-\\x0D\\uFEFF]*");
 
     private WorkMetadata() { }
+
+    /**
+     * 홈과 상세에서 같은 저자 표시 이름을 사용합니다.
+     * @param authors 작품에 연결된 저자입니다.
+     * @return 쉼표로 연결한 필수 저자 이름입니다.
+     */
+    public static String authors(List<Author> authors) {
+        return requiredText(authors.stream().map(author -> requiredText(author.getName(), "저자"))
+                .collect(Collectors.joining(", ")), "저자");
+    }
+
+    /**
+     * 홈과 상세에서 같은 장르·카테고리 표시 이름을 사용합니다.
+     * @param genres 작품의 장르입니다.
+     * @param categories 작품의 카테고리입니다.
+     * @return 중복 이름을 제거하고 가운데 점으로 연결한 필수 분류입니다.
+     */
+    public static String categories(List<@NonNull Genre> genres, List<@NonNull Category> categories) {
+        return requiredText(Stream.concat(genres.stream().map(genre -> genre.getName()),
+                        categories.stream().map(category -> category.getName()))
+                .map(name -> requiredText(name, "분류 이름")).distinct().collect(Collectors.joining(" · ")),
+                "장르·카테고리");
+    }
 
     /**
      * 공백이 아닌 필수 문자열을 반환합니다.

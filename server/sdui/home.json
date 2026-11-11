@@ -3,10 +3,95 @@
     "version": 1,
     "sections": [
       {
-        "id": "published-works",
+        "id": "featured-events",
+        "type": "bannerCarousel",
+        "items": [
+          {
+            "id": "reading-night",
+            "title": "별이 뜨는 밤, 새로운 이야기",
+            "description": "책과 함께 보내는 조용한 시간을 만나 보세요.",
+            "imageUrl": "/media/backgrounds/night-sky.png",
+            "action": {
+              "label": "도서 둘러보기",
+              "route": {
+                "screen": "home",
+                "kind": "book"
+              }
+            }
+          },
+          {
+            "id": "night-stories",
+            "title": "다음 이야기가 궁금한 밤",
+            "description": "웹소설 속 새로운 세계로 떠나 보세요.",
+            "imageUrl": "/media/backgrounds/night-sky.png",
+            "action": {
+              "label": "웹소설 둘러보기",
+              "route": {
+                "screen": "home",
+                "kind": "novel"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "id": "discover-kinds",
+        "type": "linkRow",
+        "title": "어떤 이야기를 찾으시나요?",
+        "items": [
+          {
+            "id": "books",
+            "label": "도서",
+            "route": {
+              "screen": "home",
+              "kind": "book"
+            }
+          },
+          {
+            "id": "magazines",
+            "label": "매거진",
+            "route": {
+              "screen": "home",
+              "kind": "magazine"
+            }
+          },
+          {
+            "id": "novels",
+            "label": "웹소설",
+            "route": {
+              "screen": "home",
+              "kind": "novel"
+            }
+          }
+        ]
+      },
+      {
+        "id": "recommended-works",
         "type": "workShelf",
-        "title": "공개 작품",
-        "dataSource": { "type": "publishedWorks", "limit": 20 },
+        "title": "취향에 맞는 작품",
+        "action": {
+          "label": "더 보기",
+          "route": {
+            "screen": "search"
+          }
+        },
+        "items": [],
+        "dataSource": {
+          "type": "publishedWorks",
+          "limit": 4,
+          "sort": "recommended"
+        }
+      },
+      {
+        "id": "recent-works",
+        "type": "workShelf",
+        "title": "최근 본 작품",
+        "action": {
+          "label": "전체 보기",
+          "route": {
+            "screen": "recent"
+          }
+        },
         "items": []
       }
     ]
@@ -15,10 +100,32 @@
     "version": 1,
     "sections": [
       {
-        "id": "published-works",
+        "id": "book-featured",
+        "type": "featuredWork",
+        "items": [],
+        "dataSource": {
+          "type": "publishedWorks",
+          "limit": 1,
+          "label": "오늘의 책",
+          "includeSubtitle": true,
+          "actionLabel": "상세 보기",
+          "sort": "recommended"
+        }
+      },
+      {
+        "id": "book-shelf",
         "type": "workShelf",
-        "title": "공개 작품",
-        "dataSource": { "type": "publishedWorks", "limit": 20 },
+        "title": "새로 만나는 도서",
+        "items": [],
+        "dataSource": {
+          "type": "publishedWorks",
+          "limit": 6
+        }
+      },
+      {
+        "id": "recent-books",
+        "type": "workShelf",
+        "title": "최근 본 도서",
         "items": []
       }
     ]
@@ -27,11 +134,25 @@
     "version": 1,
     "sections": [
       {
-        "id": "published-works",
+        "id": "magazine-featured",
+        "type": "featuredWork",
+        "items": [],
+        "dataSource": {
+          "type": "publishedWorks",
+          "limit": 1,
+          "label": "오늘의 매거진",
+          "sort": "recommended"
+        }
+      },
+      {
+        "id": "magazine-shelf",
         "type": "workShelf",
-        "title": "공개 작품",
-        "dataSource": { "type": "publishedWorks", "limit": 20 },
-        "items": []
+        "title": "일상에 새로운 시선을",
+        "items": [],
+        "dataSource": {
+          "type": "publishedWorks",
+          "limit": 5
+        }
       }
     ]
   },
@@ -39,11 +160,25 @@
     "version": 1,
     "sections": [
       {
-        "id": "published-works",
+        "id": "novel-featured",
+        "type": "featuredWork",
+        "items": [],
+        "dataSource": {
+          "type": "publishedWorks",
+          "limit": 1,
+          "label": "오늘의 웹소설",
+          "sort": "recommended"
+        }
+      },
+      {
+        "id": "novel-shelf",
         "type": "workShelf",
-        "title": "공개 작품",
-        "dataSource": { "type": "publishedWorks", "limit": 20 },
-        "items": []
+        "title": "다음 장이 궁금한 웹소설",
+        "items": [],
+        "dataSource": {
+          "type": "publishedWorks",
+          "limit": 5
+        }
       }
     ]
   }
