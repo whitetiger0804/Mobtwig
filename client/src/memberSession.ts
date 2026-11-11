@@ -205,6 +205,7 @@ export function createMemberSessionClient(apiUrl: string, requester: typeof fetc
     },
     async refresh() {
       if (busy || disposed) return;
+      if (state.status === 'error') publish({ status: 'checking', member: null, generation, error: null });
       const epoch = generation, sequence = ++refreshSequence;
       try {
         const member = await readIdentity(epoch);
@@ -213,7 +214,11 @@ export function createMemberSessionClient(apiUrl: string, requester: typeof fetc
         if (state.member && member.id !== state.member.id) forget('checking');
         publish({ status: 'authenticated', member: Object.freeze(member), generation, error: null });
       } catch {
-        if (!disposed && generation === epoch && sequence === refreshSequence) forget('error', '로그인 상태를 확인하지 못했습니다. 다시 시도해 주십시오.');
+        if (!disposed && generation === epoch && sequence === refreshSequence) {
+          const message = '로그인 상태를 확인하지 못했습니다. 다시 시도해 주십시오.';
+          if (state.member) forget('error', message);
+          else publish({ status: 'error', member: null, generation, error: message });
+        }
       }
     },
     async login(email, password) {
