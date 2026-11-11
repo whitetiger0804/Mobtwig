@@ -1,0 +1,6 @@
+[
+  { "id": "novel-record", "title": "괴이청 야간기록관", "imageUrl": "/media/covers/웹소설/괴이청 야간기록관.png", "kind": "novel", "lastReadAt": "2026-11-10T12:30:00Z" },
+  { "id": "book-quiet", "title": "고요를 연습하는 시간", "imageUrl": "/media/covers/도서/고요를 연습하는 시간.png", "kind": "book", "lastReadAt": "2026-11-09T21:05:00Z" },
+  { "id": "magazine-frame", "title": "FRAME 디자인 저널", "imageUrl": "/media/covers/매거진/FRAME 디자인 저널.png", "kind": "magazine", "lastReadAt": "2026-11-08T08:00:00Z" },
+  { "id": "book-cloud", "title": "구름섬 우체부", "imageUrl": "/media/covers/도서/구름섬 우체부.png", "kind": "book", "lastReadAt": "2026-11-05T15:45:00Z" }
+]

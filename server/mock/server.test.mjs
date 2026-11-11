@@ -246,6 +246,29 @@ test('작품 JSON 오류와 파일 부재에 500을 반환하고 파일 경로�
   assert.deepEqual(await missing.json(), { error: '작품 정보 파일을 읽지 못했습니다.' });
 });
 
+test('최근 본 작품을 클라이언트 형식과 최근 본 순서로 반환하고 기록 요청은 거절합니다.', async (context) => {
+  const baseUrl = await startServer(context);
+  const response = await fetch(`${baseUrl}/api/members/recent-works`);
+  assert.equal(response.status, 200);
+  const recent = await response.json();
+
+  assert.ok(Array.isArray(recent) && recent.length > 0 && recent.length <= 20);
+  assert.equal(new Set(recent.map((item) => item.id)).size, recent.length);
+  for (const item of recent) {
+    assert.deepEqual(Object.keys(item), ['id', 'title', 'imageUrl', 'kind', 'lastReadAt']);
+    assert.ok(['book', 'novel', 'magazine'].includes(item.kind));
+    assert.ok(Number.isFinite(Date.parse(item.lastReadAt)));
+    const work = works.find((candidate) => candidate.id === item.id);
+    assert.deepEqual({ id: item.id, title: item.title, imageUrl: item.imageUrl, kind: item.kind },
+      { id: work.id, title: work.title, imageUrl: work.imageUrl, kind: work.kind });
+  }
+  const times = recent.map((item) => Date.parse(item.lastReadAt));
+  assert.deepEqual(times, [...times].sort((a, b) => b - a));
+
+  const write = await fetch(`${baseUrl}/api/members/recent-works/${recent[0].id}`, { method: 'POST' });
+  assert.equal(write.status, 405);
+});
+
 test('잘못된 종류·메서드·없는 리소스를 명시적인 상태 코드로 거절합니다.', async (context) => {
   const baseUrl = await startServer(context);
 
