@@ -20,5 +20,22 @@
   },
   "java.test.defaultConfig": "Mobtwig 로컬 테스트",
   "python.terminal.useEnvFile": true,
-  "nodejs-testing.include": ["client/tests", "server/mock"]
+  "nodejs-testing.include": [
+    "client/tests",
+    "server/mock"
+  ],
+  "maven.terminal.favorites": [
+    {
+      "command": "exec:exec@db-up",
+      "debug": false
+    },
+    {
+      "command": "spring-boot:run",
+      "debug": false
+    },
+    {
+      "command": "exec:exec@db-stop",
+      "debug": false
+    }
+  ]
 }
