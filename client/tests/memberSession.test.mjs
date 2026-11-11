@@ -52,6 +52,11 @@ test('실제 HTTP 쿠키 전송으로 CSRF·세션 교체·종료를 연결합�
     await client.refresh(); assert.equal(client.getSnapshot().status, 'anonymous');
     await client.login(a.email, 'Password123'); const firstCookie = cookie;
     assert.equal(client.getSnapshot().member.id, a.id);
+    const reopened = createMemberSessionClient(base, fetchWithPlatformJar);
+    await reopened.refresh();
+    assert.equal(reopened.getSnapshot().status, 'authenticated');
+    assert.equal(reopened.getSnapshot().member.id, a.id);
+    reopened.dispose();
     await client.login(b.email, 'Password123'); assert.notEqual(cookie, firstCookie);
     assert.equal((await fetch(base + '/api/auth/session', { headers: { Cookie: firstCookie } })).status, 401);
     assert.equal(client.getSnapshot().member.id, b.id);
