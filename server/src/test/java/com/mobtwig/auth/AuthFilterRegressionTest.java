@@ -34,7 +34,7 @@ class AuthFilterRegressionTest {
     @Configuration @EnableWebMvc @EnableWebSecurity @EnableSpringHttpSession
     @Import({MemberWebSecurity.class, AdminSecurity.class, MemberCsrfController.class, MemberSessionController.class, AdminController.class})
     static class Config {
-        @Bean AuthCookies authCookies() { return new AuthCookies(false); }
+        @Bean AuthCookies authCookies() { return new AuthCookies(false, 604800); }
         @Bean MapSessionRepository sessionRepository() { return new MapSessionRepository(new ConcurrentHashMap<String, org.springframework.session.Session>()); }
         @Bean AdminCatalog catalog() { return mock(AdminCatalog.class); }
         @Bean MemberSessions sessions() {
@@ -135,6 +135,36 @@ class AuthFilterRegressionTest {
                     .param("email", "user@example.test").param("password", "member-password123")).andReturn().getResponse();
             when(context.getBean(MemberSessions.class).current("2")).thenReturn(java.util.Optional.empty());
             assertEquals(401, mvc.perform(get("/api/auth/session").cookie(cookie(login, "MEMBER_SESSION"))).andReturn().getResponse().getStatus());
+        }
+    }
+
+    @Test void memberSessionRenewsBeforeSevenDaysAndExpiresAfterInactivity() throws Exception {
+        try (var context = context()) {
+            var mvc = mvc(context);
+            var csrf = mvc.perform(get("/api/auth/csrf")).andReturn().getResponse();
+            var login = mvc.perform(post("/api/auth/login").cookie(cookie(csrf, "MEMBER_SESSION"))
+                    .header("X-CSRF-TOKEN", new ObjectMapper().readTree(csrf.getContentAsString()).get("token").asString())
+                    .param("email", "user@example.test").param("password", "member-password123")).andReturn().getResponse();
+            assertEquals(204, login.getStatus());
+            assertTrue(login.getHeader("Set-Cookie").contains("Max-Age=604800"));
+            var memberCookie = cookie(login, "MEMBER_SESSION");
+            String id = new String(java.util.Base64.getDecoder().decode(memberCookie.getValue()), java.nio.charset.StandardCharsets.UTF_8);
+            var repository = context.getBean(MapSessionRepository.class);
+            MapSession session = repository.findById(id);
+            assertNotNull(session);
+            assertEquals(java.time.Duration.ofDays(7), session.getMaxInactiveInterval());
+            for (String path : new String[]{"/api/auth/csrf", "/api/auth/session"}) {
+                session.setLastAccessedTime(java.time.Instant.now().minus(java.time.Duration.ofDays(6)));
+                repository.save(session);
+                var renewed = mvc.perform(get(path).cookie(memberCookie)).andReturn().getResponse();
+                assertEquals(200, renewed.getStatus());
+                assertTrue(renewed.getHeader("Set-Cookie").contains("Max-Age=604800"));
+                session = repository.findById(id);
+                assertTrue(session.getLastAccessedTime().isAfter(java.time.Instant.now().minusSeconds(10)));
+            }
+            session.setLastAccessedTime(java.time.Instant.now().minus(java.time.Duration.ofDays(7)).minusSeconds(1));
+            repository.save(session);
+            assertEquals(401, mvc.perform(get("/api/auth/session").cookie(memberCookie)).andReturn().getResponse().getStatus());
         }
     }
 

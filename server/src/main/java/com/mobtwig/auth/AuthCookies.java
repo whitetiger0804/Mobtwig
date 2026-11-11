@@ -17,17 +17,33 @@ public class AuthCookies implements HttpSessionIdResolver {
     public static final String ADMIN = "ADMIN";
     private final CookieHttpSessionIdResolver admin;
     private final CookieHttpSessionIdResolver member;
+    private final int memberSessionTimeoutSeconds;
 
-    public AuthCookies(@Value("${server.servlet.session.cookie.secure:false}") boolean secure) {
-        admin = resolver("SESSION", "/", secure);
-        member = resolver("MEMBER_SESSION", "/api", secure);
+    public AuthCookies(@Value("${server.servlet.session.cookie.secure:false}") boolean secure,
+                       @Value("${mobtwig.auth.member-session-timeout-seconds:604800}") int memberSessionTimeoutSeconds) {
+        this.memberSessionTimeoutSeconds = memberSessionTimeoutSeconds;
+        admin = resolver("SESSION", "/", secure, -1);
+        member = resolver("MEMBER_SESSION", "/api", secure, memberSessionTimeoutSeconds);
     }
 
-    private static CookieHttpSessionIdResolver resolver(String name, String path, boolean secure) {
+    private static CookieHttpSessionIdResolver resolver(String name, String path, boolean secure, int maxAge) {
         var serializer = new DefaultCookieSerializer();
         serializer.setCookieName(name); serializer.setCookiePath(path);
         serializer.setUseHttpOnlyCookie(true); serializer.setUseSecureCookie(secure); serializer.setSameSite("Strict");
+        serializer.setCookieMaxAge(maxAge);
         var resolver = new CookieHttpSessionIdResolver(); resolver.setCookieSerializer(serializer); return resolver;
+    }
+
+    /** 회원 세션을 비활성 상태로 유지할 수 있는 초 단위 기간입니다. */
+    public int memberSessionTimeoutSeconds() {
+        return memberSessionTimeoutSeconds;
+    }
+
+    /** 확인된 회원 세션과 기기 쿠키의 유효기간을 함께 갱신합니다. */
+    public void renewMemberSession(HttpServletRequest request, HttpServletResponse response) {
+        var session = request.getSession(false);
+        session.setMaxInactiveInterval(memberSessionTimeoutSeconds);
+        member.setSessionId(request, response, session.getId());
     }
 
     /** 영역 경계를 포함해 판정하므로 비슷한 이름의 공개 경로는 회원 세션을 선택하지 않습니다. */
