@@ -235,7 +235,7 @@ export function DetailScreen({ route }: {
   /** 작품 상세 API에 전달할 식별자를 포함합니다. */
   route: Route;
 }) {
-  const { navigate } = useApp();
+  const { navigate, addRecentWork } = useApp();
   const apiUrl = useApiUrl();
   const [work, setWork] = useState<WorkDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -276,6 +276,10 @@ export function DetailScreen({ route }: {
       });
     return () => controller.abort();
   }, [apiUrl, route.workId, attempt]);
+
+  useEffect(() => {
+    if (work) addRecentWork(work);
+  }, [work, addRecentWork]);
 
   if (error !== null) return <View style={c.detailStatus} accessibilityLiveRegion="polite">
     <Text style={s.subtitle}>작품을 불러오지 못했습니다.</Text>
@@ -435,15 +439,33 @@ export function RecordsScreen() {
 }
 
 /**
- * 최근 본 작품의 빈 상태 안내를 표시합니다.
+ * 앱 실행 중 열어 본 작품을 최근 순으로 표시하고 다시 열거나 기록을 비웁니다.
  *
  * @remarks
- * 열람 이력이나 마지막 읽은 시각을 조회하지 않습니다.
+ * 별도 이력 API를 호출하지 않고 상세 화면에서 받은 작품 정보를 앱 메모리에 보관합니다.
  *
- * @returns 최근 본 작품 데이터가 없는 화면입니다.
+ * @returns 최근 본 작품 목록 또는 빈 상태 화면입니다.
  */
 export function RecentScreen() {
-  return <View style={s.page}><EmptyState title="표시할 최근 본 작품이 없습니다." /></View>;
+  const { recentWorks, clearRecentWorks, navigate } = useApp();
+  const apiUrl = useApiUrl();
+  return <View style={[s.page, c.recentPage]}>
+    <Title action={<Pressable accessibilityRole="button" accessibilityState={{ disabled: recentWorks.length === 0 }} disabled={recentWorks.length === 0} onPress={clearRecentWorks} style={c.clearRecent}>
+      <Text style={[s.muted, recentWorks.length === 0 && c.disabledHistory]}>전체 삭제</Text>
+    </Pressable>}>최근 본 작품</Title>
+    {recentWorks.length === 0
+      ? <EmptyState title="표시할 최근 본 작품이 없습니다." description="작품을 열어 보면 이 목록에 표시됩니다." />
+      : <View style={c.recentList}>{recentWorks.map(work => <Pressable key={work.id} accessibilityRole="button" accessibilityLabel={work.title + ' 상세 보기'} onPress={() => navigate({ screen: 'detail', workId: work.id })} style={c.recentItem}>
+        <Image accessibilityLabel={work.title + ' 표지'} source={{ uri: new URL(work.imageUrl, apiUrl + '/').href }} resizeMode="cover" style={c.recentCover} />
+        <View style={c.recentInfo}>
+          <Text numberOfLines={2} style={c.recentTitle}>{work.title}</Text>
+          <Text numberOfLines={1} style={s.muted}>{work.author}</Text>
+          <Text style={c.recentKind}>{kindLabel(work.kind)}</Text>
+        </View>
+        <Icon name="next" size={18} color={colors.muted} />
+      </Pressable>)}</View>}
+    <Text style={c.recentNote}>최근 본 기록은 이 앱을 사용하는 동안 기기에만 보관됩니다.</Text>
+  </View>;
 }
 // #endregion
 
@@ -550,6 +572,15 @@ recommendTitle: { fontSize: 14, fontWeight: '700', color: colors.ink },
   contentMetadata: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   libraryTabs: { paddingTop: 16, paddingHorizontal: 20, paddingBottom: 7, flexDirection: 'row', backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: colors.line },
   libraryBody: { paddingHorizontal: 20, paddingTop: 26, paddingBottom: 40 },
+  recentPage: { paddingHorizontal: 20, paddingTop: 20, paddingBottom: 40, gap: 18 },
+  clearRecent: { paddingHorizontal: 8, paddingVertical: 6 },
+  recentList: { gap: 2 },
+  recentItem: { minHeight: 106, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', gap: 14, borderBottomWidth: 1, borderBottomColor: colors.line },
+  recentCover: { width: 56, height: 80, borderRadius: 6, backgroundColor: colors.pale },
+  recentInfo: { flex: 1, minWidth: 0, gap: 6 },
+  recentTitle: { color: colors.ink, fontSize: 15, fontWeight: '700', lineHeight: 21 },
+  recentKind: { color: colors.green, fontSize: 11, fontWeight: '600' },
+  recentNote: { color: colors.muted, fontSize: 11, lineHeight: 17, textAlign: 'center', marginTop: 6 },
   manageSheet: { paddingHorizontal: 24, paddingTop: 16, paddingBottom: 40, gap: 16 },
   manageAction: { height: 64, borderRadius: 18, backgroundColor: colors.pale, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', gap: 16, opacity: 0.55 },
   records: { paddingHorizontal: 20, paddingTop: 21, paddingBottom: 40, gap: 25 },

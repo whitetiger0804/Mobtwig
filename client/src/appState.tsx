@@ -3,6 +3,7 @@ import { createContext, useCallback, useContext, useEffect, useState, type React
 import { useMemberAuth } from './memberAuth';
 import { BackHandler } from 'react-native';
 import type { ReadingPosition } from './readingProgress';
+import type { WorkDetail, WorkKind } from './workDetails';
 // #endregion
 
 // #region 화면 이동 타입
@@ -74,6 +75,9 @@ export interface ReadingPreferences {
   size: number;
 }
 
+/** 작품 상세에서 받은 정보를 앱 실행 중 최근 본 목록에 보관합니다. */
+export type RecentWork = Pick<WorkDetail, 'id' | 'title' | 'author' | 'imageUrl'> & { kind: WorkKind };
+
 const defaultReadingPreferences: ReadingPreferences = { theme: '크림', font: '기본 명조', size: 2 };
 
 // #region 화면 컨텍스트
@@ -114,6 +118,12 @@ export interface AppContextValue {
   removeSearchHistory: (query: string) => void;
   /** 최근 검색 기록을 모두 비웁니다. */
   clearSearchHistory: () => void;
+  /** 앱 실행 중 기록한 최근 본 작품입니다. */
+  recentWorks: RecentWork[];
+  /** 작품 상세를 최근 본 목록 맨 앞에 기록하고 중복을 정리합니다. */
+  addRecentWork: (work: RecentWork) => void;
+  /** 최근 본 작품 기록을 모두 비웁니다. */
+  clearRecentWorks: () => void;
   /**
    * 일반 화면으로 이동하거나 현재 화면 위에 하단 패널을 엽니다.
    *
@@ -164,6 +174,7 @@ export function AppProvider({ children }: {
   const [overlay, setOverlay] = useState<Route | null>(null);
   const [readingPreferences, setReadingPreferences] = useState(defaultReadingPreferences);
   const [searchHistory, setSearchHistory] = useState<string[]>([]);
+  const [recentWorks, setRecentWorks] = useState<RecentWork[]>([]);
   const baseRoute = stack[stack.length - 1];
   const { state: auth } = useMemberAuth();
   useEffect(() => {
@@ -204,6 +215,13 @@ export function AppProvider({ children }: {
 
   const clearSearchHistory = useCallback(() => setSearchHistory([]), []);
 
+  const addRecentWork = useCallback((work: RecentWork) => {
+    const item = { id: work.id, kind: work.kind, title: work.title, author: work.author, imageUrl: work.imageUrl };
+    setRecentWorks(previous => [item, ...previous.filter(existing => existing.id !== item.id)].slice(0, 20));
+  }, []);
+
+  const clearRecentWorks = useCallback(() => setRecentWorks([]), []);
+
   /**
    * 패널을 우선 닫고, 패널이 없으면 화면 스택에서 뒤로 이동합니다.
    *
@@ -233,7 +251,7 @@ export function AppProvider({ children }: {
   }, [back, overlay, stack.length, baseRoute.screen]);
 
   return (
-    <AppContext.Provider value={{ route: overlay ?? baseRoute, baseRoute, overlay, readingPreferences, setReadingPreferences, searchHistory, addSearchHistory, removeSearchHistory, clearSearchHistory, navigate, back }}>
+    <AppContext.Provider value={{ route: overlay ?? baseRoute, baseRoute, overlay, readingPreferences, setReadingPreferences, searchHistory, addSearchHistory, removeSearchHistory, clearSearchHistory, recentWorks, addRecentWork, clearRecentWorks, navigate, back }}>
       {children}
     </AppContext.Provider>
   );

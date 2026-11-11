@@ -159,6 +159,7 @@ export function HomeContent({ kind }: {
   kind: HomeKind;
 }) {
   const apiUrl = useApiUrl();
+  const { recentWorks } = useApp();
   const [response, setResponse] = useState<HomeResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
@@ -191,7 +192,15 @@ export function HomeContent({ kind }: {
     <ActivityIndicator color={colors.green} /><Text style={s.muted}>홈을 불러오고 있습니다.</Text>
   </View>;
   if (response.sections.length === 0) return <EmptyState title="표시할 홈 구성이 없습니다." description="서버에서 표시할 구역을 보내지 않았습니다." />;
-  return <View style={styles.page}>{response.sections.map(section => <Section key={section.id} section={section} />)}</View>;
+  const sections = response.sections.map(section => {
+    if (section.type !== 'workShelf' || !(section.id.startsWith('recent-') || section.title?.startsWith('최근 본'))) return section;
+    const booksOnly = section.id === 'recent-books' || section.title === '최근 본 도서';
+    const items = recentWorks
+      .filter(work => !booksOnly || work.kind === 'book')
+      .map(({ id, title, imageUrl, author }) => ({ id, title, imageUrl, subtitle: author }));
+    return { ...section, items };
+  });
+  return <View style={styles.page}>{sections.map(section => <Section key={section.id} section={section} />)}</View>;
 }
 // #endregion
 
