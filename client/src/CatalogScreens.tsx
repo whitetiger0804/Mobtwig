@@ -1,5 +1,5 @@
 // #region 의존성 가져오기
-import { readRecentWorks, type RecentWork as ApiRecentWork } from './recentWorks';
+import { readRecentWorks, recordRecentWork, type RecentWork as ApiRecentWork } from './recentWorks';
 import { useEffect, useState } from 'react';
 import { parseHomeResponse, type SduiSection } from './homeSchema';
 import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
@@ -281,6 +281,11 @@ export function DetailScreen({ route }: {
   useEffect(() => {
     if (work) addRecentWork(work);
   }, [work, addRecentWork]);
+
+  useEffect(() => {
+    // 서버 기록 실패는 상세 화면 표시와 무관하므로 무시합니다.
+    if (auth.status === 'authenticated' && work) recordRecentWork(member, work.id).catch(() => undefined);
+  }, [auth.status, auth.generation, member, work]);
 
   if (error !== null) return <View style={c.detailStatus} accessibilityLiveRegion="polite">
     <Text style={s.subtitle}>작품을 불러오지 못했습니다.</Text>
