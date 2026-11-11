@@ -40,3 +40,11 @@ export function parseRecentWorks(value: unknown): RecentWork[] {
 export async function readRecentWorks(client: MemberSessionClient): Promise<RecentWork[]> {
   return parseRecentWorks(await client.request('/api/members/recent-works'));
 }
+/**
+ * 현재 회원이 작품을 열었음을 서버에 기록합니다.
+ * @param client - 현재 회원 세션입니다.
+ * @param slug - 연 작품의 식별자입니다.
+ */
+export async function recordRecentWork(client: MemberSessionClient, slug: string): Promise<void> {
+  await client.request(`/api/members/recent-works/${encodeURIComponent(slug)}`, { method: 'POST' });
+}

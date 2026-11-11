@@ -24,6 +24,7 @@ node server/mock/index.mjs
 | `GET /sdui/home?kind=magazine` | 매거진 화면 구성을 반환합니다. |
 | `GET /sdui/home?kind=novel` | 웹소설 화면 구성을 반환합니다. |
 | `GET /works/:id` | 해당 ID의 작품 상세 정보 객체 하나를 반환합니다. |
+| `GET /api/members/recent-works` | `fixtures/recent-works.json`의 최근 본 작품 고정 예시를 반환합니다. 인증을 확인하지 않으며 기록 요청(`POST /api/members/recent-works/{slug}`)은 제공하지 않습니다. |
 | `GET /media/covers/...` | 공용 `media/covers/`의 도서·매거진·웹소설 표지 PNG를 반환합니다. |
 | `GET /media/backgrounds/...` | 공용 `media/backgrounds/`의 배경 PNG를 반환합니다. |
 

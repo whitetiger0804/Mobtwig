@@ -269,6 +269,41 @@ paths:
         '409': {$ref: '#/components/responses/ReadingProgressError'}
         '415': {$ref: '#/components/responses/ReadingProgressError'}
         '503': {$ref: '#/components/responses/ReadingProgressError'}
+  /api/members/recent-works:
+    get:
+      tags: [회원 인증]
+      operationId: listRecentWorks
+      summary: 회원 본인이 최근 본 공개 작품을 최근 본 순서로 최대 20개 확인합니다.
+      description: 비공개 작품과 표지가 없는 작품은 제외하며 기록 자체는 삭제하지 않습니다. 조회수와 읽기 기록을 변경하지 않습니다.
+      security: [{MemberSessionCookie: []}]
+      responses:
+        '200':
+          description: 최근 본 순서의 작품 목록입니다. 기록이 없으면 빈 배열입니다.
+          content:
+            application/json:
+              schema:
+                type: array
+                maxItems: 20
+                items: {$ref: '#/components/schemas/RecentWork'}
+        '401': {description: 활성 회원 세션 필요}
+  /api/members/recent-works/{slug}:
+    parameters:
+      - name: slug
+        in: path
+        required: true
+        schema: {type: string, pattern: '^[a-z0-9-]+$', maxLength: 120}
+    post:
+      tags: [회원 인증]
+      operationId: recordRecentWork
+      summary: 공개 작품을 열었음을 기록하고 최근 본 시각을 갱신합니다.
+      description: 요청 본문이 없습니다. 같은 작품을 다시 열면 행을 추가하지 않고 시각만 갱신합니다. 시각은 초 단위입니다.
+      security: [{MemberSessionCookie: [], MemberCsrfToken: []}]
+      responses:
+        '204': {description: 기록했으며 본문은 없습니다.}
+        '400': {$ref: '#/components/responses/RecentWorkError'}
+        '401': {description: 활성 회원 세션 필요}
+        '403': {description: 회원 CSRF 검증 실패}
+        '404': {$ref: '#/components/responses/RecentWorkError'}
   /api/auth/terms:
     get:
       tags: [회원 인증]
@@ -792,6 +827,16 @@ components:
             properties:
               code: {type: string, enum: [INVALID_POSITION, NOT_FOUND, PROGRESS_CONFLICT, CONTENT_CHANGED, BODY_UNAVAILABLE]}
               message: {type: string}
+    RecentWorkError:
+      description: 작품 식별자 또는 공개 범위 안내입니다.
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [code, message]
+            properties:
+              code: {type: string, enum: [INVALID_SLUG, NOT_FOUND, UNAVAILABLE]}
+              message: {type: string}
     SignupFieldError:
       description: 입력 또는 문서 버전과 중복 여부를 확인하십시오.
       content:
@@ -893,6 +938,16 @@ components:
         maxChapterId: {type: string, nullable: true}
         libraryStatus: {type: string, nullable: true, enum: [WANT_TO_READ, READING, COMPLETED, null]}
         hasNewChapters: {type: boolean}
+    RecentWork:
+      type: object
+      additionalProperties: false
+      required: [id, title, imageUrl, kind, lastReadAt]
+      properties:
+        id: {type: string, pattern: '^[a-z0-9-]+$', maxLength: 120, description: 작품 slug입니다.}
+        title: {type: string, minLength: 1}
+        imageUrl: {type: string, minLength: 1, description: http(s) 주소 또는 서버 기준 /media/... 경로입니다.}
+        kind: {type: string, enum: [book, novel, magazine]}
+        lastReadAt: {type: string, format: date-time, description: 마지막으로 연 UTC 시각입니다.}
     SignupDocument:
       type: object
       additionalProperties: false

@@ -62,6 +62,7 @@ function sendJson(response, status, body) {
  * @param options - 테스트에서 사용할 파일 경로 설정입니다.
  * @param options.fixturePath - 네 종류의 화면 응답이 담긴 JSON 파일입니다.
  * @param options.worksPath - 작품 ID별 상세 정보가 담긴 JSON 배열 파일입니다.
+ * @param options.recentWorksPath - 최근 본 작품 고정 예시가 담긴 JSON 배열 파일입니다.
  * @param options.assetsRoot - 실제 서버와 공유하는 테스트용 PNG 이미지의 최상위 디렉터리입니다.
  * @returns 아직 포트를 열지 않은 Node HTTP 서버입니다.
  */
@@ -69,6 +70,7 @@ export async function createMockServer({
   fixturePath = join(mockDirectory, 'fixtures', 'home.json'),
   worksPath = join(mockDirectory, 'fixtures', 'works.json'),
   chaptersPath = join(mockDirectory, 'fixtures', 'chapter-text.json'),
+  recentWorksPath = join(mockDirectory, 'fixtures', 'recent-works.json'),
   assetsRoot = join(mockDirectory, '..', 'src', 'main', 'resources', 'static', 'media'),
 } = {}) {
   const assets = await collectAssets(assetsRoot);
@@ -126,6 +128,16 @@ export async function createMockServer({
         sendJson(response, 500, { error: '화면 응답 파일을 읽지 못했습니다.' });
       }
 
+      return;
+    }
+
+    // 인증 없이 고정 예시를 반환합니다. 기록(POST)은 제공하지 않습니다.
+    if (pathname === '/api/members/recent-works') {
+      try {
+        sendJson(response, 200, JSON.parse(await readFile(recentWorksPath, 'utf8')));
+      } catch {
+        sendJson(response, 500, { error: '최근 본 작품 파일을 읽지 못했습니다.' });
+      }
       return;
     }
 
