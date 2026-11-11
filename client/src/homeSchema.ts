@@ -70,6 +70,8 @@ export interface WorkSection extends SectionBase {
   type: 'workShelf';
   /** 응답 순서와 개수 그대로 표시할 작품 카드입니다. */
   items: WorkItem[];
+  /** 공통 최근 본 저장소에서 채울 목록과 분류입니다. */
+  contentSource?: { type: 'recentWorks'; kind: HomeKind };
 }
 
 /** 문구와 작품 정보를 왼쪽에, 표지를 오른쪽에 배치할 추천 작품입니다. */
@@ -198,6 +200,13 @@ export function parseHomeResponse(value: unknown): HomeResponse {
       throw new Error('홈 구역의 형식 또는 식별자가 올바르지 않습니다.');
     }
     sectionIds.add(section.id);
+    if (section.contentSource !== undefined
+      && (section.type !== 'workShelf' || !isObject(section.contentSource)
+        || section.contentSource.type !== 'recentWorks'
+        || !['all', 'book', 'magazine', 'novel'].includes(section.contentSource.kind as string)
+        || section.items.length !== 0)) {
+      throw new Error('홈 구역의 개인 목록 연결 설정이 올바르지 않습니다.');
+    }
     const itemIds = new Set<string>();
     for (const item of section.items) {
       if (!isObject(item) || !isText(item.id) || itemIds.has(item.id)) {

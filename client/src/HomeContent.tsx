@@ -4,6 +4,7 @@ import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, View
 import { useApp } from './appState';
 import { EmptyState } from './EmptyState';
 import { useApiUrl } from './serverConnection';
+import { useRecentWorks } from './recentWorksContext';
 import { parseHomeResponse, type BannerSection, type FeaturedWorkSection, type HomeKind, type HomeResponse, type SduiSection } from './homeSchema';
 import { Action, colors, Icon, s, Title } from './ui';
 // #endregion
@@ -112,6 +113,13 @@ function Section({ section }: {
   const apiUrl = useApiUrl();
   const { navigate } = useApp();
   const action = section.action;
+  const { state: recent, refresh } = useRecentWorks();
+  const source = section.type === 'workShelf' ? section.contentSource : undefined;
+  if (section.type === 'workShelf' && source) {
+    section = { ...section, items: recent.items
+      .filter(work => source.kind === 'all' || work.kind === source.kind)
+      .map(({ id, title, imageUrl }) => ({ id, title, imageUrl })) };
+  }
   return <View testID={`section-${section.id}`} style={styles.section}>
     {(section.title || action) && <View style={styles.heading}>
       <Title action={action && <Pressable accessibilityRole="button" accessibilityLabel={action.label}
@@ -121,7 +129,11 @@ function Section({ section }: {
         {section.title}
       </Title>
     </View>}
-    {section.items.length === 0 ? <EmptyState compact title={emptyMessages[section.type]} />
+    {source && recent.status === 'loading' ? <ActivityIndicator color={colors.green} />
+      : source && recent.status === 'error' ? <View style={styles.heading} accessibilityLiveRegion="polite">
+        <Text style={s.error}>{recent.error}</Text><Action label="다시 불러오기" onPress={() => { void refresh(); }} />
+      </View>
+      : section.items.length === 0 ? <EmptyState compact title={emptyMessages[section.type]} />
       : section.type === 'bannerCarousel' ? <BannerCarousel section={section} />
       : section.type === 'featuredWork' ? <FeaturedWorks section={section} />
       : section.type === 'workShelf' ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.items}>
@@ -148,7 +160,7 @@ function Section({ section }: {
  * 선택한 서버에서 홈 구성을 읽어 공통 요소 집합으로 표시합니다.
  *
  * @remarks
- * 구역 제목·순서·내용·개수는 응답을 따릅니다. 목록 없음과 통신·계약 오류를 구분하며,
+ * 구역 제목·순서는 응답을 따르고 contentSource 구역은 공통 최근 본 목록을 표시합니다.
  * 실패 시 간이 데이터나 빈 표지를 대신 표시하지 않습니다. 화면을 떠나면 요청을 취소합니다.
  *
  * @param props - 조회할 홈의 분류입니다.
@@ -159,7 +171,8 @@ export function HomeContent({ kind }: {
   kind: HomeKind;
 }) {
   const apiUrl = useApiUrl();
-  const { recentWorks } = useApp();
+  const { refresh } = useRecentWorks();
+  useEffect(() => { void refresh(); }, [refresh]);
   const [response, setResponse] = useState<HomeResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
@@ -192,15 +205,7 @@ export function HomeContent({ kind }: {
     <ActivityIndicator color={colors.green} /><Text style={s.muted}>홈을 불러오고 있습니다.</Text>
   </View>;
   if (response.sections.length === 0) return <EmptyState title="표시할 홈 구성이 없습니다." description="서버에서 표시할 구역을 보내지 않았습니다." />;
-  const sections = response.sections.map(section => {
-    if (section.type !== 'workShelf' || !(section.id.startsWith('recent-') || section.title?.startsWith('최근 본'))) return section;
-    const booksOnly = section.id === 'recent-books' || section.title === '최근 본 도서';
-    const items = recentWorks
-      .filter(work => !booksOnly || work.kind === 'book')
-      .map(({ id, title, imageUrl, author }) => ({ id, title, imageUrl, subtitle: author }));
-    return { ...section, items };
-  });
-  return <View style={styles.page}>{sections.map(section => <Section key={section.id} section={section} />)}</View>;
+  return <View style={styles.page}>{response.sections.map(section => <Section key={section.id} section={section} />)}</View>;
 }
 // #endregion
 

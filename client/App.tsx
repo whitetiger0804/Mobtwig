@@ -7,6 +7,7 @@ import { StatusBar } from 'expo-status-bar';
 import { AppProvider, kindLabel, useApp, type Route, type Screen } from './src/appState';
 import { EmptyState } from './src/EmptyState';
 import { MemberAuthProvider, useMemberAuth } from './src/memberAuth';
+import { RecentWorksProvider } from './src/recentWorksContext';
 import { LoadingScreens } from './src/LoadingScreens';
 import { loadReadingPreferences, type ReadingPreferences } from './src/readingPreferences';
 import { ServerConnectionProvider } from './src/serverConnection';
@@ -290,7 +291,7 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <View style={styles.outer}>
-        <ServerConnectionProvider><MemberAuthProvider><AppStartup /></MemberAuthProvider></ServerConnectionProvider>
+        <ServerConnectionProvider><MemberAuthProvider><RecentWorksProvider><AppStartup /></RecentWorksProvider></MemberAuthProvider></ServerConnectionProvider>
       </View>
     </SafeAreaProvider>
   );

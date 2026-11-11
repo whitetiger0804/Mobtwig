@@ -21,7 +21,7 @@ public class RecentWorksRepository {
         return jdbc.query("""
                 SELECT b.slug,b.title,b.cover_image_url,b.content_type,r.last_viewed_at
                 FROM recent_view r JOIN book b ON b.id=r.book_id
-                WHERE r.member_id=? AND b.publish_status='PUBLISHED' AND b.cover_image_url IS NOT NULL
+                WHERE r.member_id=? AND b.publish_status='PUBLISHED'
                 ORDER BY r.last_viewed_at DESC, r.id DESC LIMIT ?
                 """, (rs, row) -> new Row(rs.getString("slug"), rs.getString("title"), rs.getString("cover_image_url"),
                 rs.getString("content_type"), rs.getTimestamp("last_viewed_at").toInstant()), member, LIMIT);

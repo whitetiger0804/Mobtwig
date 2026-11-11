@@ -11,6 +11,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
+import java.util.Objects;
 import com.atlassian.oai.validator.OpenApiInteractionValidator;
 import com.atlassian.oai.validator.model.Request;
 import com.atlassian.oai.validator.model.SimpleResponse;
@@ -129,6 +130,16 @@ class RecentWorksApiTest {
         assertEquals(0L, jdbc.queryForObject("SELECT COUNT(*) FROM reading_progress WHERE member_id=-9401", Long.class));
     }
 
+    @Test void rejectsInvalidPublicMetadataWithoutDroppingTheHistory() throws Exception {
+        var member = login("a");
+        view(-9401, 1, 0);
+        for (String image : new String[]{null, "https://example.test:65536/cover.png"}) {
+            jdbc.update("UPDATE book SET cover_image_url=? WHERE id=-9401", image);
+            assertEquals(500, get(PATH, member).statusCode());
+            assertEquals(1L, rows(-9401));
+        }
+    }
+
     @Test void requiresActiveMemberSession() throws Exception {
         var anonymous = get(PATH, null);
         assertEquals(401, anonymous.statusCode());
@@ -158,7 +169,7 @@ class RecentWorksApiTest {
         jdbc.update("INSERT INTO recent_view(member_id,book_id,last_viewed_at) VALUES(?,?,?)", member, -9400 - book,
                 Timestamp.from(BASE.plusSeconds(seconds)));
     }
-    private long rows(long member) { return jdbc.queryForObject("SELECT COUNT(*) FROM recent_view WHERE member_id=?", Long.class, member); }
+    private long rows(long member) { return Objects.requireNonNull(jdbc.queryForObject("SELECT COUNT(*) FROM recent_view WHERE member_id=?", Long.class, member)); }
     private static List<String> ids(JsonNode works) { return works.valueStream().map(w -> w.get("id").asString()).toList(); }
     private Session login(String account) throws Exception {
         var anonymous = get("/api/auth/csrf", null);
@@ -184,7 +195,7 @@ class RecentWorksApiTest {
         return mapper.readTree(response.body());
     }
     private void contract(HttpResponse<String> response) throws Exception {
-        String spec = new ClassPathResource("static/openapi.yaml").getContentAsString(StandardCharsets.UTF_8);
+        String spec = new ClassPathResource("static/openapi.yaml").getContentAsString(Objects.requireNonNull(StandardCharsets.UTF_8));
         var report = OpenApiInteractionValidator.createForInlineApiSpecification(spec).build().validateResponse(PATH, Request.Method.GET,
                 SimpleResponse.Builder.ok().withContentType("application/json").withBody(response.body()).build());
         assertFalse(report.hasErrors(), () -> report.getMessages().toString());
