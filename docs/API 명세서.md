@@ -439,7 +439,7 @@ UTF-8 BOM 하나를 제외하고 `CRLF`/`CR`을 `LF`로 정규화한 문자열�
 - POST /api/auth/login: form email/password, 같은 회원 세션의 X-CSRF-TOKEN. 성공 204, 인증 실패 401, CSRF 실패 403. 비밀번호는 가입 정책으로 재검증하지 않고 기존 해시와 비교한다.
 - GET /api/auth/session: 현재 활성 회원 본인의 id(문자열), email, nickname, createdAt(UTC ISO 8601). 200 또는 401, Cache-Control: no-store. 요청의 회원 ID는 사용하지 않는다.
 - POST /api/auth/logout: 같은 회원 세션의 CSRF 필요. 204 후 기존 세션 ID 재사용 불가, 관리자 세션은 유지한다.
-- MEMBER_SESSION은 HttpOnly/SameSite=Strict/Path=/api이며 30분 미사용 만료다. 웹은 same-site API 구성, 네이티브는 플랫폼 쿠키 저장소를 사용한다. 쿠키·비밀번호를 JS 영구 저장소에 저장하지 않는다.
+- MEMBER_SESSION은 HttpOnly/SameSite=Strict/Path=/api이며 7일 미사용 만료다. 활성 회원의 요청에서 서버 세션과 쿠키의 유효기간을 함께 갱신한다. 웹은 same-site API 구성, 네이티브는 플랫폼 쿠키 저장소를 사용한다. 쿠키·비밀번호를 JS 영구 저장소에 저장하지 않는다.
 - 앱은 서버 확인 후에만 로그인 성공으로 표시하고 계정 변경 시 이전 요청을 취소한다. 늦은 이전 응답은 새 계정에 반영하지 않는다. 로그아웃 실패는 성공으로 표시하지 않는다.
 - 네이티브 실기기 쿠키 동작은 별도 확인이 필요하다.
 
