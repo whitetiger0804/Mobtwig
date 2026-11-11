@@ -2,7 +2,6 @@ package com.mobtwig.reader;
 
 import java.time.Instant;
 import java.util.List;
-import java.util.Objects;
 
 import com.mobtwig.work.WorkMetadata;
 import org.springframework.http.HttpStatus;
@@ -23,8 +22,7 @@ public class RecentWorksService {
 
     @Transactional(readOnly = true)
     public List<RecentWorkResponse> list(long member) {
-        // 표지·종류가 계약과 다른 작품 한 건이 목록 전체를 실패시키지 않도록 해당 항목만 제외합니다.
-        return repository.list(member).stream().map(RecentWorksService::response).filter(Objects::nonNull).toList();
+        return repository.list(member).stream().map(RecentWorksService::response).toList();
     }
 
     @Transactional
@@ -37,11 +35,7 @@ public class RecentWorksService {
     }
 
     private static RecentWorkResponse response(RecentWorksRepository.Row row) {
-        try {
-            return new RecentWorkResponse(WorkMetadata.slug(row.slug()), WorkMetadata.requiredText(row.title(), "제목"),
-                    WorkMetadata.imageUrl(row.imageUrl()), WorkMetadata.kind(row.contentType()), row.lastViewedAt().toString());
-        } catch (IllegalStateException | IllegalArgumentException invalid) {
-            return null;
-        }
+        return new RecentWorkResponse(WorkMetadata.slug(row.slug()), WorkMetadata.requiredText(row.title(), "제목"),
+                WorkMetadata.imageUrl(row.imageUrl()), WorkMetadata.kind(row.contentType()), row.lastViewedAt().toString());
     }
 }
