@@ -1,5 +1,5 @@
 // #region 의존성 가져오기
-import { readRecentWorks, type RecentWork } from './recentWorks';
+import { readRecentWorks, type RecentWork as ApiRecentWork } from './recentWorks';
 import { useEffect, useState } from 'react';
 import { parseHomeResponse, type SduiSection } from './homeSchema';
 import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
@@ -236,7 +236,7 @@ export function DetailScreen({ route }: {
   /** 작품 상세 API에 전달할 식별자를 포함합니다. */
   route: Route;
 }) {
-  const { navigate } = useApp();
+  const { navigate, addRecentWork } = useApp();
   const apiUrl = useApiUrl();
   const [work, setWork] = useState<WorkDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -277,6 +277,10 @@ export function DetailScreen({ route }: {
       });
     return () => controller.abort();
   }, [apiUrl, route.workId, attempt]);
+
+  useEffect(() => {
+    if (work) addRecentWork(work);
+  }, [work, addRecentWork]);
 
   if (error !== null) return <View style={c.detailStatus} accessibilityLiveRegion="polite">
     <Text style={s.subtitle}>작품을 불러오지 못했습니다.</Text>
@@ -436,7 +440,7 @@ export function RecordsScreen() {
 }
 
 /**
- * 현재 회원이 최근 본 작품을 서버에서 읽어 표시합니다.
+ * 로그인하지 않은 동안에는 앱 메모리의 최근 본 작품을 표시하고, 로그인 상태에서는 회원 API 결과를 표시합니다.
  *
  * @remarks
  * 로그인 전·조회 중·실패·빈 목록을 구분합니다. 화면을 떠나면 응답을 반영하지 않습니다.
@@ -444,10 +448,10 @@ export function RecordsScreen() {
  * @returns 최근 본 작품 목록 또는 상태 안내입니다.
  */
 export function RecentScreen() {
-  const { navigate } = useApp();
+  const { navigate, recentWorks: localWorks, clearRecentWorks } = useApp();
   const apiUrl = useApiUrl();
   const { state: auth, client: member } = useMemberAuth();
-  const [works, setWorks] = useState<RecentWork[] | null>(null);
+  const [works, setWorks] = useState<ApiRecentWork[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
 
@@ -463,7 +467,19 @@ export function RecentScreen() {
   }, [auth.status, auth.generation, member, attempt]);
 
   if (auth.status === 'checking') return <View style={c.detailStatus}><ActivityIndicator color={colors.green} /></View>;
-  if (auth.status !== 'authenticated') return <View style={s.page}><EmptyState title="로그인 후 최근 본 작품을 볼 수 있습니다." /></View>;
+  if (auth.status !== 'authenticated') return <View style={[s.page, c.recentPage]}>
+    <Title action={<Pressable accessibilityRole="button" accessibilityState={{ disabled: localWorks.length === 0 }} disabled={localWorks.length === 0} onPress={clearRecentWorks} style={c.clearRecent}>
+      <Text style={[s.muted, localWorks.length === 0 && c.disabledHistory]}>전체 삭제</Text>
+    </Pressable>}>최근 본 작품</Title>
+    {localWorks.length === 0
+      ? <EmptyState title="표시할 최근 본 작품이 없습니다." description="작품을 열어 보면 이 목록에 표시됩니다." />
+      : <View style={c.recentHistoryList}>{localWorks.map(work => <Pressable key={work.id} accessibilityRole="button" accessibilityLabel={work.title + ' 상세 보기'} onPress={() => navigate({ screen: 'detail', workId: work.id })} style={c.recentHistoryItem}>
+        <Image accessibilityLabel={work.title + ' 표지'} source={{ uri: new URL(work.imageUrl, `${apiUrl}/`).href }} resizeMode="cover" style={c.recentHistoryCover} />
+        <View style={c.recentInfo}><Text numberOfLines={2} style={c.recentTitle}>{work.title}</Text><Text numberOfLines={1} style={s.muted}>{work.author}</Text><Text style={c.recentKind}>{kindLabel(work.kind)}</Text></View>
+        <Icon name="next" size={18} color={colors.muted} />
+      </Pressable>)}</View>}
+    <Text style={c.recentNote}>로그인 전 기록은 앱을 사용하는 동안만 보관됩니다.</Text>
+  </View>;
   if (error !== null) return <View style={c.detailStatus} accessibilityLiveRegion="polite">
     <Text style={s.subtitle}>최근 본 작품을 불러오지 못했습니다.</Text>
     <Text style={s.error}>{error}</Text>
@@ -471,13 +487,14 @@ export function RecentScreen() {
   </View>;
   if (works === null) return <View style={c.detailStatus}><ActivityIndicator color={colors.green} /></View>;
   if (works.length === 0) return <View style={s.page}><EmptyState title="표시할 최근 본 작품이 없습니다." /></View>;
-  return <ScrollView contentContainerStyle={c.recentList}>
+  return <View style={[s.page, c.recentPage]}>
     {works.map(work => <Pressable key={work.id} accessibilityRole="button" accessibilityLabel={work.title + ' 상세 보기'}
-      onPress={() => navigate({ screen: 'detail', workId: work.id })} style={c.recentItem}>
-      <Image accessibilityLabel={`${work.title} 표지`} source={{ uri: new URL(work.imageUrl, `${apiUrl}/`).href }} resizeMode="cover" style={c.recentCover} />
-      <Text style={c.recommendTitle} numberOfLines={2}>{work.title}</Text>
+      onPress={() => navigate({ screen: 'detail', workId: work.id })} style={c.recentHistoryItem}>
+      <Image accessibilityLabel={`${work.title} 표지`} source={{ uri: new URL(work.imageUrl, `${apiUrl}/`).href }} resizeMode="cover" style={c.recentHistoryCover} />
+      <View style={c.recentInfo}><Text style={c.recentTitle} numberOfLines={2}>{work.title}</Text><Text style={c.recentKind}>{kindLabel(work.kind)}</Text></View>
+      <Icon name="next" size={18} color={colors.muted} />
     </Pressable>)}
-  </ScrollView>;
+  </View>;
 }
 // #endregion
 
@@ -587,6 +604,15 @@ recommendTitle: { fontSize: 14, fontWeight: '700', color: colors.ink },
   contentMetadata: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   libraryTabs: { paddingTop: 16, paddingHorizontal: 20, paddingBottom: 7, flexDirection: 'row', backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: colors.line },
   libraryBody: { paddingHorizontal: 20, paddingTop: 26, paddingBottom: 40 },
+  recentPage: { paddingHorizontal: 20, paddingTop: 20, paddingBottom: 40, gap: 18 },
+  clearRecent: { paddingHorizontal: 8, paddingVertical: 6 },
+  recentHistoryList: { gap: 2 },
+  recentHistoryItem: { minHeight: 106, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', gap: 14, borderBottomWidth: 1, borderBottomColor: colors.line },
+  recentHistoryCover: { width: 56, height: 80, borderRadius: 6, backgroundColor: colors.pale },
+  recentInfo: { flex: 1, minWidth: 0, gap: 6 },
+  recentTitle: { color: colors.ink, fontSize: 15, fontWeight: '700', lineHeight: 21 },
+  recentKind: { color: colors.green, fontSize: 11, fontWeight: '600' },
+  recentNote: { color: colors.muted, fontSize: 11, lineHeight: 17, textAlign: 'center', marginTop: 6 },
   manageSheet: { paddingHorizontal: 24, paddingTop: 16, paddingBottom: 40, gap: 16 },
   manageAction: { height: 64, borderRadius: 18, backgroundColor: colors.pale, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', gap: 16, opacity: 0.55 },
   records: { paddingHorizontal: 20, paddingTop: 21, paddingBottom: 40, gap: 25 },
