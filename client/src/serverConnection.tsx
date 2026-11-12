@@ -1,9 +1,11 @@
 // #region 의존성 가져오기
 import { createContext, useContext, useState, type ReactNode } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
+import Constants from 'expo-constants';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { Action, colors, s } from './ui';
+import { resolveMockServerUrl } from './mockServerUrl';
 // #endregion
 
 // #region 연결 설정
@@ -13,8 +15,10 @@ const ApiUrlContext = createContext<string | null>(null);
 const enableSelection = process.env.EXPO_PUBLIC_ENABLE_SERVER_SELECTION === 'true';
 /** 일반 실행에서 바로 연결하며 테스트 실행에서 실제 개발 서버로 선택하는 주소입니다. */
 const developmentUrl = process.env.EXPO_PUBLIC_API_URL ?? '';
-/** 간이 서버에 연결할 주소입니다. USB 개발은 adb reverse로 이 주소를 연결합니다. */
-const mockUrl = process.env.EXPO_PUBLIC_MOCK_API_URL ?? 'http://127.0.0.1:8090';
+/** 테스트 서버의 원래 주소입니다. 로컬 Spring 서버 주소도 지정할 수 있습니다. */
+const configuredMockUrl = process.env.EXPO_PUBLIC_MOCK_API_URL ?? 'http://127.0.0.1:8090';
+/** 명시적으로 켠 경우에만 모바일 테스트 주소에 Expo의 LAN IP를 적용합니다. */
+const useExpoHost = process.env.EXPO_PUBLIC_MOCK_USE_EXPO_HOST === 'true';
 
 /**
  * 연결 주소의 HTTP(S) 형식을 검사합니다.
@@ -51,6 +55,16 @@ export function ServerConnectionProvider({ children }: {
   if (selectedUrl !== null && isServerUrl(selectedUrl)) {
     return <ApiUrlContext.Provider value={selectedUrl.replace(/\/+$/, '')}>{children}</ApiUrlContext.Provider>;
   }
+  // 테스트 주소의 오류는 이 선택지에만 표시하고 실제 개발 서버 선택은 유지합니다.
+  let mockUrl = configuredMockUrl;
+  let mockError = isServerUrl(configuredMockUrl) ? null : 'EXPO_PUBLIC_MOCK_API_URL을 확인해 주십시오.';
+  if (enableSelection && mockError === null) {
+    try {
+      mockUrl = resolveMockServerUrl(configuredMockUrl, true, Platform.OS, Constants.expoConfig?.hostUri, useExpoHost);
+    } catch (error) {
+      mockError = error instanceof Error ? error.message : '테스트 서버 주소를 확인하지 못했습니다.';
+    }
+  }
   return <SafeAreaView style={styles.screen}>
     <StatusBar style="dark" />
     <ScrollView contentContainerStyle={styles.content}>
@@ -61,8 +75,8 @@ export function ServerConnectionProvider({ children }: {
           <Text style={s.subtitle}>간이 서버</Text>
           <Text style={s.muted}>준비된 이미지와 SDUI 응답으로 화면을 확인합니다.</Text>
           <Text selectable style={styles.address}>{mockUrl}</Text>
-          {!isServerUrl(mockUrl) && <Text style={s.error}>EXPO_PUBLIC_MOCK_API_URL을 확인해 주십시오.</Text>}
-          <Action label="간이 서버 사용" disabled={!isServerUrl(mockUrl)} onPress={() => setSelectedUrl(mockUrl)} />
+          {mockError !== null && <Text style={s.error}>{mockError}</Text>}
+          <Action label="간이 서버 사용" disabled={mockError !== null} onPress={() => setSelectedUrl(mockUrl)} />
         </View>
         <View style={styles.option}>
           <Text style={s.subtitle}>실제 개발 서버</Text>
