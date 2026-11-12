@@ -16,6 +16,20 @@ $env:MOCK_PORT = '8090'
 node server/mock/index.mjs
 ```
 
+클라이언트에서는 `npm run start:test`로 서버 선택 화면을 엽니다. `client/.env`의 `EXPO_PUBLIC_MOCK_API_URL`은 테스트할 API 주소이며, 이 간이 서버 대신 로컬 Spring 서버 주소를 지정해도 됩니다. 이 값은 서버의 실행 포트나 수신 주소를 변경하지 않습니다.
+
+`EXPO_PUBLIC_MOCK_USE_EXPO_HOST`로 모바일의 주소 변환 여부를 지정합니다. 미설정 또는 `false`이면 지정한 주소를 그대로 사용합니다. `.env.example`은 LAN 테스트를 위해 `true`를 예시로 제공합니다.
+
+| 연결 방식 | 설정과 동작 |
+| --- | --- |
+| Android·iOS LAN | `true`이면 로컬 mock 주소의 호스트만 Expo 개발 PC의 IP로 바꿉니다. PC와 기기는 같은 네트워크에 있어야 하며, API 서버의 LAN 수신과 방화벽 접근이 허용되어야 합니다. |
+| Android USB | `false`로 지정해 `localhost` 주소를 유지하고, 해당 API 포트에 `adb reverse`를 설정합니다. |
+| iOS 시뮬레이터 | 개발 Mac의 `localhost`를 직접 사용할 때는 `false`로 지정합니다. |
+| PC 웹 | 설정값과 관계없이 `EXPO_PUBLIC_MOCK_API_URL`을 그대로 사용합니다. |
+| Expo 터널 | 터널은 API 포트까지 노출하지 않습니다. Expo 터널 호스트로 자동 변환하지 않으며, 기기에서 접속 가능한 API 주소를 직접 지정해야 합니다. |
+
+자동 변환은 Expo가 알려 준 LAN IP에만 적용합니다. Expo 주소가 없거나 터널 호스트이면 mock 선택지에 오류를 표시하고 실제 개발 서버 선택은 유지합니다. PC의 IP나 API 도메인을 직접 지정하면 자동 변환 대상이 아닙니다. 이 간이 서버에는 로그인 API가 없으므로 회원 기능은 해당 API를 제공하는 Spring 서버로 테스트해야 합니다.
+
 | 요청 | 응답 |
 | --- | --- |
 | `GET /health` | 간이 서버의 실행 상태를 반환합니다. |
