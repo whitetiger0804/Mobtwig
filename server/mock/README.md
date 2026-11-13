@@ -33,11 +33,9 @@ node server/mock/index.mjs
 | 요청 | 응답 |
 | --- | --- |
 | `GET /health` | 간이 서버의 실행 상태를 반환합니다. |
-| `GET /sdui/home?kind=all` | 전체 화면 구성을 반환합니다. |
-| `GET /sdui/home?kind=book` | 도서 화면 구성을 반환합니다. |
-| `GET /sdui/home?kind=magazine` | 매거진 화면 구성을 반환합니다. |
-| `GET /sdui/home?kind=novel` | 웹소설 화면 구성을 반환합니다. |
+| `GET /sdui/home?kind={kind}` | `{kind}`에 `all`, `book`, `magazine`, `novel`을 넣어 해당 화면 구성을 조회합니다. |
 | `GET /works/:id` | 해당 ID의 작품 상세 정보 객체 하나를 반환합니다. |
+| `GET /works?query={query}&kind={kind}` | `{query}`는 검색어, `{kind}`는 `all`, `book`, `magazine`, `novel` 중 선택한 종류입니다. 제목·저자·출판사 부분 검색 결과를 `id`, `title`, `imageUrl`, `kind` 배열로 반환하며 결과가 없으면 `[]`입니다. 종류는 생략할 수 있습니다. |
 | `GET /api/members/recent-works` | `fixtures/recent-works.json`의 최근 본 작품 고정 예시를 반환합니다. 인증을 확인하지 않으며 기록 요청(`POST /api/members/recent-works/{slug}`)은 제공하지 않습니다. |
 | `GET /media/covers/...` | 공용 `media/covers/`의 도서·매거진·웹소설 표지 PNG를 반환합니다. |
 | `GET /media/backgrounds/...` | 공용 `media/backgrounds/`의 배경 PNG를 반환합니다. |

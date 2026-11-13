@@ -131,6 +131,29 @@ export async function createMockServer({
       return;
     }
 
+    if (pathname === '/works') {
+      const queries = url.searchParams.getAll('query');
+      const kinds = url.searchParams.getAll('kind');
+      const query = queries[0]?.trim();
+      if (queries.length !== 1 || !query || [...query].length > 200 || kinds.length > 1
+          || (kinds.length === 1 && !supportedKinds.has(kinds[0]))) {
+        sendJson(response, 400, { error: '검색어는 1자 이상 200자 이하이며 종류와 함께 각각 한 번만 지정하십시오.' });
+        return;
+      }
+      const kind = kinds.length === 0 ? 'all' : kinds[0];
+      try {
+        const works = JSON.parse(await readFile(worksPath, 'utf8'));
+        const matches = works.filter(work => (kind === 'all' || work.kind === kind)
+          && [work.title, work.author, work.publisher].some(value => value.toLowerCase().includes(query.toLowerCase())))
+          .sort((left, right) => right.publishedAt.localeCompare(left.publishedAt))
+          .map(({ id, title, imageUrl, kind }) => ({ id, title, imageUrl, kind }));
+        sendJson(response, 200, matches);
+      } catch {
+        sendJson(response, 500, { error: '검색할 작품 정보를 읽지 못했습니다.' });
+      }
+      return;
+    }
+
     // 인증 없이 고정 예시를 반환합니다. 기록(POST)은 제공하지 않습니다.
     if (pathname === '/api/members/recent-works') {
       try {
