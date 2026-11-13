@@ -72,7 +72,8 @@ Swagger UI는 자신을 제공한 서버에 요청합니다. 관리자 POST 요�
 
 | 메서드 | 경로 | 인증·조건 | 정상 응답 |
 | --- | --- | --- | --- |
-| GET | `/sdui/home?kind=all` | 공개 조회이며 kind가 필수입니다. | 200 홈 SDUI입니다. |
+| GET | `/works?query={query}&kind={kind}` | 공개 조회이며 query가 필수입니다. | 200 작품 검색 결과 배열입니다. |
+| GET | `/sdui/home?kind={kind}` | 공개 조회이며 kind가 필수입니다. | 200 홈 SDUI입니다. |
 | GET | `/works/{slug}` | 공개 작품만 조회합니다. | 200 작품 상세입니다. |
 | GET | `/works/{slug}/chapters/{chapterId}` | 공개 작품의 공개된 회차만 조회합니다. | 200 텍스트 본문·목차·회차 이동 정보입니다. |
 | GET | `/api/members/recent-works` | 활성 회원 세션이 필요합니다. | 200 최근 본 공개 작품 최대 20개입니다. |
@@ -92,7 +93,32 @@ Swagger UI는 자신을 제공한 서버에 요청합니다. 관리자 POST 요�
 | POST | `/api/admin/works/{id}/status` | ADMIN 세션과 CSRF가 필요합니다. | 204이며 본문은 없습니다. |
 | GET | `/actuator/health/readiness` | 공개 조회입니다. | 200 `{ "status": "UP" }`입니다. |
 
-회원 가입, 일반 회원용 토큰 인증, 검색·서재·리뷰·커뮤니티 요청은 이 명세의 구현 범위에 포함하지 않습니다. 표의 경로를 다른 기능의 API로 재사용하지 않습니다.
+일반 회원용 토큰 인증과 서재·리뷰·커뮤니티 요청은 이 명세의 구현 범위에 포함하지 않습니다. 표의 경로를 다른 기능의 API로 재사용하지 않습니다.
+
+## 공개 작품 검색 · #104
+
+`GET /works?query={query}&kind={kind}`로 제목·저자·출판사를 부분 검색합니다. `{query}`는 입력한 검색어이며 `{kind}`는 `all`, `book`, `magazine`, `novel` 중 선택한 작품 종류입니다. 중괄호는 자리 표시자이며 실제 요청에는 입력값을 넣습니다.
+
+로그인은 필요하지 않습니다. `query`는 정확히 한 번 지정하며 앞뒤 공백을 제거한 뒤 1자 이상 200자 이하입니다. `kind`를 생략하면 `all`입니다. 빈 검색어·빈 종류·중복 조건·지원하지 않는 종류는 400입니다.
+
+검색어의 `%`, `_`, `!`, 쉼표는 문자 그대로 처리합니다. 공개 작품만 출간일·DB ID 내림차순으로 반환하며, 같은 작품의 여러 저자가 일치해도 한 번만 반환합니다. 검색으로 조회수·최근 본 기록·읽기 위치가 변경되지는 않습니다.
+
+```typescript
+const parameters = new URLSearchParams({ query, kind });
+const response = await fetch(`${apiBase}/works?${parameters}`, {
+  headers: { Accept: 'application/json' },
+});
+if (!response.ok) throw new Error(`작품 검색에 실패했습니다. HTTP ${response.status}`);
+const works = await response.json();
+```
+
+결과는 다음 형태의 배열입니다. `id`는 상세 조회에 사용하는 slug이며 숫자 DB ID가 아닙니다. 결과가 없으면 `200`과 `[]`을 반환합니다. 제목·표지 등 공개 자료의 필수 정보가 잘못되면 `500`을 반환합니다.
+
+```json
+[
+  { "id": "sample-book", "title": "과학을 읽는 시간", "imageUrl": "/images/cover.jpg", "kind": "book" }
+]
+```
 
 ## 공개 홈 조회
 
