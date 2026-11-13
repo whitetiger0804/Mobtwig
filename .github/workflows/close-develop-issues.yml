@@ -1,0 +1,58 @@
+name: develop 병합 이슈를 종료합니다
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [develop]
+
+permissions:
+  issues: write
+
+jobs:
+  close-issues:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: PR 본문의 종료 키워드를 처리합니다
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            // PR 코드를 실행하지 않고 본문에서 같은 저장소의 이슈 번호만 읽습니다.
+            const body = (context.payload.pull_request.body ?? '')
+              .replace(/<!--[\s\S]*?(?:-->|$)/g, '\0');
+            let fence;
+            let quote = false;
+            const text = body.split(/\r?\n/).map(line => {
+              if (fence) {
+                const end = line.match(/^ {0,3}(`+|~+)[ \t]*$/);
+                if (end && end[1][0] === fence[0] && end[1].length >= fence.length) fence = undefined;
+                return '';
+              }
+              line = line.replace(/^ {0,3}(?:[-+*]|\d+[.)])[ \t]+/, '');
+              if (/^ {0,3}>/.test(line)) quote = true;
+              if (quote && line.trim()) return '';
+              quote = false;
+              const start = line.match(/^ {0,3}(`{3,}|~{3,})/);
+              if (start) {
+                fence = start[1];
+                return '';
+              }
+              if (/^(?: {4}|\t)/.test(line)) return '';
+              return line;
+            }).join('\n').replace(/(?<!`)(`+)(?!`)[\s\S]*?(?<!`)\1(?!`)/g, '\0');
+
+            // 각 이슈 앞에 종료 키워드를 적습니다. Ref/Refs와 다른 저장소 참조는 제외합니다.
+            const pattern = /\b(?:close[sd]?|fix(?:es|ed)?|resolve[sd]?)[ \t]*:?[ \t]+#([1-9]\d*)\b/gi;
+            const numbers = new Set([...text.matchAll(pattern)].map(match => Number(match[1])));
+            for (const issue_number of numbers) {
+              const { data: issue } = await github.rest.issues.get({ ...context.repo, issue_number });
+              if (issue.pull_request || issue.state !== 'open') continue;
+              await github.rest.issues.update({
+                ...context.repo,
+                issue_number,
+                state: 'closed',
+                state_reason: 'completed',
+              });
+              core.info(`#${issue_number} 이슈를 완료로 종료했습니다.`);
+            }
