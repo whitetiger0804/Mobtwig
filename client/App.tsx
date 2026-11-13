@@ -1,16 +1,23 @@
 // #region 의존성 가져오기
+import { useEffect, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { AppProvider, kindLabel, useApp, type Route, type Screen } from './src/appState';
 import { EmptyState } from './src/EmptyState';
+import { MemberAuthProvider, useMemberAuth } from './src/memberAuth';
+import { RecentWorksProvider } from './src/recentWorksContext';
+import { LoadingScreens } from './src/LoadingScreens';
+import { loadReadingPreferences, type ReadingPreferences } from './src/readingPreferences';
 import { ServerConnectionProvider } from './src/serverConnection';
 import { Action, colors, Icon, IconButton, s, Title } from './src/ui';
 import { DetailScreen, FallbackScreen, FiltersScreen, HomeScreen, LibraryManageScreen, LibraryScreen, RecentScreen, RecordsScreen, SearchScreen, ShareScreen } from './src/CatalogScreens';
-import { AccountScreen, LoginScreen, MyScreen, PasswordScreen, ReadingSettingsScreen, SignupScreen, WithdrawScreen } from './src/AccountScreens';
+import { AccountScreen, FavoritesScreen, LoginScreen, MyScreen, PasswordScreen, PurchaseHistoryScreen, ReadingSettingsScreen, SignupScreen, WithdrawScreen } from './src/AccountScreens';
 import { CommentComposeScreen, CommunityScreen, PostMenuScreen, PostScreen, ReportScreen, WritePostScreen } from './src/CommunityScreens';
 import { ReviewCommentsScreen, ReviewsScreen, ReviewWriteScreen } from './src/ReviewScreens';
 import { ImageFullScreen, ReadingScreen, WorldScreen, WorldTermsScreen } from './src/ReadingScreens';
+import { NotificationsScreen } from './src/NotificationScreens';
 // #endregion
 
 // #region 화면 제목
@@ -21,7 +28,7 @@ const titles: Record<Screen, string> = {
   community: '커뮤니티', post: '게시글', writePost: '글쓰기',
   reviews: '독자 리뷰', reviewWrite: '리뷰 쓰기', reviewComments: '댓글',
   login: '로그인', signup: '회원가입', my: '마이', account: '계정 설정',
-  password: '비밀번호 변경', withdraw: '회원 탈퇴', readingSettings: '읽기 설정',
+  password: '비밀번호 변경', withdraw: '회원 탈퇴', readingSettings: '읽기 설정', purchaseHistory: '구매 내역', favorites: '즐겨찾기',
   filters: '검색 설정', share: '공유', libraryManage: '서재 관리',
   postMenu: '게시글 메뉴', report: '게시글 신고', commentCompose: '댓글 작성',
   events: '이벤트', notifications: '알림', webFallback: '공유 작품',
@@ -69,6 +76,8 @@ function Content({ route }: {
     case 'login': return <LoginScreen />;
     case 'signup': return <SignupScreen />;
     case 'my': return <MyScreen />;
+    case 'purchaseHistory': return <PurchaseHistoryScreen />;
+    case 'favorites': return <FavoritesScreen />;
     case 'account': return <AccountScreen />;
     case 'password': return <PasswordScreen />;
     case 'withdraw': return <WithdrawScreen />;
@@ -81,12 +90,7 @@ function Content({ route }: {
         <EmptyState title="표시할 이벤트가 없습니다." />
       </View>
     );
-    case 'notifications': return (
-      <View style={s.page}>
-        <Title>알림</Title>
-        <EmptyState title="표시할 알림이 없습니다." />
-      </View>
-    );
+    case 'notifications': return <NotificationsScreen />;
   }
 }
 // #endregion
@@ -113,7 +117,8 @@ function Shell() {
   const ownScroll = ['reader', 'media', 'world', 'worldTerms', 'imageFull', 'search', 'library', 'community', 'post', 'writePost', 'report', 'reviews', 'reviewWrite', 'reviewComments', 'login', 'signup', 'password'].includes(route.screen);
   const centeredTitle = ['signup', 'account', 'password', 'share', 'records', 'report', 'reviewWrite', 'reviewComments', 'writePost'].includes(route.screen);
   const hideTitle = route.screen === 'login' || route.screen === 'detail';
-  const routeKey = [route.screen, route.kind, route.mode, route.workId].join(':');
+  const routeKey = [route.screen, route.kind, route.mode, route.workId, route.chapterId, route.resumeRevision,
+    route.resumePosition?.contentVersion, route.resumePosition?.contentHash, route.resumePosition?.offset].join(':');
 
   return (
     <SafeAreaView style={[styles.shell, route.screen === 'imageFull' && styles.darkShell]} edges={['top', 'bottom']}>
@@ -215,13 +220,70 @@ function Shell() {
 }
 // #endregion
 
+// #region 앱 시작 처리
+/** 최초 인증 결과와 기기에서 복원한 읽기 설정입니다. */
+interface StartupState {
+  /** 최초로 표시할 로그인 또는 홈 경로입니다. */
+  route: Route;
+  /** 기기 저장소에서 복원한 읽기 설정입니다. */
+  preferences: ReadingPreferences;
+}
+
+/**
+ * 기기 설정과 로그인 상태를 확인한 뒤 앱 화면을 한 번 초기화합니다.
+ * @returns 로딩·재시도 안내 또는 초기화된 앱 화면입니다.
+ */
+function AppStartup() {
+  const { state: auth, client } = useMemberAuth();
+  const [preferences, setPreferences] = useState<ReadingPreferences | null>(null);
+  const [settingsError, setSettingsError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
+  const [startup, setStartup] = useState<StartupState | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    setPreferences(null);
+    setSettingsError(null);
+    loadReadingPreferences(AsyncStorage)
+      .then(value => { if (active) setPreferences(value); })
+      .catch(() => {
+        if (active) setSettingsError('저장된 읽기 설정을 불러오지 못했습니다. 다시 시도해 주십시오.');
+      });
+    return () => { active = false; };
+  }, [attempt]);
+
+  useEffect(() => {
+    if (startup !== null || preferences === null) return;
+    if (auth.status === 'authenticated') {
+      setStartup({ route: { screen: 'home', kind: 'all' }, preferences });
+    } else if (auth.status === 'anonymous') {
+      setStartup({ route: { screen: 'login' }, preferences });
+    }
+  }, [auth.status, preferences, startup]);
+
+  if (startup !== null) {
+    return <AppProvider initialRoute={startup.route} initialReadingPreferences={startup.preferences}><Shell /></AppProvider>;
+  }
+  if (settingsError !== null || auth.status === 'error') {
+    return <View style={s.page}>
+      <Text accessibilityRole="alert" style={s.error}>{settingsError ?? auth.error}</Text>
+      <Action label="다시 확인" onPress={() => {
+        setAttempt(value => value + 1);
+        void client.refresh();
+      }} />
+    </View>;
+  }
+  return <LoadingScreens />;
+}
+// #endregion
+
 // #region 루트 컴포넌트
 /**
  * 안전 영역과 화면 이동 공급자를 포함한 앱의 루트 요소를 구성합니다.
  *
  * @remarks
  * 진입점에서 Expo에 등록됩니다. {@link AppProvider}를 통해 화면 이동 상태를 공유하며
- * 테스트 실행에서는 서버를 먼저 선택하고 선택한 주소로 홈의 SDUI 응답을 조회합니다.
+ * 서버 선택 후 기기 설정과 로그인 상태를 확인하여 로그인 또는 홈에서 시작합니다.
  *
  * @returns 안전 영역 공급자와 화면 공급자로 감싼 앱 화면입니다.
  */
@@ -229,7 +291,7 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <View style={styles.outer}>
-        <ServerConnectionProvider><AppProvider><Shell /></AppProvider></ServerConnectionProvider>
+        <ServerConnectionProvider><MemberAuthProvider><RecentWorksProvider><AppStartup /></RecentWorksProvider></MemberAuthProvider></ServerConnectionProvider>
       </View>
     </SafeAreaProvider>
   );

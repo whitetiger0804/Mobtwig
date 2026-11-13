@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { createServer } from 'node:http';
 import { readFile, readdir } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
@@ -61,12 +62,15 @@ function sendJson(response, status, body) {
  * @param options - 테스트에서 사용할 파일 경로 설정입니다.
  * @param options.fixturePath - 네 종류의 화면 응답이 담긴 JSON 파일입니다.
  * @param options.worksPath - 작품 ID별 상세 정보가 담긴 JSON 배열 파일입니다.
+ * @param options.recentWorksPath - 최근 본 작품 고정 예시가 담긴 JSON 배열 파일입니다.
  * @param options.assetsRoot - 실제 서버와 공유하는 테스트용 PNG 이미지의 최상위 디렉터리입니다.
  * @returns 아직 포트를 열지 않은 Node HTTP 서버입니다.
  */
 export async function createMockServer({
   fixturePath = join(mockDirectory, 'fixtures', 'home.json'),
   worksPath = join(mockDirectory, 'fixtures', 'works.json'),
+  chaptersPath = join(mockDirectory, 'fixtures', 'chapter-text.json'),
+  recentWorksPath = join(mockDirectory, 'fixtures', 'recent-works.json'),
   assetsRoot = join(mockDirectory, '..', 'src', 'main', 'resources', 'static', 'media'),
 } = {}) {
   const assets = await collectAssets(assetsRoot);
@@ -124,6 +128,63 @@ export async function createMockServer({
         sendJson(response, 500, { error: '화면 응답 파일을 읽지 못했습니다.' });
       }
 
+      return;
+    }
+
+    if (pathname === '/works') {
+      const queries = url.searchParams.getAll('query');
+      const kinds = url.searchParams.getAll('kind');
+      const query = queries[0]?.trim();
+      if (queries.length !== 1 || !query || [...query].length > 200 || kinds.length > 1
+          || (kinds.length === 1 && !supportedKinds.has(kinds[0]))) {
+        sendJson(response, 400, { error: '검색어는 1자 이상 200자 이하이며 종류와 함께 각각 한 번만 지정하십시오.' });
+        return;
+      }
+      const kind = kinds.length === 0 ? 'all' : kinds[0];
+      try {
+        const works = JSON.parse(await readFile(worksPath, 'utf8'));
+        const matches = works.filter(work => (kind === 'all' || work.kind === kind)
+          && [work.title, work.author, work.publisher].some(value => value.toLowerCase().includes(query.toLowerCase())))
+          .sort((left, right) => right.publishedAt.localeCompare(left.publishedAt))
+          .map(({ id, title, imageUrl, kind }) => ({ id, title, imageUrl, kind }));
+        sendJson(response, 200, matches);
+      } catch {
+        sendJson(response, 500, { error: '검색할 작품 정보를 읽지 못했습니다.' });
+      }
+      return;
+    }
+
+    // 인증 없이 고정 예시를 반환합니다. 기록(POST)은 제공하지 않습니다.
+    if (pathname === '/api/members/recent-works') {
+      try {
+        sendJson(response, 200, JSON.parse(await readFile(recentWorksPath, 'utf8')));
+      } catch {
+        sendJson(response, 500, { error: '최근 본 작품 파일을 읽지 못했습니다.' });
+      }
+      return;
+    }
+
+    const chapterMatch = /^\/works\/([^/]+)\/chapters\/([^/]+)$/.exec(pathname);
+    if (chapterMatch) {
+      if (!/^[a-z0-9-]{1,120}$/.test(chapterMatch[1]) || !/^[A-Za-z0-9_-]{1,80}$/.test(chapterMatch[2])) {
+        sendJson(response, 400, { message: '식별자가 올바르지 않습니다.' }); return;
+      }
+      try {
+        const works = JSON.parse(await readFile(worksPath, 'utf8'));
+        const work = works.find(item => item.id === chapterMatch[1]);
+        const index = work?.contents.findIndex(item => item.id === chapterMatch[2]) ?? -1;
+        if (!work || index < 0) { sendJson(response, 404, { message: '공개된 회차가 없습니다.' }); return; }
+        const texts = JSON.parse(await readFile(chaptersPath, 'utf8'));
+        const text = texts[work.id]?.[chapterMatch[2]];
+        if (!text) { sendJson(response, 503, { message: '본문이 준비되지 않았습니다.' }); return; }
+        const body = text.body.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n');
+        const contents = work.contents.map((item, i) => ({ id: item.id, title: item.title, number: i + 1 }));
+        sendJson(response, 200, { workId: work.id, workTitle: work.title, kind: work.kind,
+          chapter: contents[index], contents, currentIndex: index,
+          previous: contents[index - 1] ?? null, next: contents[index + 1] ?? null,
+          body, characterCount: body.length, contentVersion: text.contentVersion,
+          contentHash: createHash('sha256').update(body, 'utf8').digest('hex') });
+      } catch { sendJson(response, 503, { message: '본문을 제공할 수 없습니다.' }); }
       return;
     }
 

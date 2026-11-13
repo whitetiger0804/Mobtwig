@@ -97,6 +97,24 @@ try {
 
     Write-Output '배포 설정을 검사하고 API 이미지를 내려받습니다.'
     Invoke-Docker -Arguments ($composeArguments + @('config', '--quiet'))
+    # Compose가 해석한 bind source만 메모리에서 검사합니다. 환경 비밀번호가 든 JSON은 출력하지 않습니다.
+    $resolvedJson = @(Invoke-Docker -Arguments ($composeArguments + @('config', '--format', 'json')))
+    try { $resolvedCompose = ($resolvedJson -join "`n") | ConvertFrom-Json }
+    catch { throw '배포 구성의 본문 폴더를 확인하지 못했습니다.' }
+    finally { $resolvedJson = $null }
+    $contentMounts = @($resolvedCompose.services.api.volumes | Where-Object { $_.target -eq '/app/content' })
+    if ($contentMounts.Count -ne 1 -or $contentMounts[0].type -ne 'bind' -or $contentMounts[0].read_only -ne $true) {
+        throw '본문 폴더는 읽기 전용 bind 하나로 설정해야 합니다.'
+    }
+    $contentHostPath = [string]$contentMounts[0].source
+    $resolvedCompose = $null
+    if (-not [IO.Path]::IsPathRooted($contentHostPath) -or -not (Test-Path -LiteralPath $contentHostPath -PathType Container)) {
+        throw '본문 호스트 폴더가 없습니다. CONTENT_HOST_PATH의 비공개 폴더를 먼저 준비하십시오.'
+    }
+    $releasePrefix = [IO.Path]::GetFullPath((Join-Path $DeploymentRoot 'releases')).TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
+    if ([IO.Path]::GetFullPath($contentHostPath).StartsWith($releasePrefix, [StringComparison]::OrdinalIgnoreCase)) {
+        throw '본문 호스트 폴더는 릴리즈 폴더 밖에 보관해야 합니다.'
+    }
     # Actions의 단기 토큰만 전달하며 Docker Desktop의 대화형 자격 증명 저장소를 사용하지 않습니다.
     Invoke-Docker -Arguments @('login', 'ghcr.io', '--username', $RegistryUser, '--password-stdin') -InputText $registryToken
     $registryToken = $null

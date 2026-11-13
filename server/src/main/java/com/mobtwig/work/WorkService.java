@@ -2,8 +2,6 @@ package com.mobtwig.work;
 
 import java.time.Instant;
 import java.time.ZoneId;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
@@ -71,14 +69,8 @@ public class WorkService {
     private ReadResult readDetail(String slug) {
         Book book = bookRepository.findBySlugAndPublishStatus(slug, "PUBLISHED")
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "공개된 작품이 없습니다."));
-        String author = book.getAuthors().stream()
-                .map(value -> WorkMetadata.requiredText(value.getName(), "저자"))
-                .collect(Collectors.joining(", "));
-        String category = Stream.concat(
-                        book.getGenres().stream().map(Genre::getName),
-                        book.getCategories().stream().map(Category::getName))
-                .map(value -> WorkMetadata.requiredText(value, "분류 이름"))
-                .distinct().collect(Collectors.joining(" · "));
+        String author = WorkMetadata.authors(book.getAuthors());
+        String category = WorkMetadata.categories(book.getGenres(), book.getCategories());
         var contents = chapterRepository
                 .findByBookIdAndPublishedAtLessThanEqualOrderByChapterNoAsc(book.getId(), Instant.now())
                 .stream().map(chapter -> new WorkDetailResponse.Content(

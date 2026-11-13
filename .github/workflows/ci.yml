@@ -49,6 +49,8 @@ jobs:
           npm ci
       - name: TypeScript를 검사합니다
         run: npm run typecheck
+      - name: PR 이슈 자동 종료 규칙을 검사합니다
+        run: node --test ../.github/tests/close-develop-issues.test.mjs
       - name: SDUI 응답과 간이 서버를 검사합니다
         run: npm test
       - name: Android·iOS·웹 번들을 검사합니다
@@ -106,6 +108,7 @@ jobs:
         run: |
           bash mvnw --batch-mode --no-transfer-progress clean verify
           node src/test/js/catalog-contract.mjs
+          node src/test/js/reader-contract.mjs --with-db
           cp target/mobtwig-server-*.jar target/app.jar
       - name: 시험 DB에 마이그레이션을 적용하고 서버 상태를 검사합니다
         env:

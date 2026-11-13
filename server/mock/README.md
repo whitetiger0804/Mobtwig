@@ -16,14 +16,27 @@ $env:MOCK_PORT = '8090'
 node server/mock/index.mjs
 ```
 
+클라이언트에서는 `npm run start:test`로 서버 선택 화면을 엽니다. `client/.env`의 `EXPO_PUBLIC_MOCK_API_URL`은 테스트할 API 주소이며, 이 간이 서버 대신 로컬 Spring 서버 주소를 지정해도 됩니다. 이 값은 서버의 실행 포트나 수신 주소를 변경하지 않습니다.
+
+`EXPO_PUBLIC_MOCK_USE_EXPO_HOST`로 모바일의 주소 변환 여부를 지정합니다. 미설정 또는 `false`이면 지정한 주소를 그대로 사용합니다. `.env.example`은 LAN 테스트를 위해 `true`를 예시로 제공합니다.
+
+| 연결 방식 | 설정과 동작 |
+| --- | --- |
+| Android·iOS LAN | `true`이면 로컬 mock 주소의 호스트만 Expo 개발 PC의 IP로 바꿉니다. PC와 기기는 같은 네트워크에 있어야 하며, API 서버의 LAN 수신과 방화벽 접근이 허용되어야 합니다. |
+| Android USB | `false`로 지정해 `localhost` 주소를 유지하고, 해당 API 포트에 `adb reverse`를 설정합니다. |
+| iOS 시뮬레이터 | 개발 Mac의 `localhost`를 직접 사용할 때는 `false`로 지정합니다. |
+| PC 웹 | 설정값과 관계없이 `EXPO_PUBLIC_MOCK_API_URL`을 그대로 사용합니다. |
+| Expo 터널 | 터널은 API 포트까지 노출하지 않습니다. Expo 터널 호스트로 자동 변환하지 않으며, 기기에서 접속 가능한 API 주소를 직접 지정해야 합니다. |
+
+자동 변환은 Expo가 알려 준 LAN IP에만 적용합니다. Expo 주소가 없거나 터널 호스트이면 mock 선택지에 오류를 표시하고 실제 개발 서버 선택은 유지합니다. PC의 IP나 API 도메인을 직접 지정하면 자동 변환 대상이 아닙니다. 이 간이 서버에는 로그인 API가 없으므로 회원 기능은 해당 API를 제공하는 Spring 서버로 테스트해야 합니다.
+
 | 요청 | 응답 |
 | --- | --- |
 | `GET /health` | 간이 서버의 실행 상태를 반환합니다. |
-| `GET /sdui/home?kind=all` | 전체 화면 구성을 반환합니다. |
-| `GET /sdui/home?kind=book` | 도서 화면 구성을 반환합니다. |
-| `GET /sdui/home?kind=magazine` | 매거진 화면 구성을 반환합니다. |
-| `GET /sdui/home?kind=novel` | 웹소설 화면 구성을 반환합니다. |
+| `GET /sdui/home?kind={kind}` | `{kind}`에 `all`, `book`, `magazine`, `novel`을 넣어 해당 화면 구성을 조회합니다. |
 | `GET /works/:id` | 해당 ID의 작품 상세 정보 객체 하나를 반환합니다. |
+| `GET /works?query={query}&kind={kind}` | `{query}`는 검색어, `{kind}`는 `all`, `book`, `magazine`, `novel` 중 선택한 종류입니다. 제목·저자·출판사 부분 검색 결과를 `id`, `title`, `imageUrl`, `kind` 배열로 반환하며 결과가 없으면 `[]`입니다. 종류는 생략할 수 있습니다. |
+| `GET /api/members/recent-works` | `fixtures/recent-works.json`의 최근 본 작품 고정 예시를 반환합니다. 인증을 확인하지 않으며 기록 요청(`POST /api/members/recent-works/{slug}`)은 제공하지 않습니다. |
 | `GET /media/covers/...` | 공용 `media/covers/`의 도서·매거진·웹소설 표지 PNG를 반환합니다. |
 | `GET /media/backgrounds/...` | 공용 `media/backgrounds/`의 배경 PNG를 반환합니다. |
 
@@ -59,3 +72,7 @@ node server/mock/index.mjs
 ```powershell
 node --test server/mock/server.test.mjs
 ```
+
+## 텍스트 본문 검증 · #35
+
+GET /works/{slug}/chapters/{chapterId}는 works.json의 공개 목차와 chapter-text.json의 검증용 가상 예문을 조합합니다. 작품 16개·목차 91개에 각각 예문이 있으며 실제 출판 본문이 아닙니다. ID는 기존의 문자열을 보존합니다. 응답 필드는 실제 API와 같고 정규화 body, UTF-16 characterCount, 정수 contentVersion, SHA-256 contentHash를 구분합니다. 처음/끝에는 명시적 null 이웃이 있고 없는 회차는404, 준비되지 않은 본문 파일은503입니다. 정상 빈 body는200입니다. 본문 예문과 작품 JSON 파일 자체는 HTTP로 공개하지 않습니다.

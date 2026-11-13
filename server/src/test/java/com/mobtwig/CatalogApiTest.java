@@ -7,7 +7,6 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -95,7 +94,17 @@ class CatalogApiTest {
     @BeforeEach
     void prepareFixtures() throws Exception {
         Files.createDirectories(HOME_PATH.getParent());
-        Files.copy(Path.of("sdui", "home.json"), HOME_PATH, StandardCopyOption.REPLACE_EXISTING);
+        var home = mapper.createObjectNode();
+        home.put("version", 1);
+        var section = home.putArray("sections").addObject();
+        section.put("id", "published-works").put("type", "workShelf").put("title", "공개 작품");
+        section.putObject("dataSource").put("type", "publishedWorks").put("limit", 20);
+        section.putArray("items");
+        var homes = mapper.createObjectNode();
+        for (String kind : List.of("all", "book", "magazine", "novel")) {
+            homes.set(kind, home);
+        }
+        Files.writeString(HOME_PATH, mapper.writeValueAsString(homes), StandardCharsets.UTF_8);
         clearFixtures();
         assertEquals(0L, jdbc.queryForObject("SELECT COUNT(*) FROM book", Long.class),
                 "시험 DB에 다른 작품이 있어 통합 검증을 중단합니다.");
@@ -457,6 +466,33 @@ class CatalogApiTest {
                 assertThrows(IllegalStateException.class, () -> new TestDatabaseOnly().initialize(context));
             }
         }
+    }
+
+    /** 추천 순서와 공개 상태·분류 필터를 실제 DB 집계 값으로 확인합니다. */
+    @Test
+    void ranksRecommendedPublishedWorksUsingDatabaseCounts() throws Exception {
+        jdbc.update("UPDATE book SET wishlist_count = CASE id WHEN -9102 THEN 3 WHEN -9101 THEN 2 ELSE 1 END WHERE id IN (" + BOOK_IDS + ")");
+        jdbc.update("UPDATE book SET wishlist_count = 999 WHERE id IN (-9104, -9105)");
+        Files.writeString(HOME_PATH, """
+                {"all":{"version":1,"sections":[
+                  {"id":"selected","type":"workShelf","dataSource":{
+                    "type":"publishedWorks","sort":"recommended","limit":3
+                  },"items":[]}
+                ]},"book":{"version":1,"sections":[
+                  {"id":"selected","type":"workShelf","dataSource":{
+                    "type":"publishedWorks","sort":"recommended","limit":1
+                  },"items":[]}
+                ]}}
+                """, StandardCharsets.UTF_8);
+        HttpResponse<String> all = get("/sdui/home?kind=all");
+        assertEquals(200, all.statusCode());
+        assertEquals(List.of("test-magazine", "test-book", "test-novel"), ids(items(object(all))));
+        HttpResponse<String> book = get("/sdui/home?kind=book");
+        assertEquals(200, book.statusCode());
+        assertEquals(List.of("test-book"), ids(items(object(book))));
+        jdbc.update("UPDATE book SET wishlist_count = 3, average_rating = 5 WHERE id = -9103");
+        assertEquals(List.of("test-novel", "test-magazine", "test-book"),
+                ids(items(object(get("/sdui/home?kind=all")))));
     }
 
     /** 실제 HTTP 응답을 UTF-8로 수신합니다. */

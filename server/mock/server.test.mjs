@@ -16,6 +16,48 @@ const worksPath = join(mockDirectory, 'fixtures', 'works.json');
 const fixtures = JSON.parse(await readFile(fixturePath, 'utf8'));
 const works = JSON.parse(await readFile(worksPath, 'utf8'));
 
+test('공개 검색은 제목·저자·출판사의 일부와 종류를 사용하고 네 필드만 반환합니다.', async context => {
+  const base = await startServer(context);
+  for (const [query, id] of [['과학', 'magazine-orbit'], ['한서윤', 'book-quiet'], ['모북출판', 'book-quiet']]) {
+    const response = await fetch(`${base}/works?${new URLSearchParams({ query })}`);
+    assert.equal(response.status, 200);
+    const results = await response.json();
+    assert.ok(results.some(work => work.id === id));
+    for (const work of results) assert.deepEqual(Object.keys(work).sort(), ['id', 'imageUrl', 'kind', 'title']);
+  }
+  const response = await fetch(`${base}/works?${new URLSearchParams({ query: '모북출판', kind: 'book' })}`);
+  assert.equal(response.status, 200);
+  const results = await response.json();
+  assert.ok(results.some(work => work.id === 'book-quiet'));
+  assert.ok(results.every(work => work.kind === 'book'));
+  assert.deepEqual(await (await fetch(`${base}/works?query=not-found-search-104`)).json(), []);
+});
+
+test('검색어의 퍼센트·밑줄·느낌표·쉼표를 문자 그대로 검색합니다.', async context => {
+  const copied = await copyFixture(context, worksPath);
+  await writeFile(copied, JSON.stringify([
+    { ...works[0], id: 'literal-work', title: '100% 자바_입문!, 실전' },
+    { ...works[0], id: 'other-work', title: '100점 자바X입문' },
+  ]), 'utf8');
+  const base = await startServer(context, { worksPath: copied });
+  for (const query of ['%', '_', '!', '입문!, 실전']) {
+    const response = await fetch(`${base}/works?${new URLSearchParams({ query })}`);
+    assert.equal(response.status, 200);
+    assert.deepEqual((await response.json()).map(work => work.id), ['literal-work']);
+  }
+});
+
+test('검색 조건의 누락·공백·중복·길이·종류 오류를 400으로 구분합니다.', async context => {
+  const base = await startServer(context);
+  for (const parameters of ['', 'query=', 'query=+%C2%A0', 'query=a&query=b', 'query=a&kind=',
+    'query=a&kind=book&kind=book', 'query=a&kind=other', new URLSearchParams({ query: '😀'.repeat(201) }).toString()]) {
+    assert.equal((await fetch(`${base}/works?${parameters}`)).status, 400, parameters);
+  }
+  const response = await fetch(`${base}/works?${new URLSearchParams({ query: '😀'.repeat(200) })}`);
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), []);
+});
+
 /**
  * 실제 HTTP 서버를 임시 포트에서 실행하고 테스트 종료 시 닫습니다.
  *
@@ -203,7 +245,7 @@ test('없는 작품과 상세 하위 경로를 거절하고 작품 파일 자체
     assert.deepEqual(await response.json(), { error: '요청한 작품이 없습니다.' });
   }
 
-  for (const path of ['/works', '/works/', '/works/book-care/contents', '/works/book%2Fcare', '/fixtures/works.json']) {
+  for (const path of ['/works/', '/works/book-care/contents', '/works/book%2Fcare', '/fixtures/works.json']) {
     assert.equal((await fetch(`${baseUrl}${path}`)).status, 404, path);
   }
 
@@ -244,6 +286,29 @@ test('작품 JSON 오류와 파일 부재에 500을 반환하고 파일 경로�
   const missing = await fetch(`${baseUrl}/works/book-care`);
   assert.equal(missing.status, 500);
   assert.deepEqual(await missing.json(), { error: '작품 정보 파일을 읽지 못했습니다.' });
+});
+
+test('최근 본 작품을 클라이언트 형식과 최근 본 순서로 반환하고 기록 요청은 거절합니다.', async (context) => {
+  const baseUrl = await startServer(context);
+  const response = await fetch(`${baseUrl}/api/members/recent-works`);
+  assert.equal(response.status, 200);
+  const recent = await response.json();
+
+  assert.ok(Array.isArray(recent) && recent.length > 0 && recent.length <= 20);
+  assert.equal(new Set(recent.map((item) => item.id)).size, recent.length);
+  for (const item of recent) {
+    assert.deepEqual(Object.keys(item), ['id', 'title', 'imageUrl', 'kind', 'lastReadAt']);
+    assert.ok(['book', 'novel', 'magazine'].includes(item.kind));
+    assert.ok(Number.isFinite(Date.parse(item.lastReadAt)));
+    const work = works.find((candidate) => candidate.id === item.id);
+    assert.deepEqual({ id: item.id, title: item.title, imageUrl: item.imageUrl, kind: item.kind },
+      { id: work.id, title: work.title, imageUrl: work.imageUrl, kind: work.kind });
+  }
+  const times = recent.map((item) => Date.parse(item.lastReadAt));
+  assert.deepEqual(times, [...times].sort((a, b) => b - a));
+
+  const write = await fetch(`${baseUrl}/api/members/recent-works/${recent[0].id}`, { method: 'POST' });
+  assert.equal(write.status, 405);
 });
 
 test('잘못된 종류·메서드·없는 리소스를 명시적인 상태 코드로 거절합니다.', async (context) => {
