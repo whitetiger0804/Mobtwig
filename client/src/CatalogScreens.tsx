@@ -9,6 +9,7 @@ import { HomeContent } from './HomeContent';
 import { useApiUrl } from './serverConnection';
 import { useMemberAuth } from './memberAuth';
 import { readReadingProgress, type ReadingProgress } from './readingProgress';
+import { deleteBookmark, listBookmarks, type BookmarkPage } from './bookmarks';
 import { fetchWorkDetail, type WorkDetail } from './workDetails';
 import { Action, Chip, colors, Icon, IconButton, s, Title } from './ui';
 // #endregion
@@ -424,19 +425,85 @@ export function LibraryManageScreen() {
 }
 
 /**
- * 모든 책 선택과 밑줄·책갈피의 분리된 빈 영역을 구성합니다.
+ * 회원 본인의 책갈피를 전체 또는 현재 작품별로 표시합니다.
  *
- * @remarks
- * 시안의 책 선택 행과 밑줄 카드·책갈피 목록 배치를 유지합니다.
- * 기록과 작품 목록을 조회하거나 인용문·페이지 정보를 생성하지 않습니다.
- *
- * @returns 책 선택 행, 빈 밑줄 카드와 빈 책갈피 영역입니다.
+ * @returns 책 선택 행, 밑줄 카드와 이동·삭제 가능한 책갈피입니다.
  */
 export function RecordsScreen() {
+  const app = useApp();
+  const workId = app.baseRoute.workId;
+  const { state: auth, client } = useMemberAuth();
+  const [page, setPage] = useState(1);
+  const [attempt, setAttempt] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const [failure, setFailure] = useState('');
+  const [result, setResult] = useState<BookmarkPage | null>(null);
+
+  useEffect(() => {
+    setResult(null);
+    setFailure('');
+    if (auth.status !== 'authenticated') return;
+    let active = true;
+    listBookmarks(client, page, workId).then(value => {
+      if (!active) return;
+      if (value.items.length === 0 && page > 1) setPage(previous => previous - 1);
+      else setResult(value);
+    }).catch(() => { if (active) setFailure('책갈피를 불러오지 못했습니다.'); });
+    return () => { active = false; };
+  }, [auth.generation, auth.status, client, page, workId, attempt]);
+
+  async function remove(id: string) {
+    setBusy(true);
+    setFailure('');
+    try {
+      await deleteBookmark(client, id);
+      setAttempt(previous => previous + 1);
+    } catch {
+      setFailure('책갈피를 삭제하지 못했습니다. 목록을 다시 확인해 주세요.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return <View style={c.records}>
-    <View style={s.row}><Chip label="모든 책" selected /></View>
+    <View style={s.row}>
+      {workId ? <>
+        <Chip label="현재 작품" selected />
+        <Action compact tone="secondary" label="모든 책" onPress={() => app.navigate({ screen: 'records' }, false, true)} />
+      </> : <Chip label="모든 책" selected />}
+    </View>
     <View style={c.highlightCard}><View style={c.highlightTools}><IconButton icon="share" label="밑줄 공유" disabled /></View><View style={c.highlightQuote}><EmptyState compact title="표시할 밑줄이 없습니다." /></View></View>
-    <Title>책갈피</Title><EmptyState title="표시할 책갈피가 없습니다." />
+    <Title>책갈피</Title>
+    {auth.status === 'checking' ? <ActivityIndicator color={colors.green} />
+      : auth.status !== 'authenticated' ? <Action label="로그인하고 책갈피 보기" onPress={() => app.navigate({ screen: 'login' })} />
+      : <>
+        {!!failure && <View style={c.bookmarkCard}>
+          <Text accessibilityRole="alert" style={s.error}>{failure}</Text>
+          <Action compact tone="secondary" label="목록 다시 불러오기" onPress={() => setAttempt(previous => previous + 1)} />
+        </View>}
+        {!result && !failure && <ActivityIndicator color={colors.green} />}
+        {result?.items.length === 0 && <EmptyState title="표시할 책갈피가 없습니다." />}
+        {result?.items.map(item => {
+          const { workId: slug, position, kind } = item;
+          return <View key={item.id} style={c.bookmarkCard}>
+            <Text style={s.subtitle}>{item.workTitle ?? '열 수 없는 책갈피'}</Text>
+            {!!item.chapterTitle && <Text style={s.muted}>{item.chapterTitle}{position?.unit === 'page' ? ' · ' + position.offset + '쪽' : ''}</Text>}
+            {!!item.snippet && <Text style={s.text} numberOfLines={3}>{item.snippet}</Text>}
+            {item.state === 'stale' && <Text style={s.muted}>본문이 변경되었거나 제공되지 않아 이 위치를 열 수 없습니다.</Text>}
+            <Text style={s.muted}>{new Date(item.createdAt).toLocaleDateString('ko-KR')}</Text>
+            <View style={s.row}>
+              {item.state === 'available' && slug && position && kind && <Action compact label="책갈피 위치 열기"
+                disabled={busy} onPress={() => app.navigate({ screen: 'reader', kind, workId: slug,
+                  chapterId: position.chapterId, bookmarkPosition: position })} />}
+              <Action compact tone="secondary" label="책갈피 삭제" disabled={busy} onPress={() => { void remove(item.id); }} />
+            </View>
+          </View>;
+        })}
+        {result && (page > 1 || result.hasNext) && <View style={s.row}>
+          <Action compact tone="secondary" label="이전 목록" disabled={busy || page === 1} onPress={() => setPage(previous => previous - 1)} />
+          <Action compact tone="secondary" label="다음 목록" disabled={busy || !result.hasNext} onPress={() => setPage(previous => previous + 1)} />
+        </View>}
+      </>}
   </View>;
 }
 
@@ -587,6 +654,7 @@ recommendTitle: { fontSize: 14, fontWeight: '700', color: colors.ink },
   manageSheet: { paddingHorizontal: 24, paddingTop: 16, paddingBottom: 40, gap: 16 },
   manageAction: { height: 64, borderRadius: 18, backgroundColor: colors.pale, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', gap: 16, opacity: 0.55 },
   records: { paddingHorizontal: 20, paddingTop: 21, paddingBottom: 40, gap: 25 },
+  bookmarkCard: { padding: 14, gap: 8, borderWidth: 1, borderColor: colors.line, borderRadius: 12 },
   highlightCard: { minHeight: 200, borderBottomWidth: 1, borderBottomColor: colors.line, paddingBottom: 24 },
   highlightTools: { alignItems: 'flex-end' },
   highlightQuote: { marginHorizontal: 14, backgroundColor: '#F1EBD7', minHeight: 87, borderRadius: 8, justifyContent: 'center' },

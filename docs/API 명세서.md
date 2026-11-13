@@ -6,6 +6,16 @@
 
 후속 본문·독서 기록 API의 식별자·표시 텍스트·UTF-16 offset·매거진 쪽 번호·개정 시 처리 기준은 [본문·독서위치 규약 v1](본문·독서위치%20규약.md)(#18)을 따릅니다. 해당 문서의 논리 필드 예시는 현재 HTTP API에 추가된 경로/응답이 아니며, 후속 구현 시 OpenAPI에 반영합니다.
 
+## 책갈피 · #39
+
+`GET /api/members/bookmarks?page=1&workId={slug}`는 회원 본인의 기록을 저장 시각과 ID 내림차순으로 최대 30건 반환합니다. 두 쿼리 값은 생략할 수 있습니다. 응답은 `items`, `page`, `hasNext`입니다.
+
+`POST /api/members/bookmarks`에 `workId`, 문자열 `chapterId`, 정수 `offset`, `contentVersion`, `contentHash`를 보냅니다. 텍스트는 표시 본문의 시작, 문단 시작 또는 끝을 UTF-16으로 전송하며 해시는 SHA-256입니다. 매거진은 호 기준 쪽과 null 해시를 사용합니다. 성공과 같은 좌표의 재요청 모두 200에 기존 또는 새 기록을 반환합니다. 이전 버전 기록을 갱신하려면 직접 삭제한 뒤 다시 저장합니다.
+
+항목은 `id`, `state`, `workId`, `workTitle`, `kind`, `chapterTitle`, `position`, `snippet`, `createdAt`을 포함합니다. `available`은 이동 가능한 위치이며, `stale`은 본문을 다시 확인해야 하는 저장 위치입니다. `hidden` 항목은 본인 삭제에 필요한 ID와 저장 시각만 표시하며 작품·회차 정보와 원문은 null입니다. 매거진과 재확인 상태에서는 발췌문을 제공하지 않습니다.
+
+`DELETE /api/members/bookmarks/{id}`는 본인 기록을 삭제하면 204를 반환합니다. 없는 ID와 타인 소유 ID는 동일한 404입니다. POST와 DELETE는 같은 회원 세션의 CSRF를 사용합니다. 잘못된 입력은 400, 미인증은 401, CSRF 실패는 403, 비공개 회차와 타 작품 회차는 404, 본문 변경은 409입니다. 본문 제공 실패는 415 또는 503입니다. 책갈피 읽기·쓰기와 책갈피를 통한 진입은 읽기 진도를 변경하지 않습니다.
+
 ## 읽기 위치 · #38
 
 `GET /api/members/works/{slug}/reading-progress`와 같은 경로의 `POST`는 활성 회원 본인의 저장 기록에만 접근합니다. POST는 같은 회원 세션의 CSRF 토큰을 사용합니다. GET은 조회수·진도·서재를 변경하지 않습니다.

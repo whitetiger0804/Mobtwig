@@ -59,6 +59,8 @@ export interface Route {
   chapterId?: string;
   /** 작품 상세의 이어보기에서 확인한 표시 위치입니다. */
   resumePosition?: ReadingPosition;
+  /** 책갈피에서 연 표시 좌표입니다. 이어보기 revision과 별개입니다. */
+  bookmarkPosition?: ReadingPosition;
   /** 이어보기 위치와 같은 응답에서 받은 revision입니다. 최초 기록은 null입니다. */
   resumeRevision?: string | null;
   /** 가입 성공 후 로그인 입력란에 채울 이메일입니다. */

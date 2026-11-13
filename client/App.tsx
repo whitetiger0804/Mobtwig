@@ -118,7 +118,8 @@ function Shell() {
   const centeredTitle = ['signup', 'account', 'password', 'share', 'records', 'report', 'reviewWrite', 'reviewComments', 'writePost'].includes(route.screen);
   const hideTitle = route.screen === 'login' || route.screen === 'detail';
   const routeKey = [route.screen, route.kind, route.mode, route.workId, route.chapterId, route.resumeRevision,
-    route.resumePosition?.contentVersion, route.resumePosition?.contentHash, route.resumePosition?.offset].join(':');
+    route.resumePosition?.contentVersion, route.resumePosition?.contentHash, route.resumePosition?.offset,
+    route.bookmarkPosition?.contentVersion, route.bookmarkPosition?.contentHash, route.bookmarkPosition?.offset].join(':');
 
   return (
     <SafeAreaView style={[styles.shell, route.screen === 'imageFull' && styles.darkShell]} edges={['top', 'bottom']}>
