@@ -12,8 +12,9 @@
 | `V6__create_media_and_community.sql` | 미디어·커뮤니티 | `chapter_media`, `board`, `post`, `post_image`, `sticker`, `post_sticker`, `post_comment`, `post_comment_sticker`, `post_reaction`, `post_report` (10개) |
 | `V7__create_member_policy_consent.sql` | 인증 | `member_policy_consent` (1개) |
 | `V8__version_reading_progress.sql` | 독서 활동 | `reading_progress` revision·본문 해시 |
+| `V9__version_bookmark_text.sql` | 독서 활동 | `bookmark` 본문 해시 |
 
-V9 이후는 다음으로 확정된 스키마 변경에 사용합니다.
+V10 이후는 다음으로 확정된 스키마 변경에 사용합니다.
 
 공통 기준은 `snake_case`, `utf8mb4`, `BIGINT AUTO_INCREMENT` PK, `{참조테이블}_id` FK, UTC `TIMESTAMP`입니다.
 

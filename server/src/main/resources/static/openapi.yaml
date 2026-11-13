@@ -270,6 +270,75 @@ paths:
           $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/ServerError'
+  /api/members/bookmarks:
+    get:
+      operationId: listBookmarks
+      summary: 회원 본인의 책갈피를 최신순으로 조회합니다.
+      security: [{MemberSessionCookie: []}]
+      parameters:
+        - {name: workId, in: query, schema: {type: string, pattern: '^[a-z0-9-]{1,120}$'}}
+        - {name: page, in: query, schema: {type: integer, format: int32, minimum: 1, default: 1}}
+      responses:
+        '200':
+          description: 최대 30건의 책갈피입니다.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, page, hasNext]
+                properties:
+                  items:
+                    type: array
+                    maxItems: 30
+                    items: {$ref: '#/components/schemas/Bookmark'}
+                  page: {type: integer, minimum: 1}
+                  hasNext: {type: boolean}
+        '400': {$ref: '#/components/responses/BookmarkError'}
+        '401': {description: 활성 회원 세션 필요}
+    post:
+      operationId: saveBookmark
+      summary: 현재 표시 좌표를 한 번 저장합니다.
+      security: [{MemberSessionCookie: [], MemberCsrfToken: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [workId, chapterId, offset, contentVersion, contentHash]
+              properties:
+                workId: {type: string, pattern: '^[a-z0-9-]{1,120}$'}
+                chapterId: {type: string, pattern: '^-?[1-9][0-9]{0,18}$'}
+                offset: {type: integer, format: int32, minimum: 0}
+                contentVersion: {type: integer, format: int32, minimum: 1}
+                contentHash: {type: string, nullable: true, pattern: '^[a-f0-9]{64}$'}
+      responses:
+        '200':
+          description: 새 기록 또는 같은 좌표의 기존 기록입니다.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Bookmark'}
+        '400': {$ref: '#/components/responses/BookmarkError'}
+        '401': {description: 활성 회원 세션 필요}
+        '403': {description: 회원 CSRF 검증 실패}
+        '404': {$ref: '#/components/responses/BookmarkError'}
+        '409': {$ref: '#/components/responses/BookmarkError'}
+        '415': {$ref: '#/components/responses/BookmarkError'}
+        '503': {$ref: '#/components/responses/BookmarkError'}
+  /api/members/bookmarks/{id}:
+    delete:
+      operationId: deleteBookmark
+      summary: 회원 본인의 책갈피를 삭제합니다.
+      security: [{MemberSessionCookie: [], MemberCsrfToken: []}]
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string, pattern: '^[1-9][0-9]{0,18}$'}}
+      responses:
+        '204': {description: 삭제했습니다.}
+        '400': {$ref: '#/components/responses/BookmarkError'}
+        '401': {description: 활성 회원 세션 필요}
+        '403': {description: 회원 CSRF 검증 실패}
+        '404': {$ref: '#/components/responses/BookmarkError'}
   /api/members/works/{slug}/reading-progress:
     parameters:
       - name: slug
@@ -854,6 +923,11 @@ components:
       schema: {type: integer, format: int64}
       example: 1
   responses:
+    BookmarkError:
+      description: 입력, 공개 범위, 본문 상태 또는 기록을 확인하십시오.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/AdminError'}
     MagazinePageError:
       description: 입력·공개 범위·버전 또는 쪽 공급 오류입니다.
       content:
@@ -939,6 +1013,29 @@ components:
           schema:
             $ref: '#/components/schemas/HttpError'
   schemas:
+    Bookmark:
+      type: object
+      additionalProperties: false
+      required: [id, state, workId, workTitle, kind, chapterTitle, position, snippet, createdAt]
+      properties:
+        id: {type: string, pattern: '^[1-9][0-9]*$'}
+        state: {type: string, enum: [available, stale, hidden]}
+        workId: {type: string, nullable: true}
+        workTitle: {type: string, nullable: true}
+        kind: {type: string, nullable: true, enum: [book, novel, magazine, null]}
+        chapterTitle: {type: string, nullable: true}
+        position:
+          type: object
+          nullable: true
+          required: [chapterId, offset, unit, contentVersion, contentHash]
+          properties:
+            chapterId: {type: string}
+            offset: {type: integer, format: int32, minimum: 0}
+            unit: {type: string, enum: [utf16, page]}
+            contentVersion: {type: integer, format: int32, minimum: 1}
+            contentHash: {type: string, nullable: true, pattern: '^[a-f0-9]{64}$'}
+        snippet: {type: string, nullable: true, maxLength: 200}
+        createdAt: {type: string, format: date-time}
     MagazineIssue:
       type: object
       additionalProperties: false

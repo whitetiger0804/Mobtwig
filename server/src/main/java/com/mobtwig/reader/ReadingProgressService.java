@@ -6,6 +6,7 @@ import java.util.Objects;
 import com.mobtwig.reader.ReadingProgressRepository.Chapter;
 import com.mobtwig.reader.ReadingProgressRepository.Saved;
 import com.mobtwig.reader.ReadingProgressRepository.Work;
+import com.mobtwig.reader.ReadingCoordinates.Checked;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -16,10 +17,12 @@ import org.springframework.web.server.ResponseStatusException;
 public class ReadingProgressService {
     private final ReadingProgressRepository repository;
     private final PlainTextSource source;
+    private final ReadingCoordinates coordinates;
 
-    public ReadingProgressService(ReadingProgressRepository repository, PlainTextSource source) {
+    public ReadingProgressService(ReadingProgressRepository repository, PlainTextSource source, ReadingCoordinates coordinates) {
         this.repository = repository;
         this.source = source;
+        this.coordinates = coordinates;
     }
 
     @Transactional(readOnly = true)
@@ -32,7 +35,7 @@ public class ReadingProgressService {
         Chapter chapter = work.visible().stream().filter(c -> c.id() == saved.chapter()).findFirst().orElse(null);
         if (chapter != null) {
             try {
-                var checked = verify(work, chapter, saved.offset(), saved.version(), saved.hash());
+                var checked = coordinates.verify(work, chapter, saved.offset(), saved.version(), saved.hash());
                 return response(work, "saved", saved, checked, library);
             } catch (ResponseStatusException unavailable) {
                 // 구버전·불일치·일시적 본문 부재에서는 기존 저장값을 유지합니다.
@@ -56,7 +59,7 @@ public class ReadingProgressService {
         Saved previous = repository.saved(member, work.id()).orElse(null);
         Long currentRevision = previous == null ? null : previous.revision();
         if (!Objects.equals(currentRevision, input.expectedRevision())) throw ReadingProgressFailure.conflict();
-        var checked = verify(work, chapter, input.offset(), input.contentVersion(), input.contentHash());
+        var checked = coordinates.verify(work, chapter, input.offset(), input.contentVersion(), input.contentHash());
 
         var previousMax = previous == null ? null : maxChapter(work, previous);
         long max = previousMax != null && previousMax.number() > chapter.number() ? previousMax.id() : chapter.id();
@@ -73,34 +76,15 @@ public class ReadingProgressService {
         return repository.work(slug, now, writing).orElseThrow(ReadingProgressFailure::notFound);
     }
 
-    private Checked verify(Work work, Chapter chapter, int offset, int version, String hash) {
-        if (chapter.version() != version) throw ReadingProgressFailure.contentChanged();
-        if (work.magazine()) {
-            if (hash != null) throw ReadingProgressFailure.invalid();
-            var pages = MagazineLayout.range(work, chapter);
-            if (!pages.contains(offset)) throw ReadingProgressFailure.invalid();
-            return new Checked(chapter, offset, pages.start(), pages.end(), null);
-        }
-        if (hash == null) throw ReadingProgressFailure.invalid();
-        var text = source.read(chapter.url());
-        if (!hash.equals(text.version())) throw ReadingProgressFailure.contentChanged();
-        if (offset < 0 || offset > text.characterCount()
-                || offset > 0 && offset < text.characterCount()
-                && Character.isHighSurrogate(text.body().charAt(offset - 1)) && Character.isLowSurrogate(text.body().charAt(offset))) {
-            throw ReadingProgressFailure.invalid();
-        }
-        return new Checked(chapter, offset, 0, text.characterCount(), text.version());
-    }
-
     private Checked start(Work work, Chapter chapter) {
         if (chapter == null) return null;
         try {
             if (work.magazine()) {
                 var pages = MagazineLayout.range(work, chapter);
-                return new Checked(chapter, pages.start(), pages.start(), pages.end(), null);
+                return new Checked(chapter, pages.start(), pages.start(), pages.end(), null, null);
             }
             var text = source.read(chapter.url());
-            return new Checked(chapter, 0, 0, text.characterCount(), text.version());
+            return new Checked(chapter, 0, 0, text.characterCount(), text.version(), text.body());
         } catch (ResponseStatusException unavailable) {
             return null;
         }
@@ -160,5 +144,4 @@ public class ReadingProgressService {
 
     /** 쓰기 요청은 소유자와 진행률을 받지 않습니다. */
     public record Input(long chapterId, int offset, int contentVersion, String contentHash, Long expectedRevision) { }
-    private record Checked(Chapter chapter, int offset, int start, Integer end, String hash) { }
 }

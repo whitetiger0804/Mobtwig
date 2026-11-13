@@ -60,7 +60,9 @@ public class MemberWebSecurity {
         return new WebMvcConfigurer() {
             @Override public void addCorsMappings(CorsRegistry registry) {
                 for (String path : new String[]{"/api/auth/**", "/api/members/**"}) {
-                    registry.addMapping(path).allowedOrigins(allowed).allowedMethods("GET", "POST", "OPTIONS")
+                    var methods = path.startsWith("/api/members/")
+                            ? new String[]{"GET", "POST", "DELETE", "OPTIONS"} : new String[]{"GET", "POST", "OPTIONS"};
+                    registry.addMapping(path).allowedOrigins(allowed).allowedMethods(methods)
                             .allowedHeaders("Content-Type", "X-CSRF-TOKEN", "Accept").allowCredentials(true).maxAge(600);
                 }
             }
