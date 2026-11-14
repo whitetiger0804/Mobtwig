@@ -384,6 +384,45 @@ paths:
         '409': {$ref: '#/components/responses/ReadingProgressError'}
         '415': {$ref: '#/components/responses/ReadingProgressError'}
         '503': {$ref: '#/components/responses/ReadingProgressError'}
+  /api/members/library:
+    get:
+      tags: [회원 인증]
+      operationId: listLibrary
+      summary: 회원 본인의 서재를 작품 분류별로 조회합니다.
+      description: |
+        요청 형식은 GET /api/members/library?kind={kind}입니다. kind는 생략하면 all이며 한 번만 지정합니다.
+        숨기지 않은 공개 작품만 서재에 담은 시각 내림차순, 같은 시각이면 서재 ID 내림차순으로 모두 반환합니다. 개수 제한은 없습니다.
+        기존 읽기 위치 저장이 서재를 자동 등록하고 READING 또는 COMPLETED로 갱신합니다. 목록 조회는 기록을 변경하지 않습니다.
+        WANT_TO_READ는 DB에 해당 상태로 등록된 작품입니다. 별도 담기·즐겨찾기·숨기기 변경 API는 이번 조회 범위에 포함하지 않습니다.
+        공개 작품의 필수 정보가 잘못되면 오류를 반환하며 항목을 조용히 누락하지 않습니다.
+      security: [{MemberSessionCookie: []}]
+      parameters:
+        - name: kind
+          in: query
+          required: false
+          description: 조회할 작품 종류입니다. 생략하면 전체 서재입니다.
+          schema: {type: string, enum: [all, book, magazine, novel], default: all}
+      responses:
+        '200':
+          description: 서재 목록입니다. 일치하는 작품이 없으면 빈 배열입니다.
+          headers:
+            Cache-Control:
+              description: 회원 목록을 캐시하지 않습니다.
+              schema: {type: string, enum: [no-store]}
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/LibraryWork'}
+              example:
+                - id: sample-book
+                  title: 예시 도서
+                  imageUrl: /media/covers/sample-book.png
+                  kind: book
+                  libraryStatus: READING
+        '400': {description: kind가 중복되었거나 빈 값 또는 미지원 값입니다.}
+        '401': {description: 활성 회원 세션 필요}
+        '500': {description: 공개 작품의 필수 정보가 계약에 맞지 않습니다.}
   /api/members/recent-works:
     get:
       tags: [회원 인증]
@@ -1082,6 +1121,16 @@ components:
         maxChapterId: {type: string, nullable: true}
         libraryStatus: {type: string, nullable: true, enum: [WANT_TO_READ, READING, COMPLETED, null]}
         hasNewChapters: {type: boolean}
+    LibraryWork:
+      type: object
+      additionalProperties: false
+      required: [id, title, imageUrl, kind, libraryStatus]
+      properties:
+        id: {type: string, pattern: '^[a-z0-9-]+$', maxLength: 120, description: 상세 조회에 사용하는 작품 slug입니다.}
+        title: {type: string, minLength: 1}
+        imageUrl: {type: string, minLength: 1, description: HTTP(S) 주소 또는 API 서버 기준 절대 경로인 표지입니다.}
+        kind: {type: string, enum: [book, magazine, novel]}
+        libraryStatus: {type: string, enum: [WANT_TO_READ, READING, COMPLETED], description: 읽고 싶은 작품·읽는 중·완독 상태입니다.}
     RecentWork:
       type: object
       additionalProperties: false
