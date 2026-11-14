@@ -96,6 +96,29 @@ class ReadingProgressApiTest {
         jdbc.update("DELETE FROM member WHERE id IN (-9601,-9602)");
     }
 
+    @Test void savedReadingPositionAutomaticallyAppearsInOwnLibraryAndUpdatesStatus() throws Exception {
+        jdbc.update("UPDATE book SET cover_image_url='/media/covers/progress.png' WHERE id=-9601");
+        var a = login("a");
+        var b = login("b");
+        String library = "/api/members/library?kind=novel";
+        assertEquals(0, ok(get(library, a)).size());
+        ok(get(path(TEXT), a));
+        assertEquals(0, ok(get(library, a)).size());
+        ok(post(TEXT, a, input(-9610, 3, 1, hash(TEXT, -9610), null), true));
+        var response = get(library, a);
+        contract("/api/members/library", response, Request.Method.GET);
+        var items = ok(response);
+        assertEquals(1, items.size());
+        assertEquals(TEXT, items.get(0).get("id").asString());
+        assertEquals("READING", items.get(0).get("libraryStatus").asString());
+        assertEquals(0, ok(get(library, b)).size());
+        ok(post(TEXT, a, input(-9609, 2, 1, hash(TEXT, -9609), "1"), true));
+        var completed = ok(get(library, a));
+        assertEquals(1, completed.size());
+        assertEquals("COMPLETED", completed.get(0).get("libraryStatus").asString());
+        assertEquals(1L, count("library_book"));
+    }
+
     @Test void privateGetAndSaveRestoreFromCanonicalTextAndKeepMaximumOnReread() throws Exception {
         assertEquals(401, get(path(TEXT), null).statusCode());
         var a = login("a");
