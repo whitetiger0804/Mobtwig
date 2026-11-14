@@ -65,7 +65,7 @@ class MemberSignupApiTest {
         }
     }
 
-    @Test void storesTheDisplayedDocumentsAndDefaultSettingsWithoutSigningIn() throws Exception {
+    @Test void storesDocumentVersionReferencesAndDefaultSettingsWithoutSigningIn() throws Exception {
         var current = documents();
         var person = fixture();
         var csrf = csrf();
@@ -106,6 +106,17 @@ class MemberSignupApiTest {
         assertTrue(mapper.readTree(duplicate.body()).get("fieldErrors").has("email"));
         assertTrue(mapper.readTree(duplicate.body()).get("fieldErrors").has("nickname"));
         assertEquals(recorded, recorded(member));
+        var secondPerson = fixture();
+        var secondCsrf = csrf();
+        var secondCreated = send(signupRequest(signupInput(secondPerson, current), secondCsrf.cookie(), secondCsrf.token()));
+        assertEquals(201, secondCreated.statusCode());
+        long secondMember = Long.parseLong(mapper.readTree(secondCreated.body()).get("id").asString());
+        assertEquals(2, recorded(secondMember).size());
+        for (var row : recorded) {
+            assertEquals(1L, jdbc.queryForObject("""
+                    SELECT COUNT(*) FROM policy_document_version WHERE document_kind=? AND document_version=?
+                    """, Long.class, row.kind(), row.version()));
+        }
 
         var login = HttpRequest.newBuilder(url("/api/auth/login")).timeout(Duration.ofSeconds(15))
                 .header("Cookie", csrf.cookie()).header("X-CSRF-TOKEN", csrf.token())
@@ -198,8 +209,9 @@ class MemberSignupApiTest {
     private long settings(long id) { return jdbc.queryForObject("SELECT COUNT(*) FROM member_reading_setting WHERE member_id=?", Long.class, id); }
     private List<ConsentRow> recorded(long id) {
         return jdbc.query("""
-                SELECT document_kind,document_version,document_title,document_body,content_hash,temporary,agreed_at
-                FROM member_policy_consent WHERE member_id=? ORDER BY document_kind
+                SELECT c.document_kind,c.document_version,d.document_title,d.document_body,d.content_hash,d.temporary,c.agreed_at
+                FROM member_policy_consent c JOIN policy_document_version d USING (document_kind,document_version)
+                WHERE c.member_id=? ORDER BY c.document_kind
                 """, (row, number) -> new ConsentRow(row.getString(1), row.getString(2), row.getString(3),
                 row.getString(4), row.getString(5), row.getBoolean(6), row.getTimestamp(7).toInstant()), id);
     }
