@@ -42,7 +42,7 @@ public class SignupPolicies {
         }
     }
 
-    /** 본문은 화면 표시, 해시 계산, 동의 스냅샷에 동일하게 사용합니다. */
+    /** 본문은 화면 표시, 해시 계산, 버전별 원문 저장에 동일하게 사용합니다. */
     public record Document(String kind, String version, String title, String body, String contentHash, boolean temporary) {
         String errorField() { return kind.equals("TERMS") ? "terms" : "privacy"; }
     }
