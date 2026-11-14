@@ -43,7 +43,7 @@ test('저장에는 같은 세션의 CSRF와 revision만 보내고 충돌 코드�
     assert.equal(path, '/api/members/works/test-novel/reading-progress');
     assert.equal(init.credentials, 'include');
     assert.equal(new Headers(init.headers).get('X-CSRF-TOKEN'), 'csrf-progress');
-    assert.deepEqual(JSON.parse(init.body), { chapterId: position.chapterId, offset: 8, contentVersion: 3, contentHash: hash, expectedRevision: null });
+    assert.deepEqual(JSON.parse(init.body), { chapterId: position.chapterId, offset: 8, contentVersion: 3, expectedRevision: null });
     return json({ code: 'PROGRESS_CONFLICT', message: '새 위치' }, 409);
   });
   try {

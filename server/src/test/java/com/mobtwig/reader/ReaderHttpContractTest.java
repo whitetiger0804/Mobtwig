@@ -34,7 +34,7 @@ class ReaderHttpContractTest {
         when(books.findBySlugAndPublishStatus("contract", "PUBLISHED")).thenReturn(Optional.of(b));
         var list = List.of(chapter(91, 2), chapter(12, 8), chapter(77, 10));
         when(chapters.findByBookIdAndPublishedAtLessThanEqualOrderByChapterNoAsc(eq(1L), any(Instant.class))).thenReturn(list);
-        var service = new ChapterTextService(books, chapters, new PlainTextSource(root.toString()));
+        var service = new ChapterTextService(books, chapters, new PlainTextSource(root.toString()), mock(TextVersionRegistry.class));
         var mvc = MockMvcBuilders.standaloneSetup(new ChapterTextController(service)).setControllerAdvice(new ReaderErrors()).build();
         String spec = new ClassPathResource("static/openapi.yaml").getContentAsString(StandardCharsets.UTF_8);
         var parsed = new OpenAPIV3Parser().readContents(spec);

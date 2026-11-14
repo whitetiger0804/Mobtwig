@@ -45,7 +45,7 @@ public class BookmarkService {
         lockMember(member);
         Work work = works.work(input.workId(), Instant.now(), true).orElseThrow(ReadingProgressFailure::notFound);
         Chapter chapter = visible(work, input.chapterId()).orElseThrow(ReadingProgressFailure::notFound);
-        var position = coordinates.verify(work, chapter, input.offset(), input.contentVersion(), input.contentHash());
+        var position = coordinates.verifyPosition(work, chapter, input.offset(), input.contentVersion(), input.contentHash(), false, true);
         if (position.body() != null && !paragraphBoundary(position.body(), input.offset())) throw ReadingProgressFailure.invalid();
         var existing = bookmarks.byPosition(member, chapter.id(), input.offset());
         if (existing.isPresent()) return describe(existing.get(), work);
@@ -66,13 +66,14 @@ public class BookmarkService {
         String id = Long.toString(saved.id());
         String createdAt = saved.createdAt().toString();
         if (chapter == null) return new Item(id, "hidden", null, null, null, null, null, null, createdAt);
-        var position = new ReadingProgressResponse.Position(Long.toString(chapter.id()), saved.offset(),
-                work.magazine() ? "page" : "utf16", saved.version(), saved.hash());
+        String unit = work.magazine() ? "page" : "utf16";
         try {
-            coordinates.verify(work, chapter, saved.offset(), saved.version(), saved.hash());
+            var checked = coordinates.verifyPosition(work, chapter, saved.offset(), saved.version(), saved.hash(), saved.bound(), false);
+            var position = new ReadingProgressResponse.Position(Long.toString(chapter.id()), saved.offset(), unit, saved.version(), checked.hash());
             return new Item(id, "available", work.slug(), work.title(), work.kind(), chapter.title(), position,
                     work.magazine() ? null : saved.snippet(), createdAt);
         } catch (ResponseStatusException changed) {
+            var position = new ReadingProgressResponse.Position(Long.toString(chapter.id()), saved.offset(), unit, saved.version(), saved.hash());
             return new Item(id, "stale", work.slug(), work.title(), work.kind(), chapter.title(), position, null, createdAt);
         }
     }

@@ -164,7 +164,7 @@ function BookmarkButton({ workId, position, disabled = false }: {
     setMessage('');
     try {
       const result = await createBookmark(client, workId, current);
-      setMessage(result.state === 'stale' ? '이 좌표에 이전 책갈피가 있습니다. 기록에서 확인해 주세요.' : '책갈피를 저장했습니다.');
+      setMessage(result.state === 'stale' ? '이 좌표에 이전 책갈피가 있습니다. 독서 기록에서 삭제한 뒤 다시 저장해 주세요.' : '책갈피를 저장했습니다.');
     } catch (error) {
       setMessage(error instanceof MemberRequestError && error.status === 409
         ? '본문이 변경되었습니다. 최신 본문을 불러온 뒤 다시 시도해 주세요.' : '책갈피를 저장하지 못했습니다. 다시 시도해 주세요.');
