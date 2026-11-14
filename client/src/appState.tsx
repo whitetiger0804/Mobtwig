@@ -61,6 +61,12 @@ export interface Route {
   resumePosition?: ReadingPosition;
   /** 책갈피에서 연 표시 좌표입니다. 이어보기 revision과 별개입니다. */
   bookmarkPosition?: ReadingPosition;
+  /** 하이라이트에서 열 위치입니다. 이어보기의 저장 위치와 별도로 전달합니다. */
+  highlightPosition?: ReadingPosition;
+  /** 하이라이트 공유 화면에 표시할 서버 확인 문장입니다. */
+  shareExcerpt?: string;
+  /** 하이라이트 공유 화면에 표시할 작품 제목입니다. */
+  shareWorkTitle?: string;
   /** 이어보기 위치와 같은 응답에서 받은 revision입니다. 최초 기록은 null입니다. */
   resumeRevision?: string | null;
   /** 가입 성공 후 로그인 입력란에 채울 이메일입니다. */

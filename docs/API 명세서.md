@@ -6,6 +6,16 @@
 
 후속 본문·독서 기록 API의 식별자·표시 텍스트·UTF-16 offset·매거진 쪽 번호·개정 시 처리 기준은 [본문·독서위치 규약 v1](본문·독서위치%20규약.md)(#18)을 따릅니다. 해당 문서의 논리 필드 예시는 현재 HTTP API에 추가된 경로/응답이 아니며, 후속 구현 시 OpenAPI에 반영합니다.
 
+## 하이라이트 · #40
+
+`GET /api/members/highlights`는 본인의 기록을 저장 시각과 ID 내림차순으로 반환합니다. 선택적 `workId`는 작품 slug이며 `chapterId`는 작품과 함께 지정합니다. `page`는 1부터 시작하고 응답은 최대 30건의 `items`, `page`, `hasNext`입니다.
+
+`POST /api/members/highlights`에 `workId`, 문자열 `chapterId`, 정수 `startOffset`·`endOffset`, `contentVersion`, `contentHash`, `color`를 보냅니다. 색은 `YELLOW` 또는 `GREEN`입니다. 텍스트는 UTF-16 끝 제외 범위와 표시 원문의 SHA-256을 쓰며, 매거진은 같은 기사에 속하는 양 끝 포함 쪽 범위와 null 해시를 씁니다. 버전·해시·구간이 모두 같으면 기존 기록과 색을 반환합니다. 개정된 본문의 같은 좌표는 새 기록으로 저장하며 이전 기록은 재확인 상태로 보존합니다.
+
+항목은 `id`, `state`, `workId`, `workTitle`, `kind`, `chapterTitle`, `range`, `color`, `snippet`, `createdAt`을 반환합니다. `range`에는 `chapterId`, `startOffset`, `endOffset`, `unit`, `contentVersion`, `contentHash`가 있습니다. `available`의 텍스트 발췌는 서버 원문에서 최대 500 UTF-16 단위로 생성합니다. `stale`은 재확인이 필요한 기록으로 발췌는 null입니다. `hidden`은 ID와 저장 시각, 상태만 제공하며 나머지 필드는 null입니다.
+
+`DELETE /api/members/highlights/{id}`는 본인 기록을 삭제하고 204를 반환합니다. 없는 ID와 타인 소유 ID는 동일한 404입니다. 변경 요청에는 회원 CSRF가 필요합니다. 입력 오류는 400, 인증 오류는 401, CSRF 실패는 403, 공개 범위 밖은 404, 버전·해시 변경은 409입니다. 본문 공급 상태에 따라 415 또는 503을 반환합니다. 기록에서 본문을 여는 동작은 이어보기 진도를 갱신하지 않습니다.
+
 ## 책갈피 · #39
 
 `GET /api/members/bookmarks?page=1&workId={slug}`는 회원 본인의 기록을 저장 시각과 ID 내림차순으로 최대 30건 반환합니다. 두 쿼리 값은 생략할 수 있습니다. 응답은 `items`, `page`, `hasNext`입니다.

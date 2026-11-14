@@ -9,6 +9,8 @@ import { selectChapter } from './readerNavigation';
 import { useMemberAuth } from './memberAuth';
 import { MemberRequestError } from './memberSession';
 import { createBookmark } from './bookmarks';
+import { HighlightEditor, highlightColors, useReaderHighlights } from './HighlightControls';
+import { highlightPieces, isTextBoundary } from './highlights';
 import { adjacentMagazinePage, fetchMagazineIssue, magazineArticle, magazinePageUrl, startMagazinePage,
   type MagazineIssue } from './magazineReader';
 import { matchesReadingResume, readReadingProgress, readingSegments, restoreReadingOffset, sameReadingPosition, saveReadingProgress,
@@ -181,8 +183,8 @@ function BookmarkButton({ workId, position, disabled = false }: {
 function MagazineReader() {
   const app = useApp();
   const apiUrl = useApiUrl();
-  const { workId, chapterId, resumePosition, resumeRevision, bookmarkPosition } = app.baseRoute;
-  const opening = bookmarkPosition ?? resumePosition;
+  const { workId, chapterId, resumePosition, resumeRevision, bookmarkPosition, highlightPosition } = app.baseRoute;
+  const opening = highlightPosition ?? bookmarkPosition ?? resumePosition;
   const [issue, setIssue] = useState<MagazineIssue | null>(null);
   const [page, setPage] = useState<number | null>(null);
   const [contentsOpen, setContentsOpen] = useState(false);
@@ -199,6 +201,11 @@ function MagazineReader() {
     chapterId: article.chapterId, offset: page, unit: 'page', contentVersion: article.contentVersion, contentHash: null,
   } : null;
   const storage = useReadingSave(workId, !!position, attempt === 0 ? resumePosition : undefined, resumeRevision);
+  const highlights = useReaderHighlights(workId, article?.chapterId);
+  const [highlightOpen, setHighlightOpen] = useState(false);
+  const marked = highlights.items.find(item => item.state === 'available' && item.range?.unit === 'page'
+    && item.range.chapterId === article?.chapterId && item.range.contentVersion === article.contentVersion && page !== null
+    && item.range.startOffset <= page && page <= item.range.endOffset);
   const ready = !!key && image?.key === key && image.ratio !== null;
   const failed = !!key && image?.key === key && image.ratio === null;
 
@@ -291,6 +298,7 @@ function MagazineReader() {
         : <>
           <Text accessibilityRole="header" style={s.subtitle}>{article.title}</Text>
           <Text accessibilityLiveRegion="polite" style={s.muted}>{page} / {issue.pageCount}쪽</Text>
+          {ready && marked?.color && <Text style={[s.text, { backgroundColor: highlightColors[marked.color], color: colors.ink }]}>하이라이트 표시</Text>}
           {resumeAdjusted && <Text style={s.muted}>저장한 쪽을 다시 확인할 수 있도록 공개 기사 처음을 표시합니다.</Text>}
           {loadingImage && <ActivityIndicator accessibilityLabel="쪽 불러오는 중" color={colors.green} />}
           {failed ? <View>
@@ -328,6 +336,16 @@ function MagazineReader() {
           onPress={() => { if (ready && position) void storage.save(position); }} />}
     </View>}
     {position && <BookmarkButton key={key} workId={workId} disabled={!ready} position={() => ready ? position : null} />}
+    {ready && position && workId && <View style={styles.readerSave}>
+      <Action compact tone="secondary" label="현재 쪽 하이라이트" onPress={() => {
+        if (highlights.authenticated) setHighlightOpen(true);
+        else app.navigate({ screen: 'login' });
+      }} />
+      {highlights.failed && <Action compact tone="secondary" label="하이라이트 다시 불러오기" onPress={highlights.refresh} />}
+    </View>}
+    {highlightOpen && ready && workId && position && <HighlightEditor key={key} workId={workId} chapterId={position.chapterId}
+      offset={position.offset} contentVersion={position.contentVersion} contentHash={null}
+      onSaved={highlights.refresh} onClose={() => setHighlightOpen(false)} />}
     <View style={styles.magazineControls}>
       <Action compact tone="secondary" label="이전 쪽" disabled={!canTurn || previous === null} onPress={() => { if (previous !== null) turn(previous); }} />
       <Action compact tone="secondary" label="다음 쪽" disabled={!canTurn || next === null} onPress={() => { if (next !== null) turn(next); }} />
@@ -354,8 +372,8 @@ function MagazineReader() {
 function TextReader() {
   const app = useApp(), apiUrl = useApiUrl();
   const insets = useSafeAreaInsets();
-  const { workId, chapterId, resumePosition, resumeRevision, bookmarkPosition } = app.baseRoute;
-  const opening = bookmarkPosition ?? resumePosition;
+  const { workId, chapterId, resumePosition, resumeRevision, bookmarkPosition, highlightPosition } = app.baseRoute;
+  const opening = highlightPosition ?? bookmarkPosition ?? resumePosition;
   const readingPalette = {
     '크림': { background: '#F7F8F2', text: colors.ink, muted: colors.muted },
     '연노랑': { background: '#FFF8DE', text: '#3D3526', muted: '#82765D' },
@@ -372,6 +390,14 @@ function TextReader() {
   const [restart, setRestart] = useState(false);
   const storage = useReadingSave(workId, !!data && data.kind !== 'magazine', restart ? undefined : resumePosition, resumeRevision);
   const segments = useMemo(() => readingSegments(data?.body ?? ''), [data?.body]);
+  const highlights = useReaderHighlights(workId, data?.chapter.id);
+  const [selectedPart, setSelectedPart] = useState<(typeof segments)[number] | null>(null);
+  const painted = useMemo(() => {
+    const current = highlights.items.filter(item => item.state === 'available' && item.range?.unit === 'utf16'
+      && item.range.chapterId === data?.chapter.id && item.range.contentVersion === data.contentVersion
+      && item.range.contentHash === data.contentHash);
+    return segments.map(part => highlightPieces(part.text, part.offset, current));
+  }, [segments, highlights.items, data]);
   const geometry = useRef({ y: 0, viewport: 0, height: 0, chapterY: 0, textY: 0 });
   const anchors = useRef(new Map<number, number>());
   const restored = useRef(false);
@@ -381,7 +407,7 @@ function TextReader() {
   const leaving = useRef(false);
   const validResume = !restart && data && opening?.chapterId === data.chapter.id
     && opening.contentVersion === data.contentVersion && opening.contentHash === data.contentHash
-    && opening.offset <= data.body.length ? opening : null;
+    && isTextBoundary(data.body, opening.offset) ? opening : null;
   const autoPositionReady = !opening || restart || !!validResume;
 
   const clearGesture = () => {
@@ -389,13 +415,23 @@ function TextReader() {
     if (timer.current !== null) clearTimeout(timer.current);
     timer.current = null;
   };
+
+  function selectPart(part?: (typeof segments)[number]) {
+    if (!highlights.authenticated) { app.navigate({ screen: 'login' }); return; }
+    const offset = currentPosition()?.offset ?? 0;
+    const candidate = part ?? segments.find(item => item.offset === offset) ?? segments.at(-1);
+    if (candidate) {
+      clearGesture();
+      setSelectedPart(candidate);
+    }
+  }
   const startGesture = () => {
-    if (restored.current && !app.overlay) gestureUntil.current = Date.now() + 1_500;
+    if (restored.current && !app.overlay && !selectedPart) gestureUntil.current = Date.now() + 1_500;
   };
   useEffect(() => {
     clearGesture();
     return clearGesture;
-  }, [app.overlay, bodySize, bodyFont, app.readingPreferences.theme, data]);
+  }, [app.overlay, bodySize, bodyFont, app.readingPreferences.theme, data, selectedPart]);
   useEffect(() => {
     if (Platform.OS !== 'web') return;
     const node = scroll.current?.getScrollableNode() as unknown as HTMLElement | undefined;
@@ -406,7 +442,7 @@ function TextReader() {
     node.addEventListener('wheel', startGesture, { passive: true });
     node.addEventListener('keydown', key);
     return () => { node.removeEventListener('wheel', startGesture); node.removeEventListener('keydown', key); };
-  }, [app.overlay, data]);
+  }, [app.overlay, data, selectedPart]);
   useEffect(() => () => { if (frame.current !== null) cancelAnimationFrame(frame.current); }, []);
 
   function restore() {
@@ -461,14 +497,14 @@ function TextReader() {
     geometry.current.y = contentOffset.y;
     geometry.current.height = contentSize.height;
     geometry.current.viewport = layoutMeasurement.height;
-    if (gestureUntil.current < Date.now() || !restored.current || app.overlay || !storage.canAutoSave || !autoPositionReady) return;
+    if (gestureUntil.current < Date.now() || !restored.current || app.overlay || selectedPart || !storage.canAutoSave || !autoPositionReady) return;
     gestureUntil.current = Date.now() + 1_500;
     if (timer.current !== null) clearTimeout(timer.current);
     timer.current = setTimeout(() => { clearGesture(); void saveVisible(true); }, 450);
   }
 
   useEffect(() => {
-    setData(null); setError(null); setContentsOpen(false);
+    setData(null); setError(null); setContentsOpen(false); setSelectedPart(null);
     if (frame.current !== null) cancelAnimationFrame(frame.current);
     frame.current = null;
     anchors.current.clear();
@@ -509,10 +545,14 @@ function TextReader() {
           {!restart && opening && !validResume && <Text style={s.muted}>본문이 바뀌어 회차 처음을 표시합니다.</Text>}
           {data.body.length === 0 ? <EmptyState title="이 회차의 본문이 비어 있습니다." tone={app.readingPreferences.theme === '다크' ? 'dark' : 'light'} />
             : <View testID="reader-body-text" onLayout={event => { geometry.current.textY = event.nativeEvent.layout.y; restore(); }}>
-              {segments.map(part => <Text key={part.offset} selectable onLayout={event => {
+              {segments.map((part, index) => <Text key={part.offset} selectable
+                onLongPress={Platform.OS !== 'web' && highlights.authenticated ? () => selectPart(part) : undefined} onLayout={event => {
                 anchors.current.set(part.offset, event.nativeEvent.layout.y);
                 restore();
-              }} style={[s.text, { color: readingPalette.text, fontFamily: bodyFont, fontSize: bodySize, lineHeight: bodySize + 15 }]}>{part.text}</Text>)}
+              }} style={[s.text, { color: readingPalette.text, fontFamily: bodyFont, fontSize: bodySize, lineHeight: bodySize + 15 }]}>
+                {painted[index].map((piece, edge) => piece.color ? <Text key={edge}
+                  style={{ backgroundColor: highlightColors[piece.color], color: colors.ink }}>{piece.text}</Text> : piece.text)}
+              </Text>)}
             </View>}
         </View>}
     </ScrollView>
@@ -543,6 +583,13 @@ function TextReader() {
         </View>}
     </View>}
     {data && <BookmarkButton workId={workId} position={currentPosition} />}
+    {!!segments.length && <View style={styles.readerSave}>
+      <Action compact tone="secondary" label="현재 문단 하이라이트" onPress={() => selectPart()} />
+      {highlights.failed && <Action compact tone="secondary" label="하이라이트 다시 불러오기" onPress={highlights.refresh} />}
+    </View>}
+    {selectedPart && data && workId && <HighlightEditor workId={workId} chapterId={data.chapter.id}
+      offset={selectedPart.offset} text={selectedPart.text} contentVersion={data.contentVersion} contentHash={data.contentHash}
+      onSaved={highlights.refresh} onClose={() => setSelectedPart(null)} />}
     <View style={[styles.readerFooter, { backgroundColor: readingPalette.background, borderColor: readingPalette.muted }]}><View style={styles.readerActions}>
       <Pressable accessibilityRole="button" accessibilityLabel="이전 회차" accessibilityState={{ disabled: !selection?.previous }} disabled={!selection?.previous} onPress={() => selection?.previous && move(selection.previous.id)} style={styles.footerAction}><Icon name="back" size={14} color={selection?.previous ? colors.green : readingPalette.muted} /><Text style={[s.text, styles.footerLabel, { color: readingPalette.text }]}>이전화</Text></Pressable>
       <Pressable accessibilityRole="button" accessibilityLabel="현재 장 처음으로" disabled={!data} accessibilityState={{ disabled: !data }} onPress={() => {

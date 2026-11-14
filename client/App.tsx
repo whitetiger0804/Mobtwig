@@ -119,7 +119,8 @@ function Shell() {
   const hideTitle = route.screen === 'login' || route.screen === 'detail';
   const routeKey = [route.screen, route.kind, route.mode, route.workId, route.chapterId, route.resumeRevision,
     route.resumePosition?.contentVersion, route.resumePosition?.contentHash, route.resumePosition?.offset,
-    route.bookmarkPosition?.contentVersion, route.bookmarkPosition?.contentHash, route.bookmarkPosition?.offset].join(':');
+    route.bookmarkPosition?.contentVersion, route.bookmarkPosition?.contentHash, route.bookmarkPosition?.offset,
+    route.highlightPosition?.contentVersion, route.highlightPosition?.contentHash, route.highlightPosition?.offset].join(':');
 
   return (
     <SafeAreaView style={[styles.shell, route.screen === 'imageFull' && styles.darkShell]} edges={['top', 'bottom']}>
