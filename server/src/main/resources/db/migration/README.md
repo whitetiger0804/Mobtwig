@@ -13,8 +13,9 @@
 | `V7__create_member_policy_consent.sql` | 인증 | `member_policy_consent` (1개) |
 | `V8__version_reading_progress.sql` | 독서 활동 | `reading_progress` revision·본문 해시 |
 | `V9__version_bookmark_text.sql` | 독서 활동 | `bookmark` 본문 해시 |
+| `V10__version_highlight_text.sql` | 독서 활동 | `highlight` 본문 해시 |
 
-V10 이후는 다음으로 확정된 스키마 변경에 사용합니다.
+V11 이후는 다음으로 확정된 스키마 변경에 사용합니다.
 
 공통 기준은 `snake_case`, `utf8mb4`, `BIGINT AUTO_INCREMENT` PK, `{참조테이블}_id` FK, UTC `TIMESTAMP`입니다.
 

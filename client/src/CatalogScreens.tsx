@@ -10,6 +10,8 @@ import { useApiUrl } from './serverConnection';
 import { useMemberAuth } from './memberAuth';
 import { readReadingProgress, type ReadingProgress } from './readingProgress';
 import { deleteBookmark, listBookmarks, type BookmarkPage } from './bookmarks';
+import { deleteHighlight, listHighlights, type HighlightPage } from './highlights';
+import { highlightColors } from './HighlightControls';
 import { fetchWorkDetail, type WorkDetail } from './workDetails';
 import { Action, Chip, colors, Icon, IconButton, s, Title } from './ui';
 // #endregion
@@ -472,7 +474,7 @@ export function RecordsScreen() {
         <Action compact tone="secondary" label="모든 책" onPress={() => app.navigate({ screen: 'records' }, false, true)} />
       </> : <Chip label="모든 책" selected />}
     </View>
-    <View style={c.highlightCard}><View style={c.highlightTools}><IconButton icon="share" label="밑줄 공유" disabled /></View><View style={c.highlightQuote}><EmptyState compact title="표시할 밑줄이 없습니다." /></View></View>
+    <HighlightRecords workId={workId} />
     <Title>책갈피</Title>
     {auth.status === 'checking' ? <ActivityIndicator color={colors.green} />
       : auth.status !== 'authenticated' ? <Action label="로그인하고 책갈피 보기" onPress={() => app.navigate({ screen: 'login' })} />
@@ -504,6 +506,79 @@ export function RecordsScreen() {
           <Action compact tone="secondary" label="다음 목록" disabled={busy || !result.hasNext} onPress={() => setPage(previous => previous + 1)} />
         </View>}
       </>}
+  </View>;
+}
+
+function HighlightRecords({ workId }: { workId?: string }) {
+  const app = useApp();
+  const { state: auth, client } = useMemberAuth();
+  const [page, setPage] = useState(1);
+  const [attempt, setAttempt] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const [failure, setFailure] = useState('');
+  const [result, setResult] = useState<HighlightPage | null>(null);
+  useEffect(() => {
+    setResult(null);
+    setFailure('');
+    if (auth.status !== 'authenticated') return;
+    let active = true;
+    listHighlights(client, page, workId).then(value => {
+      if (!active) return;
+      if (!value.items.length && page > 1) setPage(previous => previous - 1);
+      else setResult(value);
+    }).catch(() => { if (active) setFailure('하이라이트를 불러오지 못했습니다.'); });
+    return () => { active = false; };
+  }, [auth.status, auth.generation, client, workId, page, attempt]);
+
+  async function remove(id: string) {
+    setBusy(true);
+    try {
+      await deleteHighlight(client, id);
+      setAttempt(previous => previous + 1);
+    } catch {
+      setFailure('하이라이트를 삭제하지 못했습니다.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return <View style={c.highlightCard}>
+    <Title>하이라이트</Title>
+    {auth.status === 'authenticated' && !result && !failure && <ActivityIndicator color={colors.green} />}
+    {!!failure && <>
+      <Text accessibilityRole="alert" style={s.error}>{failure}</Text>
+      <Action compact tone="secondary" label="하이라이트 다시 불러오기" onPress={() => setAttempt(value => value + 1)} />
+    </>}
+    {(auth.status !== 'authenticated' || result?.items.length === 0) && <EmptyState compact title="표시할 밑줄이 없습니다." />}
+    {auth.status === 'authenticated' && result?.items.map(item => {
+      const { workId: slug, kind, range, snippet } = item;
+      const canOpen = item.state === 'available' && slug && range && kind;
+      return <View key={item.id} style={c.bookmarkCard}>
+        <Text style={s.subtitle}>{item.workTitle ?? '열 수 없는 하이라이트'}</Text>
+        {!!item.chapterTitle && <Text style={s.muted}>{item.chapterTitle}</Text>}
+        {item.color && snippet !== null && <Text style={[s.text, { color: colors.ink, backgroundColor: highlightColors[item.color] }]}>{snippet}</Text>}
+        {range?.unit === 'page' && <Text style={s.muted}>{range.startOffset === range.endOffset
+          ? range.startOffset + '쪽' : range.startOffset + '~' + range.endOffset + '쪽'}</Text>}
+        {item.state === 'stale' && <Text style={s.muted}>본문이 변경되었거나 제공되지 않아 이 범위를 열 수 없습니다.</Text>}
+        <Text style={s.muted}>{new Date(item.createdAt).toLocaleDateString('ko-KR')}</Text>
+        <View style={c.highlightRecordActions}>
+          {canOpen && <Action compact label="하이라이트 위치 열기" disabled={busy} onPress={() => app.navigate({
+            screen: 'reader', kind, workId: slug, chapterId: range.chapterId, highlightPosition: {
+              chapterId: range.chapterId, offset: range.startOffset, unit: range.unit,
+              contentVersion: range.contentVersion, contentHash: range.contentHash,
+            },
+          })} />}
+          {canOpen && range.unit === 'utf16' && !!snippet && <Action compact tone="secondary" label="문장 공유" disabled={busy}
+            onPress={() => app.navigate({ screen: 'share', workId: slug, chapterId: range.chapterId,
+              shareExcerpt: snippet, shareWorkTitle: item.workTitle ?? undefined })} />}
+          <Action compact tone="secondary" label="하이라이트 삭제" disabled={busy} onPress={() => { void remove(item.id); }} />
+        </View>
+      </View>;
+    })}
+    {auth.status === 'authenticated' && result && (page > 1 || result.hasNext) && <View style={s.row}>
+      <Action compact tone="secondary" label="이전 하이라이트" disabled={busy || page === 1} onPress={() => setPage(value => value - 1)} />
+      <Action compact tone="secondary" label="다음 하이라이트" disabled={busy || !result.hasNext} onPress={() => setPage(value => value + 1)} />
+    </View>}
   </View>;
 }
 
@@ -547,8 +622,12 @@ export function RecentScreen() {
  * @returns 빈 공유 작품과 공유 안내, 두 개의 비활성 버튼입니다.
  */
 export function ShareScreen() {
+  const { baseRoute } = useApp();
   return <View style={c.sharePage}>
-    <EmptyState compact title="공유할 작품 정보가 없습니다." />
+    {baseRoute.shareExcerpt ? <View style={c.bookmarkCard}>
+      <Text style={s.subtitle}>{baseRoute.shareWorkTitle}</Text>
+      <Text selectable style={s.text}>{baseRoute.shareExcerpt}</Text>
+    </View> : <EmptyState compact title="공유할 작품 정보가 없습니다." />}
     <View style={c.shareDescription}><Title>작품 링크 공유</Title><Text style={s.text}>받는 사람도 같은 작품으로 이동합니다.</Text></View>
     <Pressable disabled accessibilityRole="button" accessibilityState={{ disabled: true }} style={[c.shareAction, c.sharePrimary]}><Text style={c.sharePrimaryText}>공유</Text><Icon name="share" color="#fff" size={20} /></Pressable>
     <Pressable disabled accessibilityRole="button" accessibilityState={{ disabled: true }} style={c.shareAction}><Text style={c.shareActionText}>링크 복사</Text><Icon name="link" size={20} /></Pressable>
@@ -655,6 +734,7 @@ recommendTitle: { fontSize: 14, fontWeight: '700', color: colors.ink },
   manageAction: { height: 64, borderRadius: 18, backgroundColor: colors.pale, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', gap: 16, opacity: 0.55 },
   records: { paddingHorizontal: 20, paddingTop: 21, paddingBottom: 40, gap: 25 },
   bookmarkCard: { padding: 14, gap: 8, borderWidth: 1, borderColor: colors.line, borderRadius: 12 },
+  highlightRecordActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   highlightCard: { minHeight: 200, borderBottomWidth: 1, borderBottomColor: colors.line, paddingBottom: 24 },
   highlightTools: { alignItems: 'flex-end' },
   highlightQuote: { marginHorizontal: 14, backgroundColor: '#F1EBD7', minHeight: 87, borderRadius: 8, justifyContent: 'center' },
