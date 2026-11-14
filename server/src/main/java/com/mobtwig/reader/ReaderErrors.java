@@ -15,6 +15,7 @@ public class ReaderErrors {
         String message = switch (status) {
             case 400 -> "식별자가 올바르지 않습니다.";
             case 404 -> "공개된 회차가 없습니다.";
+            case 409 -> "본문이 변경되어 현재 버전으로 제공할 수 없습니다.";
             case 415 -> "지원하지 않는 본문 형식입니다.";
             default -> "본문을 제공할 수 없습니다. 다시 시도해 주십시오.";
         };

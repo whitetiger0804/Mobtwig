@@ -25,18 +25,18 @@ public class ReadingProgressController {
 
     @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<ReadingProgressResponse> save(@PathVariable String slug, @RequestBody JsonNode body, Principal principal) {
-        if (!body.isObject() || body.size() != 5) throw ReadingProgressFailure.invalid();
+        if (!body.isObject() || body.size() != (body.has("contentHash") ? 5 : 4)) throw ReadingProgressFailure.invalid();
         var offset = body.path("offset");
         var version = body.path("contentVersion");
         var hash = body.path("contentHash");
         var revision = body.path("expectedRevision");
         if (!offset.isIntegralNumber() || !offset.canConvertToInt() || offset.asInt() < 0
                 || !version.isIntegralNumber() || !version.canConvertToInt() || version.asInt() < 1
-                || !hash.isNull() && (!hash.isString() || !hash.asString().matches("[0-9a-f]{64}"))) {
+                || !hash.isMissingNode() && !hash.isNull() && (!hash.isString() || !hash.asString().matches("[0-9a-f]{64}"))) {
             throw ReadingProgressFailure.invalid();
         }
         var input = new ReadingProgressService.Input(decimal(body.path("chapterId"), true), offset.asInt(), version.asInt(),
-                hash.isNull() ? null : hash.asString(), revision.isNull() ? null : decimal(revision, false));
+                hash.isString() ? hash.asString() : null, revision.isNull() ? null : decimal(revision, false));
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(progress.save(Long.parseLong(principal.getName()), slug, input));
     }
 

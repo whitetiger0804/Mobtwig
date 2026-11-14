@@ -11,12 +11,12 @@ import org.springframework.stereotype.Repository;
 @Repository
 class BookmarkRepository {
     private static final String COLUMNS = """
-            SELECT m.id,m.book_id,b.slug,m.chapter_id,m.chapter_offset,m.content_version,m.content_hash,m.snippet,m.created_at
+            SELECT m.id,m.book_id,b.slug,m.chapter_id,m.chapter_offset,m.content_version,m.content_hash,m.version_bound,m.snippet,m.created_at
             FROM bookmark m JOIN book b ON b.id=m.book_id
             """;
     private static final RowMapper<Saved> SAVED = (rs, row) -> new Saved(rs.getLong("id"), rs.getLong("book_id"),
             rs.getString("slug"), rs.getLong("chapter_id"), rs.getInt("chapter_offset"), rs.getInt("content_version"),
-            rs.getString("content_hash"), rs.getString("snippet"), rs.getTimestamp("created_at").toInstant());
+            rs.getString("content_hash"), rs.getBoolean("version_bound"), rs.getString("snippet"), rs.getTimestamp("created_at").toInstant());
     private final JdbcTemplate jdbc;
 
     BookmarkRepository(JdbcTemplate jdbc) { this.jdbc = jdbc; }
@@ -36,9 +36,9 @@ class BookmarkRepository {
 
     Saved insert(long member, long book, ReadingCoordinates.Checked position, String snippet) {
         jdbc.update("""
-                INSERT INTO bookmark(member_id,book_id,chapter_id,chapter_offset,content_version,content_hash,snippet)
+                INSERT INTO bookmark(member_id,book_id,chapter_id,chapter_offset,content_version,version_bound,snippet)
                 VALUES(?,?,?,?,?,?,?)
-                """, member, book, position.chapter().id(), position.offset(), position.chapter().version(), position.hash(), snippet);
+                """, member, book, position.chapter().id(), position.offset(), position.chapter().version(), position.hash() != null, snippet);
         return byPosition(member, position.chapter().id(), position.offset()).orElseThrow();
     }
 
@@ -46,5 +46,5 @@ class BookmarkRepository {
         return jdbc.update("DELETE FROM bookmark WHERE id=? AND member_id=?", id, member) == 1;
     }
 
-    record Saved(long id, long book, String slug, long chapter, int offset, int version, String hash, String snippet, Instant createdAt) { }
+    record Saved(long id, long book, String slug, long chapter, int offset, int version, String hash, boolean bound, String snippet, Instant createdAt) { }
 }

@@ -28,7 +28,7 @@ test('같은 회원 세션으로 조회하고 저장·삭제에는 CSRF를 전�
     if (init.method === 'POST') {
       assert.equal(new Headers(init.headers).get('X-CSRF-TOKEN'), 'bookmark-csrf');
       assert.deepEqual(JSON.parse(init.body), { workId: 'test-novel', chapterId: position.chapterId, offset: 4,
-        contentVersion: 2, contentHash: position.contentHash });
+        contentVersion: 2 });
       return json(available);
     }
     if (init.method === 'DELETE') {

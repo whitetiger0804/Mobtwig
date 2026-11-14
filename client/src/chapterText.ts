@@ -90,6 +90,7 @@ export async function fetchChapterText(apiUrl: string, workId: string, chapterId
     const response = await fetch(apiUrl + '/works/' + encodeURIComponent(workId) + '/chapters/' + encodeURIComponent(chapterId),
       { signal: controller.signal, headers: { Accept: 'application/json' } });
     if (!response.ok) throw new Error(response.status === 404 ? '선택한 작품이나 공개 회차를 찾을 수 없습니다.'
+      : response.status === 409 ? '본문이 변경되었습니다. 새 버전이 제공되면 다시 열어 주세요.'
       : response.status === 415 ? '이 회차는 아직 텍스트 열람을 지원하지 않습니다.'
       : response.status === 503 ? '본문이 준비되지 않았거나 읽을 수 없습니다. 다시 시도해 주십시오.'
       : '본문을 불러오지 못했습니다. (HTTP ' + response.status + ')');

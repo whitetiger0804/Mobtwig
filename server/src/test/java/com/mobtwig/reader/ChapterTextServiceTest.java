@@ -16,7 +16,7 @@ class ChapterTextServiceTest {
     private final ChapterRepository chapters = mock(ChapterRepository.class);
     private final PlainTextSource source = mock(PlainTextSource.class);
     private final Instant now = Instant.parse("2026-11-07T00:00:00Z");
-    private final ChapterTextService service = new ChapterTextService(books, chapters, source, Clock.fixed(now, ZoneOffset.UTC));
+    private final ChapterTextService service = new ChapterTextService(books, chapters, source, mock(TextVersionRegistry.class), Clock.fixed(now, ZoneOffset.UTC));
 
     @Test void gatesBeforeReadingAndNeverUsesAnotherWorkOrFallbackChapter() {
         when(books.findBySlugAndPublishStatus("hidden", "PUBLISHED")).thenReturn(Optional.empty());

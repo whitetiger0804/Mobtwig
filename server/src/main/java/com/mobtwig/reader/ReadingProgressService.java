@@ -18,11 +18,13 @@ public class ReadingProgressService {
     private final ReadingProgressRepository repository;
     private final PlainTextSource source;
     private final ReadingCoordinates coordinates;
+    private final TextVersionRegistry versions;
 
-    public ReadingProgressService(ReadingProgressRepository repository, PlainTextSource source, ReadingCoordinates coordinates) {
+    public ReadingProgressService(ReadingProgressRepository repository, PlainTextSource source, ReadingCoordinates coordinates, TextVersionRegistry versions) {
         this.repository = repository;
         this.source = source;
         this.coordinates = coordinates;
+        this.versions = versions;
     }
 
     @Transactional(readOnly = true)
@@ -35,14 +37,17 @@ public class ReadingProgressService {
         Chapter chapter = work.visible().stream().filter(c -> c.id() == saved.chapter()).findFirst().orElse(null);
         if (chapter != null) {
             try {
-                var checked = coordinates.verify(work, chapter, saved.offset(), saved.version(), saved.hash());
+                var checked = coordinates.verifyPosition(work, chapter, saved.offset(), saved.version(), saved.hash(), saved.bound(), false);
                 return response(work, "saved", saved, checked, library);
             } catch (ResponseStatusException unavailable) {
                 // 구버전·불일치·일시적 본문 부재에서는 기존 저장값을 유지합니다.
             }
         }
         var fallback = start(work, chapter);
-        if (fallback == null && !Objects.equals(first, chapter)) fallback = start(work, first);
+        if (fallback == null) {
+            fallback = work.visible().stream().filter(candidate -> !Objects.equals(candidate, chapter)).limit(64)
+                    .map(candidate -> start(work, candidate)).filter(Objects::nonNull).findFirst().orElse(null);
+        }
         return response(work, "stale", saved, fallback, library);
     }
 
@@ -59,12 +64,12 @@ public class ReadingProgressService {
         Saved previous = repository.saved(member, work.id()).orElse(null);
         Long currentRevision = previous == null ? null : previous.revision();
         if (!Objects.equals(currentRevision, input.expectedRevision())) throw ReadingProgressFailure.conflict();
-        var checked = coordinates.verify(work, chapter, input.offset(), input.contentVersion(), input.contentHash());
+        var checked = coordinates.verifyPosition(work, chapter, input.offset(), input.contentVersion(), input.contentHash(), false, true);
 
         var previousMax = previous == null ? null : maxChapter(work, previous);
         long max = previousMax != null && previousMax.number() > chapter.number() ? previousMax.id() : chapter.id();
         long revision = previous == null ? 1 : Math.addExact(previous.revision(), 1);
-        var next = new Saved(chapter.id(), input.offset(), max, chapter.version(), checked.hash(), revision, now);
+        var next = new Saved(chapter.id(), input.offset(), max, chapter.version(), null, !work.magazine(), revision, now);
         String library = completed(work, checked) ? "COMPLETED" : "READING";
         repository.store(member, work.id(), next, previous != null);
         repository.storeLibrary(member, work.id(), library);
@@ -84,6 +89,7 @@ public class ReadingProgressService {
                 return new Checked(chapter, pages.start(), pages.start(), pages.end(), null, null);
             }
             var text = source.read(chapter.url());
+            versions.verify(chapter.id(), chapter.version(), text.version(), false);
             return new Checked(chapter, 0, 0, text.characterCount(), text.version(), text.body());
         } catch (ResponseStatusException unavailable) {
             return null;
@@ -127,7 +133,14 @@ public class ReadingProgressService {
         long reached = position.offset();
         try {
             for (var chapter : visible) {
-                int length = chapter.id() == position.chapter().id() ? position.end() : source.read(chapter.url()).characterCount();
+                int length;
+                if (chapter.id() == position.chapter().id()) {
+                    length = position.end();
+                } else {
+                    var text = source.read(chapter.url());
+                    versions.verify(chapter.id(), chapter.version(), text.version(), false);
+                    length = text.characterCount();
+                }
                 total += length;
                 if (total > 2_000_000) return null;
                 if (chapter.number() < position.chapter().number()) reached += length;

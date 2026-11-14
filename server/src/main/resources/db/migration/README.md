@@ -15,8 +15,9 @@
 | `V9__version_bookmark_text.sql` | 독서 활동 | `bookmark` 본문 해시 |
 | `V10__version_highlight_text.sql` | 독서 활동 | `highlight` 본문 해시 |
 | `V11__normalize_policy_consent.sql` | 인증 | 약관 원문을 종류·버전별로 보관하고 동의 이력에서 참조 |
+| `V12__bind_reading_positions_to_text_version.sql` | 독서 활동 | 회차·버전별 `chapter_text_version`과 버전으로 검증한 위치 표시 |
 
-V12 이후는 다음으로 확정된 스키마 변경에 사용합니다.
+V13 이후는 다음으로 확정된 스키마 변경에 사용합니다.
 
 공통 기준은 `snake_case`, `utf8mb4`, `BIGINT AUTO_INCREMENT` PK, `{참조테이블}_id` FK, UTC `TIMESTAMP`입니다.
 

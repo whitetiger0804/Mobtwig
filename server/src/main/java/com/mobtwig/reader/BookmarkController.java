@@ -27,7 +27,7 @@ public class BookmarkController {
 
     @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE)
     ResponseEntity<BookmarkService.Item> save(Principal principal, @RequestBody JsonNode body) {
-        if (!body.isObject() || body.size() != 5) throw ReadingProgressFailure.invalid();
+        if (!body.isObject() || body.size() != (body.has("contentHash") ? 5 : 4)) throw ReadingProgressFailure.invalid();
         var work = body.path("workId");
         var chapter = body.path("chapterId");
         var offset = body.path("offset");
@@ -35,9 +35,9 @@ public class BookmarkController {
         var hash = body.path("contentHash");
         if (!work.isString() || !chapter.isString() || !offset.isIntegralNumber() || !offset.canConvertToInt() || offset.asInt() < 0
                 || !version.isIntegralNumber() || !version.canConvertToInt() || version.asInt() < 1
-                || !hash.isNull() && (!hash.isString() || !hash.asString().matches("[a-f0-9]{64}"))) throw ReadingProgressFailure.invalid();
+                || !hash.isMissingNode() && !hash.isNull() && (!hash.isString() || !hash.asString().matches("[a-f0-9]{64}"))) throw ReadingProgressFailure.invalid();
         var input = new BookmarkService.Input(work.asString(), decimal(chapter.asString(), true), offset.asInt(),
-                version.asInt(), hash.isNull() ? null : hash.asString());
+                version.asInt(), hash.isString() ? hash.asString() : null);
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(bookmarks.save(member(principal), input));
     }
 

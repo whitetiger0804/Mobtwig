@@ -99,9 +99,9 @@ export async function listBookmarks(client: MemberSessionClient, page: number, w
  * @returns 새 기록 또는 같은 좌표의 기존 기록입니다.
  */
 export async function createBookmark(client: MemberSessionClient, workId: string, position: ReadingPosition): Promise<Bookmark> {
-  const { chapterId, offset, contentVersion, contentHash } = position;
+  const { chapterId, offset, contentVersion } = position;
   const result = parseBookmark(await client.request(path, { method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ workId, chapterId, offset, contentVersion, contentHash }) }));
+    body: JSON.stringify({ workId, chapterId, offset, contentVersion }) }));
   if (result.workId !== workId || result.position?.chapterId !== chapterId || result.position.offset !== offset) throw invalid();
   return result;
 }

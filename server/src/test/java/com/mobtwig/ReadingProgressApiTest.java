@@ -175,11 +175,23 @@ class ReadingProgressApiTest {
         assertEquals(0, legacy.get("position").get("offset").asInt());
         String oldHash = hash(TEXT, -9610);
         ok(post(TEXT, a, input(-9610, 3, 1, oldHash, "1"), true));
-        Files.writeString(CONTENT.resolve("first.txt"), "CD");
-        assertEquals("stale", ok(get(path(TEXT), a)).get("state").asString());
+        Files.writeString(CONTENT.resolve("first.txt"), "C😀D");
+        var changed = ok(get(path(TEXT), a));
+        assertEquals("stale", changed.get("state").asString());
+        assertEquals("-9609", changed.get("position").get("chapterId").asString());
         assertError(post(TEXT, a, input(-9610, 3, 1, oldHash, "2"), true), 409, "CONTENT_CHANGED");
-        jdbc.update("UPDATE chapter SET content_version=2 WHERE id=-9610");
-        assertError(post(TEXT, a, input(-9610, 0, 1, hash(TEXT, -9610), "2"), true), 409, "CONTENT_CHANGED");
+        var hashless = input(-9610, 3, 1, null, "2");
+        hashless.remove("contentHash");
+        assertError(post(TEXT, a, hashless, true), 409, "CONTENT_CHANGED");
+        assertEquals(409, get("/works/" + TEXT + "/chapters/-9610", null).statusCode());
+        Files.writeString(CONTENT.resolve("first-v2.txt"), "C😀D");
+        jdbc.update("UPDATE chapter SET content_url='/content/first-v2.txt',char_count=4,content_version=2 WHERE id=-9610 AND content_version=1");
+        String newHash = hash(TEXT, -9610);
+        assertNotEquals(oldHash, newHash);
+        assertError(post(TEXT, a, input(-9610, 0, 1, newHash, "2"), true), 409, "CONTENT_CHANGED");
+        var newPosition = input(-9610, 3, 2, null, "2");
+        newPosition.remove("contentHash");
+        assertEquals(newHash, ok(post(TEXT, a, newPosition, true)).get("position").get("contentHash").asString());
         jdbc.update("UPDATE chapter SET published_at=NULL WHERE id=-9610");
         var missing = ok(get(path(TEXT), a));
         assertEquals("stale", missing.get("state").asString());
@@ -374,6 +386,8 @@ class ReadingProgressApiTest {
 
         Files.writeString(CONTENT.resolve("first.txt"), "바뀐 글");
         assertEquals(409, bookmarkWrite(root, a, input, true).statusCode());
+        jdbc.update("UPDATE chapter SET content_version=2 WHERE id=-9610");
+        input.put("contentVersion", 2);
         input.put("contentHash", hash(TEXT, -9610));
         var stale = ok(bookmarkWrite(root, a, input, true));
         assertEquals(saved.get("id"), stale.get("id"));
@@ -442,6 +456,8 @@ class ReadingProgressApiTest {
 
         Files.writeString(CONTENT.resolve("first.txt"), "A다시B");
         assertEquals(409, bookmarkWrite(endpoint, a, input, true).statusCode());
+        jdbc.update("UPDATE chapter SET content_version=2 WHERE id=-9610");
+        input.put("contentVersion", 2);
         input.put("contentHash", hash(TEXT, -9610));
         var current = ok(bookmarkWrite(endpoint, a, input, true));
         assertEquals("다시", current.get("snippet").asString());
@@ -483,6 +499,35 @@ class ReadingProgressApiTest {
         input.put("startOffset", start); input.put("endOffset", end);
         input.put("contentVersion", 1); input.put("contentHash", hash); input.put("color", "YELLOW");
         return input;
+    }
+
+    @Test void hashlessWritesUsePinnedTextAndLegacyHashesAreStillVerified() throws Exception {
+        var member = login("a");
+        var write = input(-9610, 0, 1, null, null);
+        write.remove("contentHash");
+        assertError(post(TEXT, member, write, true), 409, "CONTENT_CHANGED");
+        String original = hash(TEXT, -9610);
+        var progress = ok(post(TEXT, member, write, true));
+        assertEquals(original, progress.get("position").get("contentHash").asString());
+        assertEquals(progress, ok(get(path(TEXT), member)));
+        assertEquals(1L, jdbc.queryForObject("SELECT COUNT(*) FROM reading_progress WHERE book_id=-9601 AND content_hash IS NULL AND version_bound", Long.class));
+
+        var place = new LinkedHashMap<>(write);
+        place.remove("expectedRevision");
+        place.put("workId", TEXT);
+        String bookmarks = "/api/members/bookmarks";
+        var added = ok(bookmarkWrite(bookmarks, member, place, true));
+        assertEquals(original, added.get("position").get("contentHash").asString());
+        assertEquals(1L, jdbc.queryForObject("SELECT COUNT(*) FROM bookmark WHERE book_id=-9601 AND content_hash IS NULL AND version_bound", Long.class));
+
+        jdbc.update("UPDATE reading_progress SET content_hash=?,version_bound=FALSE WHERE book_id=-9601", original);
+        jdbc.update("UPDATE bookmark SET content_hash=?,version_bound=FALSE WHERE book_id=-9601", original);
+        assertEquals("saved", ok(get(path(TEXT), member)).get("state").asString());
+        assertEquals("available", ok(get(bookmarks, member)).get("items").get(0).get("state").asString());
+        jdbc.update("UPDATE reading_progress SET content_hash=NULL WHERE book_id=-9601");
+        jdbc.update("UPDATE bookmark SET content_hash=NULL WHERE book_id=-9601");
+        assertEquals("stale", ok(get(path(TEXT), member)).get("state").asString());
+        assertEquals("stale", ok(get(bookmarks, member)).get("items").get(0).get("state").asString());
     }
 
     private HttpResponse<String> bookmarkWrite(String path, Session session, Map<String, Object> input, boolean csrf) throws Exception {
