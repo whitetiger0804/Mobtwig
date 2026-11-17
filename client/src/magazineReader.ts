@@ -1,4 +1,5 @@
 import type { ReadingPosition } from './readingProgress.ts';
+import { MemberRequestError, type MemberSessionClient } from './memberSession.ts';
 
 /** 호 기준으로 표시하는 공개 기사의 범위입니다. */
 export interface MagazineArticle {
@@ -61,22 +62,62 @@ export function parseMagazineIssue(input: unknown, slug: string): MagazineIssue 
  * @param apiUrl - 연결한 서버 주소입니다.
  * @param slug - 공개 호의 식별자입니다.
  * @param signal - 화면 전환 취소 신호입니다.
+ * @param client - 로그인 상태에서 사용할 회원 전용 요청입니다.
  * @returns 확인한 공개 목차입니다.
  */
-export async function fetchMagazineIssue(apiUrl: string, slug: string, signal: AbortSignal): Promise<MagazineIssue> {
+export async function fetchMagazineIssue(apiUrl: string, slug: string, signal: AbortSignal, client?: MemberSessionClient): Promise<MagazineIssue> {
   const controller = new AbortController();
   if (signal.aborted) controller.abort();
   const cancel = () => controller.abort();
   signal.addEventListener('abort', cancel, { once: true });
   const timeout = setTimeout(cancel, 15_000);
   try {
+    if (client) return parseMagazineIssue(await client.request('/api/members' + path(slug), { signal: controller.signal }), slug);
     const response = await fetch(apiUrl + path(slug), { signal: controller.signal });
+    if ([401, 402].includes(response.status)) throw new MemberRequestError(response.status, null);
     if (!response.ok) throw new Error(response.status === 503 ? '이 호의 쪽 구성을 확인할 수 없습니다.' : '이 매거진을 불러오지 못했습니다.');
     return parseMagazineIssue(await response.json().catch(() => null), slug);
   } finally {
     signal.removeEventListener('abort', cancel);
     clearTimeout(timeout);
   }
+}
+
+/**
+ * PNG를 메모리 데이터 URL로 읽어 플랫폼 이미지 캐시에 회원 전용 URL을 남기지 않습니다.
+ * @param apiUrl - 공개 페이지에 사용할 API 서버 주소입니다.
+ * @param issue - 현재 호의 기사와 버전입니다.
+ * @param page - 호 기준 쪽 번호입니다.
+ * @param signal - 페이지 변경·회원 전환·화면 이탈 취소 신호입니다.
+ * @param client - 로그인 상태에서는 PNG도 기존 회원 세션으로 요청합니다.
+ * @returns 현재 페이지를 표시할 메모리 전용 이미지 주소입니다.
+ */
+export async function fetchMagazinePage(apiUrl: string, issue: MagazineIssue, page: number, signal: AbortSignal, client?: MemberSessionClient): Promise<string> {
+  const generation = client?.getSnapshot().generation;
+  let blob: Blob;
+  if (client) blob = await client.requestPng('/api/members' + magazinePageUrl('', issue, page), signal);
+  else {
+    const response = await fetch(magazinePageUrl(apiUrl, issue, page), { signal });
+    if ([401, 402].includes(response.status)) throw new MemberRequestError(response.status, null);
+    if (!response.ok) throw new Error('매거진 쪽을 불러오지 못했습니다. (HTTP ' + response.status + ')');
+    if (response.headers.get('Content-Type')?.split(';')[0].trim().toLowerCase() !== 'image/png') throw new Error('매거진 페이지의 형식이 올바르지 않습니다.');
+    blob = await response.blob();
+  }
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    const canceled = () => Object.assign(new Error('페이지 요청이 취소됐습니다.'), { name: 'AbortError' });
+    const cancel = () => { reader.abort(); reject(canceled()); };
+    if (signal.aborted || client && client.getSnapshot().generation !== generation) { reject(canceled()); return; }
+    signal.addEventListener('abort', cancel, { once: true });
+    reader.onload = () => {
+      signal.removeEventListener('abort', cancel);
+      if (signal.aborted || client && client.getSnapshot().generation !== generation) reject(canceled());
+      else if (typeof reader.result === 'string') resolve(reader.result);
+      else reject(new Error('매거진 페이지를 표시하지 못했습니다.'));
+    };
+    reader.onerror = () => { signal.removeEventListener('abort', cancel); reject(new Error('매거진 페이지를 표시하지 못했습니다.')); };
+    reader.readAsDataURL(blob);
+  });
 }
 
 /**
