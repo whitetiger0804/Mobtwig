@@ -2,6 +2,7 @@ package com.mobtwig.reader;
 
 import java.security.Principal;
 import java.util.Map;
+import com.mobtwig.purchase.PurchaseFailure;
 import org.springframework.http.CacheControl;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -51,7 +52,8 @@ public class ReadingProgressController {
     @ExceptionHandler(ResponseStatusException.class)
     ResponseEntity<Map<String, String>> error(ResponseStatusException failure) {
         if (failure.getStatusCode().value() == 401) return ResponseEntity.status(401).cacheControl(CacheControl.noStore()).build();
-        String code = failure instanceof ReadingProgressFailure expected ? expected.code : "BODY_UNAVAILABLE";
+        String code = failure instanceof PurchaseFailure purchase ? purchase.code()
+                : failure instanceof ReadingProgressFailure expected ? expected.code : "BODY_UNAVAILABLE";
         String message = failure.getReason() == null ? "읽기 위치를 처리하지 못했습니다." : failure.getReason();
         return ResponseEntity.status(failure.getStatusCode()).cacheControl(CacheControl.noStore()).body(Map.of("code", code, "message", message));
     }

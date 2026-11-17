@@ -54,9 +54,11 @@ class LibraryApiTest {
                 (-11902,'library-b@example.test','library-b',?,'USER','ACTIVE')
                 """, hash, hash);
         String[] types = {"BOOK", "WEBNOVEL", "MAGAZINE"};
+        jdbc.update("INSERT INTO author(id,name) VALUES(-11901,'서재 저자')");
         for (int i = 1; i <= 22; i++) {
             jdbc.update("INSERT INTO book(id,content_type,slug,title,cover_image_url,publish_status) VALUES(?,?,?,?,?,'PUBLISHED')",
                     -11900 - i, types[(i - 1) % 3], slug(i), "서재 " + i, "/media/covers/서재 " + i + ".png");
+            jdbc.update("INSERT INTO book_author(book_id,author_id) VALUES(?,-11901)", -11900 - i);
         }
     }
 
@@ -66,8 +68,12 @@ class LibraryApiTest {
         for (String session : sessions) jdbc.update("DELETE FROM SPRING_SESSION WHERE SESSION_ID=?", session);
         sessions.clear();
         jdbc.update("DELETE FROM SPRING_SESSION WHERE PRINCIPAL_NAME IN ('-11901','-11902')");
+        jdbc.update("DELETE FROM reading_progress WHERE book_id BETWEEN -11922 AND -11901");
         jdbc.update("DELETE FROM library_book WHERE book_id BETWEEN -11922 AND -11901");
+        jdbc.update("DELETE FROM chapter WHERE book_id BETWEEN -11922 AND -11901");
+        jdbc.update("DELETE FROM book_author WHERE book_id BETWEEN -11922 AND -11901");
         jdbc.update("DELETE FROM book WHERE id BETWEEN -11922 AND -11901");
+        jdbc.update("DELETE FROM author WHERE id IN (-11901,-11902)");
         jdbc.update("DELETE FROM member WHERE id IN (-11901,-11902)");
     }
 
@@ -83,7 +89,13 @@ class LibraryApiTest {
         Files.writeString(Path.of("target/library-contract.json"), response.body());
         assertEquals("no-store", response.headers().firstValue("Cache-Control").orElseThrow());
         assertEquals(List.of(slug(3), slug(2), slug(1)), ids(items));
-        assertEquals(List.of("id", "title", "imageUrl", "kind", "libraryStatus"), items.get(0).propertyNames().stream().toList());
+        assertEquals(List.of("id", "title", "author", "imageUrl", "kind", "libraryStatus", "lastReadChapterNumber", "statistics", "hasNextChapter"),
+                items.get(0).propertyNames().stream().toList());
+        assertTrue(items.valueStream().allMatch(w -> w.get("lastReadChapterNumber").isNull()));
+        assertTrue(items.valueStream().noneMatch(w -> w.get("hasNextChapter").asBoolean()));
+        assertEquals("서재 저자", items.get(0).get("author").asString());
+        assertTrue(items.get(0).get("statistics").isNull());
+        assertEquals(0, items.get(1).get("statistics").get("chapterCount").asInt());
         assertEquals(List.of("WANT_TO_READ", "COMPLETED", "READING"),
                 items.valueStream().map(w -> w.get("libraryStatus").asString()).toList());
         assertEquals("/media/covers/서재 3.png", items.get(0).get("imageUrl").asString());
@@ -110,6 +122,47 @@ class LibraryApiTest {
         for (String table : List.of("reading_progress", "recent_view")) {
             assertEquals(0L, jdbc.queryForObject("SELECT COUNT(*) FROM " + table + " WHERE member_id=-11901", Long.class));
         }
+    }
+
+    @Test void includesOnlyOwnLatestPublicChapterNumberWithoutChangingReadingRecords() throws Exception {
+        add(-11901, 1, "WANT_TO_READ", 0);
+        add(-11901, 2, "READING", 60);
+        add(-11902, 2, "READING", 60);
+        jdbc.update("""
+                INSERT INTO chapter(id,book_id,chapter_no,title,content_url,published_at) VALUES
+                (-11931,-11902,7,'일곱 번째 회차','/content/seven.txt','2026-01-01 00:00:00'),
+                (-11939,-11902,9,'아홉 번째 회차','/content/nine.txt','2026-01-01 00:00:00'),
+                (-11940,-11902,11,'예약 회차','/content/future.txt',DATE_ADD(UTC_TIMESTAMP(), INTERVAL 1 DAY))
+                """);
+        jdbc.update("UPDATE book SET view_count=123,recommend_count=45 WHERE id=-11902");
+        jdbc.update("INSERT INTO author(id,name) VALUES(-11902,'먼저 등록된 저자')");
+        jdbc.update("INSERT INTO book_author(book_id,author_id) VALUES(-11902,-11902)");
+        jdbc.update("""
+                INSERT INTO reading_progress(member_id,book_id,chapter_id,chapter_offset,max_chapter_id,content_version) VALUES
+                (-11901,-11902,-11931,0,-11939,1),(-11902,-11902,-11939,0,-11939,1)
+                """);
+        var before = jdbc.queryForList("SELECT * FROM reading_progress WHERE book_id=-11902 ORDER BY member_id");
+        String a = login("a");
+        var first = get(PATH, a);
+        contract(first);
+        var items = ok(first);
+        assertEquals(7, items.get(0).get("lastReadChapterNumber").asInt());
+        assertEquals("먼저 등록된 저자, 서재 저자", items.get(0).get("author").asString());
+        assertTrue(items.get(0).get("hasNextChapter").asBoolean());
+        var statistics = items.get(0).get("statistics");
+        assertEquals(123, statistics.get("views").asLong());
+        assertEquals(45, statistics.get("recommendations").asLong());
+        assertEquals(2, statistics.get("chapterCount").asInt());
+        assertTrue(items.get(1).get("lastReadChapterNumber").isNull());
+        var other = ok(get(PATH + "?kind=novel", login("b"))).get(0);
+        assertEquals(9, other.get("lastReadChapterNumber").asInt());
+        assertFalse(other.get("hasNextChapter").asBoolean());
+        assertEquals(before, jdbc.queryForList("SELECT * FROM reading_progress WHERE book_id=-11902 ORDER BY member_id"));
+        assertEquals(123L, jdbc.queryForObject("SELECT view_count FROM book WHERE id=-11902", Long.class));
+        jdbc.update("UPDATE chapter SET published_at=DATE_ADD(UTC_TIMESTAMP(), INTERVAL 1 DAY) WHERE id=-11931");
+        var unavailable = ok(get(PATH + "?kind=novel", a)).get(0);
+        assertTrue(unavailable.get("lastReadChapterNumber").isNull());
+        assertFalse(unavailable.get("hasNextChapter").asBoolean());
     }
 
     @Test void excludesHiddenAndNonPublicWorksButPreservesRowsAndFavorites() throws Exception {
