@@ -92,12 +92,16 @@ class ReadingProgressApiTest {
         for (String table : List.of("highlight", "bookmark", "reading_progress", "library_book", "chapter")) {
             jdbc.update("DELETE FROM " + table + " WHERE book_id BETWEEN -9606 AND -9601");
         }
+        jdbc.update("DELETE FROM book_author WHERE book_id BETWEEN -9606 AND -9601");
         jdbc.update("DELETE FROM book WHERE id BETWEEN -9606 AND -9601");
+        jdbc.update("DELETE FROM author WHERE id=-9601");
         jdbc.update("DELETE FROM member WHERE id IN (-9601,-9602)");
     }
 
     @Test void savedReadingPositionAutomaticallyAppearsInOwnLibraryAndUpdatesStatus() throws Exception {
         jdbc.update("UPDATE book SET cover_image_url='/media/covers/progress.png' WHERE id=-9601");
+        jdbc.update("INSERT INTO author(id,name) VALUES(-9601,'독서 저자')");
+        jdbc.update("INSERT INTO book_author(book_id,author_id) VALUES(-9601,-9601)");
         var a = login("a");
         var b = login("b");
         String library = "/api/members/library?kind=novel";
@@ -111,11 +115,15 @@ class ReadingProgressApiTest {
         assertEquals(1, items.size());
         assertEquals(TEXT, items.get(0).get("id").asString());
         assertEquals("READING", items.get(0).get("libraryStatus").asString());
+        assertEquals(2, items.get(0).get("lastReadChapterNumber").asInt());
+        assertTrue(items.get(0).get("hasNextChapter").asBoolean());
         assertEquals(0, ok(get(library, b)).size());
         ok(post(TEXT, a, input(-9609, 2, 1, hash(TEXT, -9609), "1"), true));
         var completed = ok(get(library, a));
         assertEquals(1, completed.size());
         assertEquals("COMPLETED", completed.get(0).get("libraryStatus").asString());
+        assertEquals(7, completed.get(0).get("lastReadChapterNumber").asInt());
+        assertFalse(completed.get(0).get("hasNextChapter").asBoolean());
         assertEquals(1L, count("library_book"));
     }
 
