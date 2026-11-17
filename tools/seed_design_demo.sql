@@ -1,13 +1,12 @@
--- 로컬 시연 자료입니다. MySQL 8.4 / Flyway V1~V6 이상 적용 후 실행합니다.
+-- 로컬 DB 시드입니다. MySQL 8.4 / Flyway V1~V13 적용 후 실행합니다.
 -- 저장소 루트에서 node tools/db-seed.mjs seed로 적용하고 unseed로 제거합니다.
 -- 기준: 시안 r3-kit.mjs의 작품 16종·표지·평점·서재 진행률과 R25 커뮤니티 문구,
 --       server/mock/fixtures/works.json의 소개·목차, docs/테이블 정의서.md입니다.
--- 생성한 후속 회차 제목·회원 활동은 시연 데이터이며 실제 출판물/사용자 기록이 아닙니다.
 --
 -- 실행 계정에는 DML과 CREATE ROUTINE, ALTER ROUTINE, EXECUTE 권한이 필요합니다.
 --
--- 보존: 기존 행을 삭제/갱신하지 않습니다. 같은 slug/닉네임/예약 ID와 충돌하면 전부 롤백합니다.
---       이미 이 파일로 생성한 북이 계정이 있으면 재삽입하지 않습니다(초기화 기능이 아닙니다).
+-- 보존: 기존 사용자 활동과 상품 가격을 보존합니다. 예약 ID가 충돌하면 전부 롤백합니다.
+--       기존 시드가 있으면 재삽입하지 않고, 이 시드의 본문 연결과 미등록 상품만 적용합니다.
 --       ID 81001~81030과 810010~819017, 81001001~81016156 범위의 시드 ID를 예약합니다.
 --       관리자 API의 @Positive 제약에 맞춰 양수 ID를 사용하므로 AUTO_INCREMENT 다음 값도 증가합니다.
 --       실패/롤백 때도 MySQL의 AUTO_INCREMENT 순번은 되돌아가지 않습니다.
@@ -23,9 +22,10 @@ SET @mobtwig_asset_origin = '';
 --            리뷰 160개(별점만 112개 포함), 작품별/주제별/홍보 글을 연결합니다.
 -- 로그인: 아래 30명은 활동 표시용 계정이며 비밀번호는 로그인 불가 값입니다.
 --         실제 로그인 검증에는 별도로 생성한 로그인 가능 계정을 사용합니다.
--- 본문: chapter.content_url은 NULL입니다. 회차 메타데이터/표시용 문자 수만 생성합니다.
---       실제 EPUB/본문 파일과 그 문자 위치 일치는 별도로 구현해야 합니다.
---       구매/결제/관계도 연결선/프로필 이미지/리뷰 공감은 V1~V6에 저장할 테이블이 없어 생성하지 않습니다.
+-- 본문: tools/seed-content/의 510개 TXT·532개 PNG를 비공개 CONTENT_ROOT에 복사해 연결합니다.
+--       CLI가 파일의 UTF-16 길이·해시·경로를 @mobtwig_seed_chapters로 전달합니다.
+-- 상품: 도서 5000원·매거진 3000원, 웹소설 첫 화 무료·이후 100원의 가격입니다.
+--       구매 기록은 생성하지 않습니다. 관계도 연결선/프로필 이미지/리뷰 공감도 생성하지 않습니다.
 --       홈 섹션 배치는 server/sdui/home.json의 영역으로 이 SQL이 수정하지 않습니다.
 --       추천 수는 시안 표시용 누적 숫자입니다. 정의서의 '추천 기능 보류/0' 정책과 구분합니다.
 --       스티커는 V6의 고정 4종을 사용하며 /stickers/emote-*.svg 파일 제공은 별도입니다.
@@ -42,18 +42,40 @@ seed: BEGIN
     DECLARE v_reading_board BIGINT;
     DECLARE v_writing_board BIGINT;
     DECLARE v_promotion_board BIGINT;
+    DECLARE v_new_seed BOOLEAN DEFAULT FALSE;
+    DECLARE v_initialize_positions BOOLEAN DEFAULT FALSE;
     DECLARE EXIT HANDLER FOR SQLEXCEPTION
     BEGIN
         ROLLBACK;
+        DROP TEMPORARY TABLE IF EXISTS mobtwig_demo_seed_content;
         RESIGNAL;
     END;
 
-    START TRANSACTION;
-    IF EXISTS (SELECT 1 FROM member WHERE id = 81001 AND email = 'design.booki@mobtwig.test') THEN
-        COMMIT;
-        SELECT '이미 적용된 시안 데이터입니다. 기존 활동을 유지했습니다.' AS result;
-        LEAVE seed;
+    IF @mobtwig_seed_chapters IS NULL OR JSON_TYPE(@mobtwig_seed_chapters) <> 'ARRAY'
+       OR JSON_LENGTH(@mobtwig_seed_chapters) <> 536 THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'node tools/db-seed.mjs seed로 본문 목록을 함께 적용하십시오.';
     END IF;
+    DROP TEMPORARY TABLE IF EXISTS mobtwig_demo_seed_content;
+    CREATE TEMPORARY TABLE mobtwig_demo_seed_content (
+        id BIGINT PRIMARY KEY, book_id BIGINT NOT NULL, chapter_no INT NOT NULL,
+        slug VARCHAR(100) NOT NULL, kind VARCHAR(20) NOT NULL, page_count INT NULL,
+        content_url VARCHAR(500) NOT NULL, char_count INT NOT NULL, content_hash CHAR(64) NULL,
+        snippet VARCHAR(200) NULL, sample_end INT NOT NULL, content_changed BOOLEAN NOT NULL
+    ) ENGINE = InnoDB;
+    INSERT INTO mobtwig_demo_seed_content
+    SELECT * FROM JSON_TABLE(@mobtwig_seed_chapters, '$[*]' COLUMNS (
+        id BIGINT PATH '$.id' ERROR ON ERROR, book_id BIGINT PATH '$.bookId' ERROR ON ERROR,
+        chapter_no INT PATH '$.number' ERROR ON ERROR, slug VARCHAR(100) PATH '$.slug' ERROR ON ERROR,
+        kind VARCHAR(20) PATH '$.kind' ERROR ON ERROR, page_count INT PATH '$.pageCount' ERROR ON ERROR,
+        content_url VARCHAR(500) PATH '$.contentUrl' ERROR ON ERROR,
+        char_count INT PATH '$.characterCount' ERROR ON ERROR, content_hash CHAR(64) PATH '$.contentHash' ERROR ON ERROR,
+        snippet VARCHAR(200) PATH '$.sample' ERROR ON ERROR, sample_end INT PATH '$.sampleEnd' ERROR ON ERROR,
+        content_changed TINYINT PATH '$.changed' ERROR ON ERROR
+    )) AS input_content;
+
+    START TRANSACTION;
+    SET v_new_seed = NOT EXISTS (SELECT 1 FROM member WHERE id = 81001 AND email = 'design.booki@mobtwig.test');
+    IF v_new_seed THEN
 
     SELECT MIN(id) INTO v_reading_board FROM board WHERE type = 'TOPIC' AND name = '독서 이야기';
     SELECT MIN(id) INTO v_writing_board FROM board WHERE type = 'TOPIC' AND name = '창작 이야기';
@@ -1229,15 +1251,84 @@ INSERT INTO post_reaction (id, post_id, member_id, created_at) VALUES
     (810804, 81008, 81004, DATE_SUB(v_now, INTERVAL 1 HOUR)),
     (810805, 81008, 81005, DATE_SUB(v_now, INTERVAL 1 HOUR));
 
--- 10. 화면 표시와 데이터 개수의 최소 일관성 검사입니다. 불일치하면 앞의 모든 DML을 롤백합니다.
+    END IF;
+
+-- 10. 별도 창작 자료를 기존 작품·목차에 연결합니다. 다른 본문 주소를 덮어쓰지 않습니다.
+    IF (SELECT COUNT(*) FROM mobtwig_demo_seed_content d
+        JOIN chapter c ON c.id=d.id AND c.book_id=d.book_id AND c.chapter_no=d.chapter_no
+        JOIN book b ON b.id=c.book_id AND b.slug=d.slug AND b.page_count <=> d.page_count
+        WHERE d.book_id BETWEEN 81001 AND 81016
+          AND d.kind=CASE b.content_type WHEN 'BOOK' THEN 'book' WHEN 'MAGAZINE' THEN 'magazine' ELSE 'novel' END) <> 536 THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = '본문 목록이 시드 목차와 다릅니다.';
+    END IF;
+    IF EXISTS (SELECT 1 FROM chapter c JOIN mobtwig_demo_seed_content d ON d.id=c.id
+               WHERE c.content_url IS NOT NULL AND c.content_url<>d.content_url) THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = '별도로 수정된 본문 주소가 있습니다.';
+    END IF;
+    SET v_initialize_positions = EXISTS (SELECT 1 FROM chapter c JOIN mobtwig_demo_seed_content d ON d.id=c.id WHERE c.content_url IS NULL);
+    UPDATE mobtwig_demo_seed_content d JOIN chapter c ON c.id=d.id
+    LEFT JOIN chapter_text_version v ON v.chapter_id=c.id AND v.content_version=c.content_version
+    SET d.content_changed=c.content_url IS NOT NULL AND
+        IF(d.kind<>'magazine' AND v.content_hash IS NOT NULL, v.content_hash<>d.content_hash, d.content_changed);
+    UPDATE chapter c JOIN mobtwig_demo_seed_content d ON d.id=c.id
+    SET c.content_version=c.content_version+IF(d.content_changed,1,0),
+        c.content_url=d.content_url,c.char_count=d.char_count;
+
+    INSERT INTO chapter_text_version(chapter_id,content_version,content_hash)
+    SELECT c.id,c.content_version,d.content_hash
+    FROM chapter c JOIN mobtwig_demo_seed_content d ON d.id=c.id
+    WHERE d.kind<>'magazine'
+    ON DUPLICATE KEY UPDATE content_hash=chapter_text_version.content_hash;
+    IF EXISTS (SELECT 1 FROM chapter_text_version v JOIN chapter c ON c.id=v.chapter_id
+        JOIN mobtwig_demo_seed_content d ON d.id=c.id
+        WHERE d.kind<>'magazine' AND v.content_version=c.content_version AND v.content_hash<>d.content_hash) THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = '회차 버전에 고정된 본문 해시가 다릅니다.';
+    END IF;
+
+-- 11. 이미 등록한 가격은 보존하고 아직 없는 상품만 생성합니다.
+    INSERT INTO purchase_product(id,book_id,chapter_id,price)
+    SELECT b.id,b.id,NULL,IF(b.content_type='BOOK',5000,3000)
+    FROM book b WHERE b.id BETWEEN 81001 AND 81016 AND b.content_type IN ('BOOK','MAGAZINE')
+      AND NOT EXISTS (SELECT 1 FROM purchase_product p WHERE p.book_id=b.id AND p.chapter_id IS NULL);
+    INSERT INTO purchase_product(id,book_id,chapter_id,price)
+    SELECT c.id,c.book_id,c.id,IF(c.chapter_no=1,0,100)
+    FROM chapter c JOIN book b ON b.id=c.book_id
+    WHERE b.id BETWEEN 81001 AND 81016 AND b.content_type='WEBNOVEL'
+      AND NOT EXISTS (SELECT 1 FROM purchase_product p WHERE p.book_id=c.book_id AND p.chapter_id=c.id);
+
+-- 표시용 계정의 최초 좌표만 실제 본문에 맞춥니다. 재적용 시 사용자 활동은 변경하지 않습니다.
+    IF v_new_seed OR v_initialize_positions THEN
+        UPDATE reading_progress r JOIN chapter c ON c.id=r.chapter_id
+        JOIN mobtwig_demo_seed_content d ON d.id=c.id JOIN book b ON b.id=c.book_id
+        SET r.chapter_offset=IF(b.content_type='MAGAZINE',c.start_page,0),
+            r.content_version=c.content_version,r.content_hash=NULL,r.version_bound=b.content_type<>'MAGAZINE'
+        WHERE r.member_id=81001 AND r.id BETWEEN 81001 AND 81016;
+        UPDATE bookmark m JOIN chapter c ON c.id=m.chapter_id
+        JOIN mobtwig_demo_seed_content d ON d.id=c.id JOIN book b ON b.id=c.book_id
+        SET m.chapter_offset=IF(b.content_type='MAGAZINE',c.start_page,0),
+            m.content_version=c.content_version,m.content_hash=NULL,m.version_bound=b.content_type<>'MAGAZINE',m.snippet=d.snippet
+        WHERE m.member_id=81001 AND m.id BETWEEN 81001 AND 81004;
+        UPDATE highlight h JOIN chapter c ON c.id=h.chapter_id JOIN mobtwig_demo_seed_content d ON d.id=c.id
+        SET h.start_offset=0,h.end_offset=d.sample_end,h.content_version=c.content_version,
+            h.content_hash=d.content_hash,h.snippet=d.snippet
+        WHERE h.member_id=81001 AND h.id BETWEEN 81001 AND 81004;
+    END IF;
+
+-- 12. 화면 표시와 데이터 개수의 최소 일관성 검사입니다. 불일치하면 앞의 모든 DML을 롤백합니다.
     IF (SELECT COUNT(*) FROM book WHERE id BETWEEN 81001 AND 81016 AND publish_status = 'PUBLISHED') <> 16
        OR (SELECT COUNT(*) FROM chapter WHERE book_id BETWEEN 81001 AND 81016) <> 536
        OR (SELECT COUNT(*) FROM review WHERE book_id BETWEEN 81001 AND 81016 AND deleted_at IS NULL) <> 160
-       OR (SELECT COUNT(*) FROM library_book WHERE member_id = 81001 AND is_favorite) <> 4 THEN
-        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = '시안 데이터 개수 검증에 실패했습니다.';
+       OR (SELECT COUNT(*) FROM library_book WHERE member_id = 81001 AND is_favorite) <> 4
+       OR (SELECT COUNT(*) FROM chapter WHERE book_id BETWEEN 81001 AND 81016 AND content_url IS NOT NULL) <> 536
+       OR (SELECT COUNT(*) FROM purchase_product p JOIN book b ON b.id=p.book_id
+           WHERE b.id BETWEEN 81001 AND 81016
+             AND ((b.content_type IN ('BOOK','MAGAZINE') AND p.chapter_id IS NULL)
+                  OR (b.content_type='WEBNOVEL' AND p.chapter_id IS NOT NULL))) <> 491 THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = '시드 자료 개수 검증에 실패했습니다.';
     END IF;
     COMMIT;
-    SELECT '시안 데이터 적용을 완료했습니다.' AS result, 81001 AS demo_member_id;
+    DROP TEMPORARY TABLE mobtwig_demo_seed_content;
+    SELECT '시드 자료·상품·본문 연결을 완료했습니다.' AS result, 81001 AS demo_member_id;
 END$$
 DELIMITER ;
 CALL seed_mobtwig_design_demo_20261106();
