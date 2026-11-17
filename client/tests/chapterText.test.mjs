@@ -5,6 +5,7 @@ import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
 import { createMockServer } from '../../server/mock/index.mjs';
 import { fetchChapterText, parseChapterText } from '../src/chapterText.ts';
+import { MemberRequestError } from '../src/memberSession.ts';
 
 async function start(t, server) {
   server.listen(0, '127.0.0.1'); await once(server, 'listening');
@@ -14,6 +15,38 @@ async function start(t, server) {
 const contents = [{ id: '91', title: '첫 장', number: 2 }, { id: '12', title: '둘째 장', number: 8 }];
 const example = () => ({ workId: 'test', workTitle: '작품', kind: 'novel', chapter: contents[0], contents,
   currentIndex: 0, previous: null, next: contents[1], body: '  가🌱\n\n끝\n', characterCount: '  가🌱\n\n끝\n'.length, contentVersion: 3, contentHash: 'a'.repeat(64) });
+
+test('소장 본문은 회원 경로와 취소 신호로 요청하고 기존 본문 계약을 검증합니다.', async () => {
+  const calls = [];
+  let response = example();
+  const client = { request: async (path, init) => { calls.push({ path, init }); return response; } };
+  const controller = new AbortController();
+  assert.deepEqual(await fetchChapterText('https://unused.example.test', 'test', '91', controller.signal, client), response);
+  assert.equal(calls[0].path, '/api/members/works/test/chapters/91');
+  assert.ok(calls[0].init.signal instanceof AbortSignal);
+  response = { ...response, workId: 'other' };
+  await assert.rejects(fetchChapterText('', 'test', '91', controller.signal, client), /일치하지/);
+});
+
+test('공개·회원 본문의 409는 버전 안내를 표시하고 401·402의 인증 오류 타입을 보존합니다.', async t => {
+  let status = 409;
+  t.mock.method(globalThis, 'fetch', async () => new Response('본문 경로', { status }));
+  const controller = new AbortController();
+  const changed = '본문이 변경되었습니다. 새 버전이 제공되면 다시 열어 주세요.';
+  await assert.rejects(fetchChapterText('https://test.example', 'test', '91', controller.signal), { message: changed });
+  let failure = new MemberRequestError(409, 'CONTENT_CHANGED');
+  const client = { request: async () => { throw failure; } };
+  await assert.rejects(fetchChapterText('', 'test', '91', controller.signal, client), error =>
+    error === failure && error.message === changed && error.status === 409 && error.code === 'CONTENT_CHANGED');
+  for (status of [401, 402]) {
+    failure = new MemberRequestError(status, status === 402 ? 'PURCHASE_REQUIRED' : null);
+    const message = failure.message;
+    await assert.rejects(fetchChapterText('', 'test', '91', controller.signal, client), error =>
+      error === failure && error.message === message && error.status === status);
+    await assert.rejects(fetchChapterText('https://test.example', 'test', '91', controller.signal), error =>
+      error instanceof MemberRequestError && error.status === status);
+  }
+});
 
 test('본문의 공백·개행·UTF-16 길이와 DB 정수 버전을 그대로 수용합니다.', () => {
   const value = example(); assert.equal(parseChapterText(value), value);

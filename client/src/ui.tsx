@@ -373,11 +373,11 @@ export const s = StyleSheet.create({
   /** 공통 동작 버튼의 크기와 내용 배치를 지정합니다. */
   action: {
     /** 일반 동작 버튼의 최소 높이를 지정합니다. */
-    minHeight: 44,
+    minHeight: 48,
     /** 버튼 내용의 좌우 여백을 지정합니다. */
     paddingHorizontal: 18,
     /** 버튼 내용의 위아래 여백을 지정합니다. */
-    paddingVertical: 12,
+    paddingVertical: 14,
     /** 동작 버튼 배경의 모서리를 둥글게 표시합니다. */
     borderRadius: 26,
     /** 가로로 배치한 아이콘과 레이블을 세로 중앙에 정렬합니다. */
@@ -392,7 +392,7 @@ export const s = StyleSheet.create({
   /** 작은 동작 버튼의 높이와 내부 여백을 지정합니다. */
   compact: {
     /** 작은 동작 버튼의 최소 높이를 지정합니다. */
-    minHeight: 36,
+    minHeight: 44,
     /** 작은 동작 버튼의 위아래 여백을 지정합니다. */
     paddingVertical: 8,
     /** 작은 동작 버튼의 좌우 여백을 지정합니다. */
@@ -402,6 +402,8 @@ export const s = StyleSheet.create({
   actionText: {
     /** 동작 버튼 레이블의 글자 크기를 지정합니다. */
     fontSize: 14,
+    /** 버튼 레이블의 줄 높이를 일정하게 유지합니다. */
+    lineHeight: 20,
     /** 동작 버튼 레이블에 중간보다 굵은 글자 두께를 적용합니다. */
     fontWeight: '600'
   },

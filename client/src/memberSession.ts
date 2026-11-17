@@ -13,7 +13,7 @@ export class MemberRequestError extends Error {
    * @param code - 서버의 짧은 오류 코드입니다.
    */
   constructor(status: number, code: string | null) {
-    super('회원 요청을 처리하지 못했습니다. (HTTP ' + status + ')');
+    super(status === 401 ? '로그인이 만료됐습니다. 다시 로그인해 주십시오.' : '회원 요청을 처리하지 못했습니다. (HTTP ' + status + ')');
     this.name = 'MemberRequestError';
     this.status = status;
     this.code = code;
@@ -76,10 +76,17 @@ export interface MemberSessionClient {
   /**
    * 소유자 ID를 클라이언트에서 대체하지 않는 회원 전용 경로를 요청합니다.
    * @param path - 같은 서버의 `/api/members/` 하위 상대 경로입니다.
-   * @param init - 메서드·본문 등 요청 옵션입니다. 쿠키와 취소 신호는 내부에서 관리합니다.
+   * @param init - 메서드·본문·화면 취소 신호입니다. 쿠키와 회원 전환 취소는 내부에서 관리합니다.
    * @returns 현재 인증 세대에서 검증한 JSON이며 204이면 null입니다.
    */
   request(path: string, init?: RequestInit): Promise<unknown>;
+  /**
+   * 현재 회원의 PNG를 JSON 변환 없이 읽습니다.
+   * @param path - 같은 서버의 회원 전용 페이지 경로입니다.
+   * @param signal - 페이지 변경·화면 이탈 시 요청을 취소하는 신호입니다.
+   * @returns 수신과 본문 처리가 끝날 때까지 인증 세대를 확인한 PNG입니다.
+   */
+  requestPng(path: string, signal?: AbortSignal): Promise<Blob>;
   /** 요청과 구독을 정리하고 더 이상 이 클라이언트의 응답을 사용하지 않습니다. */
   dispose(): void;
 }
@@ -133,11 +140,16 @@ export function createMemberSessionClient(apiUrl: string, requester: typeof fetc
   async function consumeRequest<T>(path: string, epoch: number, init: RequestInit, consume: (response: Response) => Promise<T>): Promise<T> {
     assertCurrent(epoch);
     const controller = new AbortController(); requests.add(controller);
+    const cancel = () => controller.abort();
+    init.signal?.addEventListener('abort', cancel, { once: true });
+    if (init.signal?.aborted) controller.abort();
     const timer = setTimeout(() => controller.abort(), 15000);
     try {
       const response = await requester(base + path, { ...init, credentials: 'include', signal: controller.signal });
-      assertCurrent(epoch); const result = await consume(response); assertCurrent(epoch); return result;
-    } finally { clearTimeout(timer); requests.delete(controller); }
+      assertCurrent(epoch); const result = await consume(response); assertCurrent(epoch);
+      if (controller.signal.aborted) throw canceled();
+      return result;
+    } finally { clearTimeout(timer); requests.delete(controller); init.signal?.removeEventListener('abort', cancel); }
   }
 
   const send = (path: string, epoch: number, init: RequestInit = {}) => consumeRequest(path, epoch, init, async response => response);
@@ -170,12 +182,34 @@ export function createMemberSessionClient(apiUrl: string, requester: typeof fetc
     });
   }
 
+  /** JSON과 PNG에 같은 경로·CSRF·인증 세대 검사를 적용합니다. */
+  async function memberRequest<T>(path: string, init: RequestInit, consume: (response: Response) => Promise<T>): Promise<T> {
+    if (!path.startsWith('/api/members/') || /[\\\u0000-\u0020#]/.test(path) || /%2e|%2f|%5c/i.test(path.split('?')[0]) || path.split('/').includes('..')
+        || !new URL(base + path).pathname.startsWith(url.pathname.replace(/\/+$/, '') + '/api/members/')) throw new Error('회원 요청 경로를 확인해 주십시오.');
+    if (state.status !== 'authenticated') throw new MemberRequestError(401, null);
+    const epoch = generation;
+    const method = (init.method ?? 'GET').toUpperCase();
+    const headers = new Headers(init.headers);
+    if (!['GET', 'HEAD'].includes(method)) headers.set('X-CSRF-TOKEN', await csrf(epoch));
+    return consumeRequest(path, epoch, { ...init, headers }, async response => {
+      if (response.status === 401) { assertCurrent(epoch); forget('anonymous'); throw new MemberRequestError(401, null); }
+      if (!response.ok) {
+        const body: unknown = await response.json().catch(() => null);
+        assertCurrent(epoch);
+        const code = body && typeof body === 'object' && 'code' in body && typeof body.code === 'string'
+          && /^[A-Z_]{1,40}$/.test(body.code) ? body.code : null;
+        throw new MemberRequestError(response.status, code);
+      }
+      return consume(response);
+    });
+  }
+
   return {
     getSnapshot: () => state,
     subscribe(listener) { listeners.add(listener); return () => { listeners.delete(listener); }; },
     async signupDocuments() {
       return consumeRequest('/api/auth/terms', generation, {}, async response => {
-        if (response.status === 503) throw new Error('이 환경에서는 시연 회원가입을 제공하지 않습니다.');
+        if (response.status === 503) throw new Error('현재 회원가입을 이용할 수 없습니다.');
         if (!response.ok) throw new Error('가입 문서를 불러오지 못했습니다.');
         return parseSignupDocuments(await response.json().catch(() => null));
       });
@@ -254,24 +288,17 @@ export function createMemberSessionClient(apiUrl: string, requester: typeof fetc
       } finally { busy = false; }
     },
     async request(path, init = {}) {
-      if (!path.startsWith('/api/members/') || /[\\\u0000-\u0020#]/.test(path) || /%2e|%2f|%5c/i.test(path.split('?')[0]) || path.split('/').includes('..')
-          || !new URL(base + path).pathname.startsWith(url.pathname.replace(/\/+$/, '') + '/api/members/')) throw new Error('회원 요청 경로를 확인해 주십시오.');
-      if (state.status !== 'authenticated') throw new Error('로그인이 필요합니다.');
-      const epoch = generation;
-      const method = (init.method ?? 'GET').toUpperCase();
-      const headers = new Headers(init.headers);
-      if (!['GET', 'HEAD'].includes(method)) headers.set('X-CSRF-TOKEN', await csrf(epoch));
-      return consumeRequest(path, epoch, { ...init, headers }, async response => {
-        if (response.status === 401) { assertCurrent(epoch); forget('anonymous'); throw new Error('로그인이 만료됐습니다. 다시 로그인해 주십시오.'); }
-        if (!response.ok) {
-          const body: unknown = await response.json().catch(() => null);
-          assertCurrent(epoch);
-          const code = body && typeof body === 'object' && 'code' in body && typeof body.code === 'string'
-            && /^[A-Z_]{1,40}$/.test(body.code) ? body.code : null;
-          throw new MemberRequestError(response.status, code);
-        }
+      return memberRequest(path, init, async response => {
         if (response.status === 204) return null;
         try { return await response.json(); } catch { throw new Error('회원 응답의 형식이 올바르지 않습니다.'); }
+      });
+    },
+    async requestPng(path, signal) {
+      return memberRequest(path, { signal }, async response => {
+        if (response.headers.get('Content-Type')?.split(';')[0].trim().toLowerCase() !== 'image/png') {
+          throw new Error('매거진 페이지의 형식이 올바르지 않습니다.');
+        }
+        return response.blob();
       });
     },
     dispose() {
