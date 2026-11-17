@@ -2,6 +2,7 @@ package com.mobtwig.reader;
 
 import java.time.Instant;
 import java.util.Objects;
+import com.mobtwig.purchase.PurchaseService;
 
 import com.mobtwig.reader.ReadingProgressRepository.Chapter;
 import com.mobtwig.reader.ReadingProgressRepository.Saved;
@@ -18,12 +19,15 @@ public class ReadingProgressService {
     private final ReadingProgressRepository repository;
     private final PlainTextSource source;
     private final ReadingCoordinates coordinates;
+    private final PurchaseService purchases;
     private final TextVersionRegistry versions;
 
-    public ReadingProgressService(ReadingProgressRepository repository, PlainTextSource source, ReadingCoordinates coordinates, TextVersionRegistry versions) {
+    public ReadingProgressService(ReadingProgressRepository repository, PlainTextSource source, ReadingCoordinates coordinates,
+            PurchaseService purchases, TextVersionRegistry versions) {
         this.repository = repository;
         this.source = source;
         this.coordinates = coordinates;
+        this.purchases = purchases;
         this.versions = versions;
     }
 
@@ -61,6 +65,7 @@ public class ReadingProgressService {
         Work work = work(slug, now, true);
         Chapter chapter = work.visible().stream().filter(c -> c.id() == input.chapterId()).findFirst()
                 .orElseThrow(ReadingProgressFailure::notFound);
+        purchases.requireRead(member, work.id(), chapter.id());
         Saved previous = repository.saved(member, work.id()).orElse(null);
         Long currentRevision = previous == null ? null : previous.revision();
         if (!Objects.equals(currentRevision, input.expectedRevision())) throw ReadingProgressFailure.conflict();

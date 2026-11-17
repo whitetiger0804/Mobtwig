@@ -4,6 +4,8 @@ import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Optional;
+import com.mobtwig.purchase.PurchaseFailure;
+import com.mobtwig.purchase.PurchaseService;
 import com.mobtwig.reader.BookmarkRepository.Saved;
 import com.mobtwig.reader.ReadingProgressRepository.Chapter;
 import com.mobtwig.reader.ReadingProgressRepository.Work;
@@ -12,18 +14,20 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-/** 공개 위치와 본인 책갈피를 검증하며 독서 진도에는 접근하지 않습니다. */
+/** 소장 권한·공개 위치와 본인 책갈피를 검증하며 독서 진도에는 접근하지 않습니다. */
 @Service
 public class BookmarkService {
     private static final int PAGE_SIZE = 30;
     private final BookmarkRepository bookmarks;
     private final ReadingProgressRepository works;
     private final ReadingCoordinates coordinates;
+    private final PurchaseService purchases;
 
-    BookmarkService(BookmarkRepository bookmarks, ReadingProgressRepository works, ReadingCoordinates coordinates) {
+    BookmarkService(BookmarkRepository bookmarks, ReadingProgressRepository works, ReadingCoordinates coordinates, PurchaseService purchases) {
         this.bookmarks = bookmarks;
         this.works = works;
         this.coordinates = coordinates;
+        this.purchases = purchases;
     }
 
     @Transactional(readOnly = true)
@@ -34,7 +38,7 @@ public class BookmarkService {
         Instant now = Instant.now();
         var items = rows.stream().limit(PAGE_SIZE).map(saved -> {
             var work = snapshots.computeIfAbsent(saved.slug(), key -> works.work(key, now, false)).orElse(null);
-            return describe(saved, work);
+            return describe(member, saved, work);
         }).toList();
         return new Page(items, page, rows.size() > PAGE_SIZE);
     }
@@ -45,12 +49,13 @@ public class BookmarkService {
         lockMember(member);
         Work work = works.work(input.workId(), Instant.now(), true).orElseThrow(ReadingProgressFailure::notFound);
         Chapter chapter = visible(work, input.chapterId()).orElseThrow(ReadingProgressFailure::notFound);
+        purchases.requireRead(member, work.id(), chapter.id());
         var position = coordinates.verifyPosition(work, chapter, input.offset(), input.contentVersion(), input.contentHash(), false, true);
         if (position.body() != null && !paragraphBoundary(position.body(), input.offset())) throw ReadingProgressFailure.invalid();
         var existing = bookmarks.byPosition(member, chapter.id(), input.offset());
-        if (existing.isPresent()) return describe(existing.get(), work);
+        if (existing.isPresent()) return describe(member, existing.get(), work);
         String excerpt = position.body() == null ? null : snippet(position.body(), position.offset());
-        return describe(bookmarks.insert(member, work.id(), position, excerpt), work);
+        return describe(member, bookmarks.insert(member, work.id(), position, excerpt), work);
     }
 
     @Transactional
@@ -61,17 +66,20 @@ public class BookmarkService {
         }
     }
 
-    private Item describe(Saved saved, Work work) {
+    private Item describe(long member, Saved saved, Work work) {
         var chapter = visible(work, saved.chapter()).orElse(null);
         String id = Long.toString(saved.id());
         String createdAt = saved.createdAt().toString();
         if (chapter == null) return new Item(id, "hidden", null, null, null, null, null, null, createdAt);
         String unit = work.magazine() ? "page" : "utf16";
         try {
+            purchases.requireRead(member, work.id(), chapter.id());
             var checked = coordinates.verifyPosition(work, chapter, saved.offset(), saved.version(), saved.hash(), saved.bound(), false);
             var position = new ReadingProgressResponse.Position(Long.toString(chapter.id()), saved.offset(), unit, saved.version(), checked.hash());
             return new Item(id, "available", work.slug(), work.title(), work.kind(), chapter.title(), position,
                     work.magazine() ? null : saved.snippet(), createdAt);
+        } catch (PurchaseFailure unavailable) {
+            return new Item(id, "hidden", null, null, null, null, null, null, createdAt);
         } catch (ResponseStatusException changed) {
             var position = new ReadingProgressResponse.Position(Long.toString(chapter.id()), saved.offset(), unit, saved.version(), saved.hash());
             return new Item(id, "stale", work.slug(), work.title(), work.kind(), chapter.title(), position, null, createdAt);

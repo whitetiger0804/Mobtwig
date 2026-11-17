@@ -1,16 +1,23 @@
 package com.mobtwig.reader;
 
 import java.util.Map;
+import com.mobtwig.purchase.PurchaseFailure;
+import com.mobtwig.purchase.PurchasedContentController;
+import org.jspecify.annotations.NonNull;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.server.ResponseStatusException;
 
 /** 본문 오류에 DB·로컬 경로·content_url 원문을 포함하지 않습니다. */
-@RestControllerAdvice(assignableTypes = ChapterTextController.class)
+@RestControllerAdvice(assignableTypes = {ChapterTextController.class, PurchasedContentController.class})
 public class ReaderErrors {
     @ExceptionHandler(ResponseStatusException.class)
-    public ResponseEntity<Map<String, String>> rejected(ResponseStatusException exception) {
+    public ResponseEntity<Map<String, @NonNull String>> rejected(ResponseStatusException exception) {
+        if (exception instanceof PurchaseFailure purchase) {
+            return ResponseEntity.status(purchase.getStatusCode()).header("Cache-Control", "no-store")
+                    .body(Map.of("code", purchase.code(), "message", java.util.Objects.requireNonNull(purchase.getReason())));
+        }
         int status = exception.getStatusCode().value();
         String message = switch (status) {
             case 400 -> "식별자가 올바르지 않습니다.";
