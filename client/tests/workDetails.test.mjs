@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { test } from 'node:test';
 import { fetchWorkDetail, parseWorkDetail } from '../src/workDetails.ts';
+import { searchWorks } from '../src/workSearch.ts';
 import { createMockServer } from '../../server/mock/index.mjs';
 
 // #region 작품 예시와 테스트 서버
@@ -24,6 +25,45 @@ async function startServer(context, server) {
   }));
   return 'http://127.0.0.1:' + server.address().port;
 }
+// #endregion
+
+// #region 검색 결과와 상세 연결
+test('검색어와 종류를 전달하고 검색 결과의 slug로 상세를 조회합니다.', async context => {
+  const work = works.find(item => item.kind === 'book');
+  const query = '한글 & 작품';
+  const apiUrl = await startServer(context, createServer((request, response) => {
+    const url = new URL(request.url, 'http://localhost');
+    response.setHeader('Content-Type', 'application/json');
+    if (url.pathname === '/works') {
+      assert.equal(url.searchParams.get('query'), query);
+      assert.equal(url.searchParams.get('kind'), 'book');
+      response.end(JSON.stringify([{ id: work.id, title: work.title, imageUrl: work.imageUrl, kind: work.kind }]));
+    } else {
+      assert.equal(url.pathname, `/works/${work.id}`);
+      response.end(JSON.stringify(work));
+    }
+  }));
+  const results = await searchWorks(apiUrl, query, 'book', AbortSignal.timeout(5000));
+  assert.equal(results.length, 1);
+  assert.deepEqual(await fetchWorkDetail(apiUrl, results[0].id, AbortSignal.timeout(5000)), work);
+});
+
+test('검색 결과 없음과 서버 오류·잘못된 응답을 구분합니다.', async context => {
+  let status = 200;
+  let body = [];
+  const apiUrl = await startServer(context, createServer((request, response) => {
+    response.writeHead(status, { 'Content-Type': 'application/json' });
+    response.end(JSON.stringify(body));
+  }));
+  assert.deepEqual(await searchWorks(apiUrl, '검색', 'all', AbortSignal.timeout(5000)), []);
+  status = 500;
+  await assert.rejects(searchWorks(apiUrl, '검색', 'all', AbortSignal.timeout(5000)), /HTTP 500/);
+  status = 200;
+  body = { items: [] };
+  await assert.rejects(searchWorks(apiUrl, '검색', 'all', AbortSignal.timeout(5000)), /형식/);
+  body = [{ id: 'invalid', title: '잘못된 종류', imageUrl: '/cover.png', kind: 'all' }];
+  await assert.rejects(searchWorks(apiUrl, '검색', 'all', AbortSignal.timeout(5000)), /형식/);
+});
 // #endregion
 
 // #region 상세 정보 계약
