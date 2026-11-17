@@ -13,6 +13,7 @@ import { deleteBookmark, listBookmarks, type BookmarkPage } from './bookmarks';
 import { deleteHighlight, listHighlights, type HighlightPage } from './highlights';
 import { highlightColors } from './HighlightControls';
 import { fetchWorkDetail, type WorkDetail } from './workDetails';
+import { searchWorks, type WorkSearchResult } from './workSearch';
 import { Action, Chip, colors, Icon, IconButton, s, Title } from './ui';
 // #endregion
 
@@ -41,7 +42,7 @@ export function HomeScreen({ route }: {
  *
  * @remarks
  * 입력란과 결과 분류 탭은 본문 스크롤 위에 고정합니다. 검색어는 현재 앱 실행 중
- * 최근 검색 기록에 저장하며, 실제 검색 결과 조회는 수행하지 않습니다.
+ * 최근 검색 기록에 저장하고 공개 작품 검색 API에 전달합니다.
  * 분류를 지정하지 않은 경로에서는 최근 검색 기록과 추천 작품을 표시합니다.
  *
  * @param props - 검색 전 화면 또는 결과 분류를 구분하는 화면 속성입니다.
@@ -54,18 +55,27 @@ export function SearchScreen({ route }: {
   const { navigate, searchHistory, addSearchHistory, removeSearchHistory, clearSearchHistory } = useApp();
   const [kind, setKind] = useState(route.kind);
   const [query, setQuery] = useState('');
+  const [submittedQuery, setSubmittedQuery] = useState<string | null>(null);
   const [genre, setGenre] = useState('로맨스');
   const apiUrl = useApiUrl();
   const [recommended, setRecommended] = useState<Extract<SduiSection, { type: 'workShelf' }>['items'] | null>(null);
   const [recommendError, setRecommendError] = useState<string | null>(null);
+  const [searchResults, setSearchResults] = useState<WorkSearchResult[] | null>(null);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchAttempt, setSearchAttempt] = useState(0);
 
   const submitSearch = () => {
     const normalized = query.trim();
-    if (normalized) {
-      setQuery(normalized);
-      addSearchHistory(normalized);
+    if (!normalized) {
+      setKind(undefined);
+      setSubmittedQuery(null);
+      return;
     }
-    setKind(kind ?? 'all');
+    setQuery(normalized);
+    setSubmittedQuery(normalized);
+    setKind(current => current ?? 'all');
+    addSearchHistory(normalized);
   };
 
   useEffect(() => {
@@ -88,11 +98,83 @@ export function SearchScreen({ route }: {
     return () => controller.abort();
   }, [apiUrl]);
 
+  useEffect(() => {
+    if (kind === undefined || submittedQuery === null) {
+      setSearchResults(null);
+      setSearchError(null);
+      setSearchLoading(false);
+      return;
+    }
+    const controller = new AbortController();
+    setSearchResults(null);
+    setSearchError(null);
+    setSearchLoading(true);
+    searchWorks(apiUrl, submittedQuery, kind, controller.signal)
+      .then(results => {
+        if (!controller.signal.aborted) setSearchResults(results);
+      })
+      .catch((reason: unknown) => {
+        if (!controller.signal.aborted) {
+          setSearchError(reason instanceof Error ? reason.message : '검색 결과를 불러오지 못했습니다.');
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setSearchLoading(false);
+      });
+    return () => controller.abort();
+  }, [apiUrl, kind, submittedQuery, searchAttempt]);
+
+  const openWork = (work: WorkSearchResult) => navigate({ screen: 'detail', workId: work.id });
+  const searchContent = kind === undefined
+    ? null
+    : submittedQuery === null
+      ? <EmptyState title="검색어를 입력해 주세요." />
+      : searchError !== null
+        ? <View style={c.section}>
+            <EmptyState title="검색 결과를 불러오지 못했습니다." description={searchError} />
+            <Action label="다시 불러오기" onPress={() => setSearchAttempt(value => value + 1)} />
+          </View>
+        : searchLoading || searchResults === null
+          ? <ActivityIndicator color={colors.green} />
+          : searchResults.length === 0
+            ? <EmptyState title="검색 결과가 없습니다." description="다른 검색어로 다시 찾아보세요." />
+            : kind === 'all'
+              ? <>
+                  {([
+                    { kind: 'book', title: '도서' },
+                    { kind: 'magazine', title: '매거진' },
+                    { kind: 'novel', title: '웹소설' },
+                  ] as const).map(section => {
+                    const works = searchResults.filter(work => work.kind === section.kind);
+                    if (works.length === 0) return null;
+                    return <View key={section.kind} style={c.section}>
+                      <Title>{section.title}</Title>
+                      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={c.recommendRow}>
+                        {works.map(work => <Pressable key={work.id} accessibilityRole="button"
+                          accessibilityLabel={`${work.title} 상세 보기`} onPress={() => openWork(work)} style={c.recommendItem}>
+                          <Image accessibilityLabel={`${work.title} 표지`} source={{ uri: new URL(work.imageUrl, `${apiUrl}/`).href }} resizeMode="cover" style={c.recommendCover} />
+                          <Text style={c.recommendTitle} numberOfLines={2}>{work.title}</Text>
+                        </Pressable>)}
+                      </ScrollView>
+                    </View>;
+                  })}
+                </>
+              : <View style={c.recentHistoryList}>
+                  {searchResults.map(work => <Pressable key={work.id} accessibilityRole="button"
+                    accessibilityLabel={`${work.title} 상세 보기`} onPress={() => openWork(work)} style={c.recentHistoryItem}>
+                    <Image accessibilityLabel={`${work.title} 표지`} source={{ uri: new URL(work.imageUrl, `${apiUrl}/`).href }} resizeMode="cover" style={c.recentHistoryCover} />
+                    <View style={c.recentInfo}>
+                      <Text numberOfLines={2} style={c.recentTitle}>{work.title}</Text>
+                      <Text style={c.recentKind}>{kindLabel(work.kind)}</Text>
+                    </View>
+                  </Pressable>)}
+                </View>;
+
   return <View style={s.grow}>
     <View style={c.searchTop}>
       <View style={c.searchField}>
         <IconButton icon="search" label="검색" onPress={submitSearch} />
-        <TextInput accessibilityLabel="작품명·작가명·출판사 검색" value={query} onChangeText={value => { setQuery(value); if (!value.trim()) setKind(undefined); }} placeholder="작품명·작가명·출판사 검색" placeholderTextColor={colors.muted} returnKeyType="search" onSubmitEditing={submitSearch} style={c.searchInput} />
+        <TextInput accessibilityLabel="작품명·작가명·출판사 검색" value={query} onChangeText={value => { setQuery(value); if (!value.trim()) { setKind(undefined); setSubmittedQuery(null); } }} placeholder="작품명·작가명·출판사 검색" placeholderTextColor={colors.muted} returnKeyType="search" onSubmitEditing={submitSearch} style={c.searchInput} />
       </View>
       {kind !== undefined && <View style={c.categoryTabs}>
         {(['all', 'book', 'magazine', 'novel'] as const).map(value => <Pressable key={value} accessibilityRole="tab" accessibilityState={{ selected: kind === value }} onPress={() => setKind(value)} style={[c.categoryTab, kind === value && c.categoryTabSelected]}>
@@ -108,7 +190,7 @@ export function SearchScreen({ route }: {
             ? <EmptyState compact title="검색 기록이 없습니다." />
             : <View style={c.searchHistoryList}>
                 {searchHistory.map(term => <View key={term} style={c.searchHistoryItem}>
-                  <Pressable accessibilityRole="button" accessibilityLabel={`최근 검색어 ${term} 검색`} onPress={() => { setQuery(term); setKind('all'); }} style={c.searchHistorySearch}>
+                  <Pressable accessibilityRole="button" accessibilityLabel={`최근 검색어 ${term} 검색`} onPress={() => { setQuery(term); setSubmittedQuery(term); setKind('all'); }} style={c.searchHistorySearch}>
                     <Icon name="search" size={16} color={colors.muted} />
                     <Text numberOfLines={1} style={[s.text, s.grow]}>{term}</Text>
                   </Pressable>
@@ -135,27 +217,13 @@ export function SearchScreen({ route }: {
                     ))}
                   </ScrollView>}
         </View>
-                  </> : kind === 'all' ? <>
-        <Text style={s.subtitle}>통합 검색 결과</Text>
-        <View style={c.section}>
-          <Title action={<IconButton icon="next" label="도서 검색 결과 더 보기" onPress={() => setKind('book')} />}>도서</Title>
-          <EmptyState title="표시할 도서 검색 결과가 없습니다." />
-        </View>
-        <View style={c.section}>
-          <Title action={<IconButton icon="next" label="매거진 검색 결과 더 보기" onPress={() => setKind('magazine')} />}>매거진</Title>
-          <EmptyState title="표시할 매거진 검색 결과가 없습니다." />
-        </View>
-        <View style={c.section}>
-          <Title action={<IconButton icon="next" label="웹소설 검색 결과 더 보기" onPress={() => setKind('novel')} />}>웹소설</Title>
-          <EmptyState title="표시할 검색 결과가 없습니다." />
-        </View>
       </> : <>
         <ScrollView horizontal style={c.horizontalStrip} showsHorizontalScrollIndicator={false} contentContainerStyle={c.searchFilters}>
           <IconButton icon="settings" label="검색 설정" onPress={() => navigate({ screen: 'filters', kind })} />
           {(kind === 'novel' ? ['로맨스', '판타지', '현대판타지', '로맨스판타지'] : ['카테고리', '가격', '발행일']).map(label => <Chip key={label} label={label} selected={kind === 'novel' && genre === label} onPress={() => kind === 'novel' ? setGenre(label) : navigate({ screen: 'filters', kind })} />)}
         </ScrollView>
-        <Title action={<Pressable accessibilityRole="button" onPress={() => navigate({ screen: 'filters', kind })} style={c.sortButton}><Text style={s.muted}>인기순</Text><View style={c.downIcon}><Icon name="next" size={12} /></View></Pressable>}>검색 결과</Title>
-        <EmptyState title="표시할 검색 결과가 없습니다." />
+        <Title action={<Pressable accessibilityRole="button" onPress={() => navigate({ screen: 'filters', kind })} style={c.sortButton}><Text style={s.muted}>인기순</Text><View style={c.downIcon}><Icon name="next" size={12} /></View></Pressable>}>검색 결과 · {submittedQuery ?? query}</Title>
+        {searchContent}
       </>}
     </ScrollView>
 
