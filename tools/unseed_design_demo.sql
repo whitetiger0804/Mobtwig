@@ -22,8 +22,12 @@ BEGIN
        OR EXISTS (SELECT 1 FROM book_category WHERE book_id BETWEEN 81001 AND 81016
            AND id NOT IN (81002,81003,81004,81005,81006,81007,81009,81010,81011,81012,81013))
        OR EXISTS (SELECT 1 FROM book_genre WHERE book_id BETWEEN 81001 AND 81016
-           AND id NOT IN (81001,81008,81014,81015,81016)) THEN
-        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = '시드 식별자 불일치 또는 후속 첨부/관계로 제거를 취소했습니다.';
+           AND id NOT IN (81001,81008,81014,81015,81016))
+       OR EXISTS (SELECT 1 FROM purchase r JOIN purchase_product p ON p.id=r.product_id
+           WHERE p.book_id BETWEEN 81001 AND 81016)
+       OR EXISTS (SELECT 1 FROM purchase_product WHERE book_id BETWEEN 81001 AND 81016
+           AND NOT ((chapter_id IS NULL AND id=book_id) OR (chapter_id IS NOT NULL AND id=chapter_id))) THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = '시드 식별자 불일치 또는 후속 구매/첨부/관계로 제거를 취소했습니다. 반복 테스트는 로컬 DB 초기화 후 재시딩하십시오.';
     END IF;
     DELETE FROM post_reaction WHERE id BETWEEN 810101 AND 810805 AND post_id BETWEEN 81001 AND 81008;
     DELETE FROM post_comment_sticker WHERE id IN (81001, 81002) AND comment_id IN (81001, 81014);
@@ -49,6 +53,10 @@ BEGIN
     DELETE FROM book_category WHERE id IN (81002,81003,81004,81005,81006,81007,81009,81010,81011,81012,81013)
         AND book_id BETWEEN 81001 AND 81016;
     DELETE FROM book_genre WHERE id IN (81001,81008,81014,81015,81016) AND book_id BETWEEN 81001 AND 81016;
+    DELETE FROM purchase_product WHERE book_id BETWEEN 81001 AND 81016
+        AND ((chapter_id IS NULL AND id=book_id) OR (chapter_id IS NOT NULL AND id=chapter_id));
+    -- 해당 회차의 chapter_text_version만 FK CASCADE로 함께 제거합니다.
+    -- 다른 회원의 독서·책갈피·하이라이트가 참조하면 RESTRICT로 전체 작업을 롤백합니다.
     DELETE FROM chapter WHERE id BETWEEN 81001001 AND 81016156 AND book_id BETWEEN 81001 AND 81016;
     DELETE FROM book WHERE id BETWEEN 81001 AND 81016;
     DELETE FROM author WHERE id BETWEEN 81001 AND 81016;

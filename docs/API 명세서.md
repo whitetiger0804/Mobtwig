@@ -12,9 +12,9 @@
 
 `POST /api/members/highlights`에 `workId`, 문자열 `chapterId`, 정수 `startOffset`·`endOffset`, `contentVersion`, `contentHash`, `color`를 보냅니다. 색은 `YELLOW` 또는 `GREEN`입니다. 텍스트는 UTF-16 끝 제외 범위와 표시 원문의 SHA-256을 쓰며, 매거진은 같은 기사에 속하는 양 끝 포함 쪽 범위와 null 해시를 씁니다. 버전·해시·구간이 모두 같으면 기존 기록과 색을 반환합니다. 개정된 본문의 같은 좌표는 새 기록으로 저장하며 이전 기록은 재확인 상태로 보존합니다.
 
-항목은 `id`, `state`, `workId`, `workTitle`, `kind`, `chapterTitle`, `range`, `color`, `snippet`, `createdAt`을 반환합니다. `range`에는 `chapterId`, `startOffset`, `endOffset`, `unit`, `contentVersion`, `contentHash`가 있습니다. `available`의 텍스트 발췌는 서버 원문에서 최대 500 UTF-16 단위로 생성합니다. `stale`은 재확인이 필요한 기록으로 발췌는 null입니다. `hidden`은 ID와 저장 시각, 상태만 제공하며 나머지 필드는 null입니다.
+항목은 `id`, `state`, `workId`, `workTitle`, `kind`, `chapterTitle`, `range`, `color`, `snippet`, `createdAt`을 반환합니다. `range`에는 `chapterId`, `startOffset`, `endOffset`, `unit`, `contentVersion`, `contentHash`가 있습니다. `available`의 텍스트 발췌는 서버 원문에서 최대 500 UTF-16 단위로 생성합니다. `stale`은 재확인이 필요한 기록으로 발췌는 null입니다. 비공개 또는 현재 미소장 유료 기록은 `hidden`으로 ID와 저장 시각, 상태만 제공하며 나머지 필드는 null입니다. 숨겨진 본인 기록도 삭제할 수 있습니다.
 
-`DELETE /api/members/highlights/{id}`는 본인 기록을 삭제하고 204를 반환합니다. 없는 ID와 타인 소유 ID는 동일한 404입니다. 변경 요청에는 회원 CSRF가 필요합니다. 입력 오류는 400, 인증 오류는 401, CSRF 실패는 403, 공개 범위 밖은 404, 버전·해시 변경은 409입니다. 본문 공급 상태에 따라 415 또는 503을 반환합니다. 기록에서 본문을 여는 동작은 이어보기 진도를 갱신하지 않습니다.
+`DELETE /api/members/highlights/{id}`는 본인 기록을 삭제하고 204를 반환합니다. 없는 ID와 타인 소유 ID는 동일한 404입니다. 변경 요청에는 회원 CSRF가 필요합니다. 입력 오류는 400, 인증 오류는 401, 미소장 유료 자료 저장은 402, CSRF 실패는 403, 공개 범위 밖은 404, 버전·해시 변경은 409입니다. 유효한 본문 해시를 알고 있어도 소장 권한 없이는 발췌를 생성하지 않습니다. 본문 공급 상태에 따라 415 또는 503을 반환합니다. 기록에서 본문을 여는 것만으로 이어보기 진도를 갱신하지 않습니다.
 
 ## 책갈피 · #39
 
@@ -22,9 +22,75 @@
 
 `POST /api/members/bookmarks`에 `workId`, 문자열 `chapterId`, 정수 `offset`, `contentVersion`을 보냅니다. 텍스트는 표시 본문의 시작, 문단 시작 또는 끝을 UTF-16으로 전송합니다. 매거진은 호 기준 쪽을 씁니다. 예전 앱의 `contentHash`도 선택적으로 받습니다. 성공과 같은 좌표의 재요청 모두 200에 기존 또는 새 기록을 반환합니다. 이전 버전 기록을 갱신하려면 직접 삭제한 뒤 다시 저장합니다.
 
-항목은 `id`, `state`, `workId`, `workTitle`, `kind`, `chapterTitle`, `position`, `snippet`, `createdAt`을 포함합니다. `available`은 이동 가능한 위치이며, `stale`은 본문을 다시 확인해야 하는 저장 위치입니다. `hidden` 항목은 본인 삭제에 필요한 ID와 저장 시각만 표시하며 작품·회차 정보와 원문은 null입니다. 매거진과 재확인 상태에서는 발췌문을 제공하지 않습니다.
+항목은 `id`, `state`, `workId`, `workTitle`, `kind`, `chapterTitle`, `position`, `snippet`, `createdAt`을 포함합니다. `available`은 이동 가능한 위치이며, `stale`은 본문을 다시 확인해야 하는 저장 위치입니다. 비공개 또는 현재 미소장 유료 자료의 `hidden` 항목은 본인 삭제에 필요한 ID와 저장 시각만 표시하며 작품·회차 정보와 원문은 null입니다. 매거진과 재확인 상태에서는 발췌문을 제공하지 않습니다.
 
 `DELETE /api/members/bookmarks/{id}`는 본인 기록을 삭제하면 204를 반환합니다. 없는 ID와 타인 소유 ID는 동일한 404입니다. POST와 DELETE는 같은 회원 세션의 CSRF를 사용합니다. 잘못된 입력은 400, 미인증은 401, CSRF 실패는 403, 비공개 회차와 타 작품 회차는 404, 본문 변경은 409입니다. 본문 제공 실패는 415 또는 503입니다. 책갈피 읽기·쓰기와 책갈피를 통한 진입은 읽기 진도를 변경하지 않습니다.
+
+## 구매 · #102
+
+구매 기록과 소장 권한을 관리합니다. 도서·매거진은 작품 전체를 소장하고 웹소설은 회차별로 소장합니다. 구매 취소·환불 기능은 제공하지 않습니다. 클라이언트의 기존 작품 상세·구매 내역·서재·리더에서 이 API를 사용합니다.
+
+| 요청 | 인증·역할 | 처리 |
+| --- | --- | --- |
+| `POST /api/admin/works/{slug}/purchase-products` | 관리자 세션·CSRF입니다. | 상품 가격을 설정합니다. 같은 작품·회차는 갱신합니다. |
+| `GET /works/{slug}/purchase-products` | 공개 조회입니다. | 공개된 상품 목록입니다. 비회원 기준이므로 `owned`는 false입니다. |
+| `GET /api/members/works/{slug}/purchase-products` | 활성 회원 세션입니다. | 본인의 `owned`·`readable`을 포함한 상품 목록입니다. |
+| `POST /api/members/purchases` | 활성 회원 세션·CSRF입니다. | 구매와 서재 등록을 한 트랜잭션에서 처리합니다. |
+| `GET /api/members/purchase-history` | 활성 회원 세션입니다. | 본인의 구매 내역이며 없으면 200과 `[]`입니다. |
+| `GET /api/members/purchases/{purchaseId}` | 활성 회원 세션입니다. | 본인의 구매 한 건을 반환합니다. 타인의 기록은 404입니다. |
+| `GET /api/members/works/{slug}/chapters/{chapterId}` | 활성 회원 세션입니다. | 소장 권한을 검사한 텍스트 본문입니다. 무료 회차도 조회할 수 있습니다. |
+| `GET /api/members/works/{slug}/magazine` | 활성 회원 세션입니다. | 공개 호·기사 목록입니다. 본문은 포함하지 않습니다. |
+| `GET /api/members/works/{slug}/magazine/pages/{pageNumber}?contentVersion={contentVersion}` | 활성 회원 세션입니다. | 소장 권한·공개 기사·버전을 검사한 PNG입니다. |
+
+### 상품 설정과 구매 요청
+
+관리자는 기존 관리자 로그인 뒤 상품을 설정합니다. `{slug}`는 작품 slug이며 `chapterId`는 공개 목차의 회차 ID입니다. 아래 본문은 자리표시자 템플릿이므로 `{price}`를 0 이상의 정수로 바꿉니다. 도서·매거진의 `chapterId`는 명시적인 null이며, 웹소설은 `"{chapterId}"`로 지정합니다. 두 필드를 모두 보내며 추가 필드는 허용하지 않습니다.
+
+```text
+POST /api/admin/works/{slug}/purchase-products
+{
+  "chapterId": null,
+  "price": {price}
+}
+```
+
+상품의 `productId`를 구매 요청에 사용합니다. `price`는 원 단위 가격이며 0~2147483647입니다. 상품 미설정·0원은 기존처럼 무료 열람합니다. 웹소설의 미공개·예약 회차 상품은 공개 목록에서 제외하고 구매도 404로 거부합니다.
+
+회원은 상품 조회에서 가격을 확인한 뒤 새 구매용 UUID `requestId`를 생성해 다음 세 필드를 전송합니다. 금액을 임의로 지정해도 서버의 상품 가격과 다르면 구매하지 않습니다. 회원 ID·구매 성공 여부·잔액은 요청으로 받지 않습니다.
+
+```text
+POST /api/members/purchases
+{
+  "productId": "{productId}",
+  "expectedPrice": {price},
+  "requestId": "{requestId}"
+}
+```
+
+최초 구매 성공은 **201**, 같은 회원이 같은 `requestId`·상품·가격으로 재시도하면 같은 구매를 **200**으로 반환합니다. 네트워크 실패 후 재시도할 때는 `requestId`를 유지합니다. 새 UUID로 이미 소장한 상품을 다시 구매하면 409 `ALREADY_OWNED`, 같은 UUID를 다른 상품·가격에 재사용하면 409 `REQUEST_CONFLICT`입니다. 가격 변경은 409 `PRICE_CHANGED`입니다. 잘못된 입력은 400, 미인증은 본문 없는 401, CSRF 실패는 403, 비공개·타 작품 회차·없는 상품은 404, 서버 오류는 5xx입니다. 구매 API의 업무 오류는 `{ "code": "고정 코드", "message": "안내" }`입니다.
+
+### 내역·서재·열람
+
+구매 결과와 내역 항목은 #102의 `workId`, `kind`, `title`, `imageUrl`, `purchasedAt`에 `purchaseId`, `productId`, `chapterId`, `chapterTitle`, `price`, `currency`, `paymentMode`를 더합니다. 웹소설은 회차마다 내역 한 건이므로 목록의 고유 키에는 `purchaseId`를 사용하고 작품 상세 이동에는 `workId`를 사용합니다. 도서·매거진의 회차 필드는 null입니다. 제목·표지·가격·회차 제목은 **구매 시점의 값**입니다. 이후 작품 수정·숨김·가격 변경에도 내역은 유지합니다. 구매 시각(UTC ISO) 내림차순이며 같은 시각은 구매 ID 내림차순입니다. 개수 제한은 없으며 모든 구매 응답은 `Cache-Control: no-store`입니다.
+
+```json
+[
+  {
+    "purchaseId": "1", "productId": "1", "workId": "sample-book", "kind": "book",
+    "title": "예시 도서", "imageUrl": "/media/covers/sample-book.png",
+    "purchasedAt": "2026-11-14T00:00:00Z", "chapterId": null, "chapterTitle": null,
+    "price": 3000, "currency": "KRW", "paymentMode": "DEMO"
+  }
+]
+```
+
+처음 구매한 작품은 기존 `library_book`에 `WANT_TO_READ`로 등록합니다. 이미 서재에 있으면 독서 상태·즐겨찾기·숨김을 보존합니다. 여러 회차를 구매해도 서재는 작품당 한 건입니다. 구매나 내역 조회는 조회수·최근 본 작품·읽기 위치를 변경하지 않습니다.
+
+**유료 본문은 회원 전용 `/api/members/works/...` 경로로 요청합니다.** 기존 회원 쿠키의 경로는 `/api`이므로 기존 공개 `/works/...` 본문 경로에서는 구매자도 인증하지 않으며, 유료 상품은 401 `PURCHASE_REQUIRED`입니다. 회원 경로에서 미소장 상품은 402 `PURCHASE_REQUIRED`입니다. 클라이언트는 로그인 상태에서 회원 본문 경로를 사용하며, 비회원 무료 열람에는 기존 공개 경로를 사용합니다. 텍스트 응답·매거진 PNG 형식과 본문 버전 검증은 기존 규약을 유지합니다. 작품 상세·목차·상품·호 정보는 계속 공개 조회할 수 있지만, 구매했더라도 숨김 작품·미공개 회차는 열람할 수 없습니다. 유료 자료의 새 읽기 위치·책갈피 저장에도 소장 권한이 필요합니다.
+
+### 로컬 반복 검증
+
+서버를 실행하면 Flyway V13이 상품·구매 테이블을 생성하며 기존 작품은 자동으로 유료화하지 않습니다. 개발용 `node tools/db-seed.mjs seed`는 기존 시드 16종의 상품 491개와 본문도 준비하므로 별도의 관리자 상품 설정 없이 회원 로그인 → 상품 조회 → 구매 → 내역·서재·회원 본문 조회 순서로 검증합니다. 기본 가격은 도서 5,000원·매거진 3,000원·웹소설 첫 화 무료 및 이후 100원이며, 기존에 설정한 가격은 보존합니다. 다른 작품의 상품은 관리자 API로 설정합니다. 테스트를 반복할 때는 로컬 DB를 초기화하고 서버 실행으로 테이블을 다시 만든 뒤 자료를 재시딩합니다. 단순 서버·컨테이너 재시작은 구매 기록을 지우지 않으며 DB를 초기화하면 구매 기록도 함께 삭제됩니다.
 
 ## 읽기 위치 · #38
 
@@ -40,18 +106,22 @@
 - 진행률은 0~100의 소수점 둘째 자리까지이며 산정 불가는 null입니다. 텍스트는 원문과 같은 UTF-16 길이를 사용합니다. 작품 전체 계산은 한 조회의 공개 본문을 최대 64회차·합계 200만 UTF-16 단위까지 검증하며 한도를 넘거나 자료를 확인할 수 없으면 null입니다. 매거진은 아티클 쪽 범위와 호 전체 쪽 수로 계산합니다. 끝 쪽 수가 없는 경우 해당 진행률은 null입니다.
 - 마지막 정상 위치·시각·최고 도달 회차·서재 상태를 한 트랜잭션에서 반영합니다. 마지막 공개 회차의 비어 있지 않은 본문 끝, 또는 마지막 공개 아티클의 호 끝 쪽에서 완독으로 저장합니다. 재독은 마지막 위치를 바꾸되 최고 도달 회차를 보존합니다. 매거진 PNG는 아래 공개 쪽 API에서 제공합니다.
 
+일반 열람은 본문·PNG가 실제로 표시된 뒤 최초 위치를 저장하고, 실제 스크롤·쪽 이동부터 현재 위치를 자동 저장합니다. 책갈피·하이라이트로 이동한 것만으로는 기존 진도·최고 회차를 덮어쓰지 않습니다. 실제 독서를 시작하지 않은 기록 위치에서 바로 다음 회차로 가면 기존 회차를 완독 처리하지 않고 새 회차의 정상 최초 위치만 저장합니다. 일반 열람이나 기록 진입 후 실제 스크롤·쪽 이동을 시작한 상태에서는 다음 회차로 갈 때 현재 회차 끝을 저장합니다. 본문 개정의 복구 후보는 사용자 재확인 전까지 저장을 보류합니다. 정상 상태에는 별도의 위치 저장 버튼이나 저장 완료 문구를 표시하지 않으며 실패·충돌 시에만 재확인과 재시도를 제공합니다. 화면의 회차 진행 막대는 현재 스크롤 비율이며 서버의 작품 전체 진행률과 구분합니다.
+
 ## 내 서재 목록 · #119
 
 `GET /api/members/library?kind={kind}`는 활성 회원 본인의 서재 목록을 반환합니다. `{kind}`에는 `all`, `book`, `magazine`, `novel`을 지정하며 생략하면 `all`입니다. 빈 값·미지원 값·중복 지정은 400이며 미인증은 401입니다. 회원 ID는 요청으로 받지 않고 `MEMBER_SESSION`에서 확인합니다. GET에는 CSRF 토큰이 필요하지 않습니다.
 
-응답은 `id`(작품 slug), `title`, `imageUrl`, `kind`, `libraryStatus`의 배열입니다. `libraryStatus`는 `WANT_TO_READ`(읽고 싶은 작품), `READING`(읽는 중), `COMPLETED`(완독) 중 하나입니다. 표지는 DB에 저장한 HTTP(S) 주소 또는 API 서버 기준 절대 경로를 그대로 반환하며 클라이언트가 현재 서버 주소를 기준으로 해석합니다.
+응답은 `id`(작품 slug), `title`, `author`, `imageUrl`, `kind`, `libraryStatus`, `lastReadChapterNumber`, `statistics`, `hasNextChapter`의 배열입니다. `libraryStatus`는 `WANT_TO_READ`, `READING`, `COMPLETED` 중 하나이며 화면의 최근 열람 회차와는 별도 상태입니다. `author`는 저자 ID 순서로 쉼표로 연결한 표시 이름입니다. 표지는 DB에 저장한 HTTP(S) 주소 또는 API 서버 기준 절대 경로를 그대로 반환하며 클라이언트가 현재 서버 주소를 기준으로 해석합니다.
 
-- 기존 읽기 위치 저장이 같은 트랜잭션에서 `library_book`을 등록·갱신합니다. 처음 저장하면 서재에 나타나며, 정상 저장 위치에 따라 `READING` 또는 `COMPLETED`가 됩니다. 상세 화면을 열거나 최근 본 작품만 기록한 경우에는 서재에 추가하지 않습니다. `WANT_TO_READ`는 DB에 그 상태로 등록된 작품에만 표시합니다.
+`lastReadChapterNumber`는 본인이 마지막으로 저장한 현재 공개 회차의 실제 번호입니다. 기록이 없거나 저장 회차가 삭제·비공개이면 `null`이며 회차 ID나 최고 도달 회차로 대체하지 않습니다. 웹소설 서재는 이 값으로 `최근 본 화: {lastReadChapterNumber}화`를 표시합니다. `statistics`는 웹소설의 `{views, recommendations, chapterCount}`이며 도서·매거진은 `null`입니다. `chapterCount`는 현재 공개된 회차 수입니다. `hasNextChapter`는 유효한 저장 회차보다 뒤에 공개 회차가 있는지 나타내며, 기록이 없으면 `false`입니다. 이어보기와 다음 회차 이동 시에는 기존 작품 상세·독서 위치 API에서 최신 위치와 공개 목차를 확인합니다.
+
+- 구매와 읽기 위치 저장은 각각 같은 트랜잭션에서 `library_book`을 등록·갱신합니다. 최초 구매는 `WANT_TO_READ`이며 정상 독서 위치를 저장하면 `READING` 또는 `COMPLETED`가 됩니다. 상세 화면을 열거나 최근 본 작품만 기록한 경우에는 서재에 추가하지 않습니다.
 - 서재에 담은 시각(`created_at`) 내림차순, 같은 시각이면 서재 ID 내림차순으로 전체 결과를 반환합니다. 개수 제한은 없으며 다시 읽어도 처음 담은 순서는 바뀌지 않습니다. 작품 종류 필터는 정렬 전에 적용합니다.
 - 본인의 `is_hidden=true`인 항목과 전역 비공개 작품은 제외하되 DB 기록은 유지합니다. 즐겨찾기 여부는 조회 대상에 영향을 주지 않습니다. 일치하는 작품이 없으면 200과 `[]`를 반환합니다.
 - `Cache-Control: no-store`를 사용하며 조회수·최근 본 작품·읽기 위치·서재를 변경하지 않습니다. 공개 작품의 필수 정보가 잘못되면 500을 반환하며 해당 작품을 조용히 누락하지 않습니다.
 
-서재 화면의 API 연결은 클라이언트 담당자가 구현합니다. 별도 담기·즐겨찾기·숨기기 변경 API는 이번 서버 조회 범위에 포함하지 않습니다. 작품 찜은 `wishlist` 기반의 [즐겨찾기(찜) API](#즐겨찾기찜--121)로 따로 제공하며 서재의 `is_favorite`는 변경하지 않습니다. 회원 기능 검증은 Spring 서버에서 수행합니다.
+서재 화면은 도서·매거진을 3열 표지 목록으로, 웹소설을 최근 본 회차와 이어보기·다음화보기 카드로 표시합니다. 서재의 담기·즐겨찾기(`is_favorite`)·숨기기 변경 API는 이번 서버 조회 범위에 포함하지 않습니다. 작품 찜은 `wishlist` 기반의 [즐겨찾기(찜) API](#즐겨찾기찜--121)로 따로 제공하며 서재의 `is_favorite`는 변경하지 않습니다.
 
 ## 최근 본 작품 · #110
 

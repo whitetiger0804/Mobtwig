@@ -1,7 +1,9 @@
 // #region 의존성 가져오기
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Image, Modal, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Image, Modal, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { useMemberAuth } from './memberAuth';
+import { readPurchaseHistory, type PurchaseRecord } from './purchases';
+import { useApiUrl } from './serverConnection';
 import { buildSignupInput, SignupProblem, type SignupAcceptance, type SignupDocument, type SignupFields, type SignupForm } from './memberSignup';
 import { useApp } from './appState';
 import { EmptyState } from './EmptyState';
@@ -244,7 +246,6 @@ export function SignupScreen() {
         <AccountField label="비밀번호 확인" value={form.passwordConfirmation} onChangeText={value => update('passwordConfirmation', value)} placeholder="비밀번호를 한 번 더 입력" password disabled={busy} error={errors.passwordConfirmation} />
       </View>
       <View style={styles.agreements}>
-        <Text style={s.muted}>개발·시연용 가입입니다. 두 임시 문서를 확인해 주세요.</Text>
         {loading && <Text accessibilityLiveRegion="polite" style={s.muted}>가입 문서를 불러오는 중입니다.</Text>}
         <SignupFieldError message={documentError} />
         {documents.map(document => {
@@ -341,21 +342,84 @@ export function MyScreen() {
 }
 
 /**
- * 구매 기록이 아직 연결되지 않은 상태를 안내합니다.
+ * 현재 회원의 구매 당시 작품·회차·가격과 구매 일시를 표시합니다.
  *
  * @remarks
- * 구매 데이터/API를 조회하지 않고 빈 상태와 홈 이동만 제공합니다.
+ * 응답은 현재 서버와 회원 세대에만 표시하며 상세 화면 또는 구매한 회차로 이동합니다.
+ * 조회 실패를 빈 구매 목록으로 처리하지 않습니다.
  *
- * @returns 구매내역 미연동 빈 상태 화면입니다.
+ * @returns 로그인 안내, 조회 상태 또는 구매 목록입니다.
  */
 export function PurchaseHistoryScreen() {
   const app = useApp();
+  const apiUrl = useApiUrl();
+  const { state: auth, client } = useMemberAuth();
+  const [attempt, setAttempt] = useState(0);
+  const [history, setHistory] = useState<{
+    client: typeof client;
+    generation: number;
+    memberId: string;
+    attempt: number;
+    items: PurchaseRecord[] | null;
+    error: string | null;
+  } | null>(null);
+
+  useEffect(() => {
+    if (auth.status !== 'authenticated' || !auth.member) return;
+    let active = true;
+    const owner = { client, generation: auth.generation, memberId: auth.member.id, attempt };
+    const current = () => {
+      const state = client.getSnapshot();
+      return active && state.status === 'authenticated' && state.generation === owner.generation
+        && state.member?.id === owner.memberId;
+    };
+    readPurchaseHistory(client).then(items => {
+      if (current()) setHistory({ ...owner, items, error: null });
+    }).catch((reason: unknown) => {
+      if (current()) setHistory({ ...owner, items: null,
+        error: reason instanceof Error ? reason.message : '구매 내역을 불러오지 못했습니다.' });
+    });
+    return () => { active = false; };
+  }, [client, auth.status, auth.generation, auth.member?.id, attempt]);
+
+  const visible = history?.client === client && history.generation === auth.generation
+    && history.memberId === auth.member?.id && history.attempt === attempt ? history : null;
+
   return (
     <View style={s.page}>
-      <EmptyState
-        title="구매 내역이 없어요"
-        description="구매한 작품이 생기면 이곳에서 확인할 수 있어요."
-      />
+      {auth.status === 'checking' ? <ActivityIndicator accessibilityLabel="로그인 확인 중" color={colors.green} />
+        : auth.status === 'error' ? <>
+          <EmptyState title="로그인 상태를 확인하지 못했습니다." description={auth.error ?? undefined} />
+          <Action label="로그인 상태 다시 확인" onPress={() => { void client.refresh(); }} />
+        </> : auth.status !== 'authenticated' ? <>
+          <EmptyState title="구매 내역을 보려면 로그인해 주십시오." />
+          <Action label="로그인" onPress={() => app.navigate({ screen: 'login' })} />
+        </> : visible?.error ? <>
+          <EmptyState title="구매 내역을 불러오지 못했습니다." description={visible.error} />
+          <Action label="다시 불러오기" onPress={() => setAttempt(value => value + 1)} />
+        </> : visible?.items === null || !visible ? <ActivityIndicator accessibilityLabel="구매 내역 불러오는 중" color={colors.green} />
+          : visible.items.length === 0 ? <EmptyState title="구매 내역이 없습니다." description="구매한 작품은 이곳에서 확인할 수 있습니다." />
+            : <View style={styles.purchaseList}>
+              {visible.items.map(purchase => <View key={purchase.purchaseId} testID={'purchase-' + purchase.purchaseId}
+                style={[styles.ownedCard, styles.purchaseItem]}>
+                <View style={styles.purchaseSummary}>
+                  <Image accessibilityLabel={purchase.title + ' 표지'} source={{ uri: new URL(purchase.imageUrl, apiUrl + '/').href }}
+                    resizeMode="contain" style={styles.purchaseCover} />
+                  <View style={styles.menuText}>
+                    <Text style={s.subtitle}>{purchase.title}</Text>
+                    {purchase.chapterTitle !== null && <Text style={s.text}>{purchase.chapterTitle}</Text>}
+                    <Text style={s.text}>{purchase.price.toLocaleString('ko-KR') + '원 · 구매'}</Text>
+                    <Text style={s.muted}>{'구매 일시: ' + new Date(purchase.purchasedAt).toLocaleString('ko-KR')}</Text>
+                  </View>
+                </View>
+                <View style={styles.purchaseActions}>
+                  <Action compact tone="secondary" label="작품 상세" onPress={() => app.navigate({ screen: 'detail', workId: purchase.workId, kind: purchase.kind })} />
+                  {purchase.chapterId !== null && <Action compact label="회차 읽기" onPress={() => app.navigate({
+                    screen: 'reader', workId: purchase.workId, kind: purchase.kind, chapterId: purchase.chapterId!,
+                  })} />}
+                </View>
+              </View>)}
+            </View>}
       <Action label="작품 둘러보기" onPress={() => app.navigate({ screen: 'home', kind: 'all' }, true)} />
     </View>
   );
@@ -535,7 +599,6 @@ export function ReadingSettingsScreen() {
       <View style={styles.settingRow}><Text numberOfLines={1} style={[s.text, styles.settingName, styles.unsupportedSetting]}>읽기 방식</Text><View style={styles.modeRow}>{['스크롤', '책장'].map(label => <Pressable key={label} disabled accessibilityRole="radio" accessibilityState={{ checked: mode === label, disabled: true }} style={[styles.modeOption, styles.unsupportedSetting, mode === label && styles.modeSelected]}><Text numberOfLines={1} style={[s.text, styles.modeLabel, styles.unsupportedSetting, mode === label && styles.lightText]}>{label}</Text></Pressable>)}</View></View>
       <View style={styles.settingRow}><Text numberOfLines={1} style={[s.text, styles.settingName, styles.unsupportedSetting]}>페이지 전환 애니메이션</Text><Switch disabled accessibilityLabel="페이지 전환 애니메이션" accessibilityState={{ disabled: true }} value={animation} trackColor={{ false: '#E3E8DC', true: colors.green }} thumbColor="#FFFFFF" /></View>
       <View style={styles.settingRow}><Text numberOfLines={1} style={[s.text, styles.settingName, styles.unsupportedSetting]}>페이지 전환 효과음</Text><Switch disabled accessibilityLabel="페이지 전환 효과음" accessibilityState={{ disabled: true }} value={sound} trackColor={{ false: '#E3E8DC', true: colors.green }} thumbColor="#FFFFFF" /></View>
-      <Text style={[s.muted, styles.unsupportedHint]}>페이지 넘김과 효과 설정은 아직 사용할 수 없습니다.</Text>
       {!!saveError && <Text accessibilityRole="alert" style={s.error}>{saveError}</Text>}
       <Action label={saving ? '저장 중…' : '적용'} disabled={saving} onPress={() => void apply()} style={styles.applyButton} />
     </View>
@@ -610,6 +673,11 @@ const styles = StyleSheet.create({
   manage: { paddingHorizontal: 18, paddingVertical: 8, borderRadius: 20, backgroundColor: '#F2F6ED' },
   manageText: { color: colors.green, fontSize: 12, fontWeight: '700' },
   ownedCard: { borderRadius: 20, backgroundColor: '#F2F6ED', padding: 16 },
+  purchaseList: { gap: 16 },
+  purchaseItem: { gap: 14 },
+  purchaseSummary: { flexDirection: 'row', alignItems: 'flex-start', gap: 14 },
+  purchaseCover: { width: 56, height: 80 },
+  purchaseActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   ownedInfo: { padding: 0 },
   myMenus: { marginTop: 24 },
   menu: { minHeight: 80, flexDirection: 'row', alignItems: 'center', gap: 16 },
@@ -647,14 +715,14 @@ const styles = StyleSheet.create({
   withdrawHint: { marginTop: 32, marginBottom: 50, fontSize: 11 },
   withdrawAction: { minHeight: 44, alignItems: 'center', justifyContent: 'center' },
   settingsPage: { paddingHorizontal: 24, paddingBottom: 4, gap: 10 },
-  settingsTitle: { fontSize: 22, lineHeight: 30, marginBottom: 4 },
-  settingsLabel: { fontSize: 12, color: '#625D50' },
-  themeRow: { flexDirection: 'row', gap: 6, marginBottom: 6 },
-  themeItem: { flex: 1, alignItems: 'center', gap: 7 },
-  themePreview: { width: '100%', height: 48, borderRadius: 17, borderWidth: 2, borderColor: '#E3E8DC', alignItems: 'center', justifyContent: 'center' },
+  settingsTitle: { fontSize: 20, lineHeight: 28, marginBottom: 4 },
+  settingsLabel: { fontSize: 12, fontWeight: '600', color: '#625D50' },
+  themeRow: { flexDirection: 'row', gap: 7, marginBottom: 6 },
+  themeItem: { flex: 1, alignItems: 'center', gap: 8 },
+  themePreview: { width: '100%', height: 47, borderRadius: 17, borderWidth: 2, borderColor: '#E3E8DC', alignItems: 'center', justifyContent: 'center' },
   previewLetter: { fontSize: 22, lineHeight: 34 },
   themeCheck: { position: 'absolute', right: -1, top: -1, width: 18, height: 18, borderRadius: 9, backgroundColor: colors.green, alignItems: 'center', justifyContent: 'center' },
-  themeLabel: { fontSize: 10 },
+  themeLabel: { fontSize: 11, lineHeight: 16 },
   selectedBorder: { borderColor: colors.green },
   selectedText: { color: colors.green, fontWeight: '600' },
   lightText: { color: '#FFFFFF' },
@@ -665,14 +733,13 @@ const styles = StyleSheet.create({
   sizeRow: { flexDirection: 'row', backgroundColor: '#F2F6ED', borderRadius: 24, minHeight: 44, padding: 4, marginBottom: 4 },
   sizeOption: { flex: 1, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
   sizeSelected: { backgroundColor: '#FFFFFF' },
-  settingRow: { minHeight: 34, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
-  settingName: { fontSize: 12, flexShrink: 1 },
+  settingRow: { minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+  settingName: { fontSize: 13, flexShrink: 1 },
   unsupportedSetting: { opacity: 0.45 },
-  unsupportedHint: { fontSize: 11, textAlign: 'center' },
   modeRow: { width: '64%', maxWidth: 204, flexShrink: 0, flexDirection: 'row', backgroundColor: '#F2F6ED', borderRadius: 24, padding: 4, minHeight: 44 },
   modeOption: { flex: 1, alignItems: 'center', justifyContent: 'center', borderRadius: 20 },
   modeSelected: { backgroundColor: colors.green },
   modeLabel: { fontSize: 12 },
-  applyButton: { minHeight: 42, borderRadius: 24, marginTop: 2 },
+  applyButton: { minHeight: 44, paddingVertical: 10, borderRadius: 20, marginTop: 2 },
 });
 // #endregion

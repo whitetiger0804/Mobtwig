@@ -15,7 +15,8 @@ SwaggerUIBundle({
     if (target.origin !== window.location.origin) {
       throw new Error('이 문서를 제공한 서버의 API 주소를 사용하십시오.');
     }
-    const scope = target.pathname.startsWith('/api/admin/') ? 'admin' : target.pathname.startsWith('/api/auth/') ? 'auth' : null;
+    const scope = target.pathname.startsWith('/api/admin/') ? 'admin'
+      : target.pathname.startsWith('/api/auth/') || target.pathname.startsWith('/api/members/') ? 'auth' : null;
     if (request.method === 'POST' && scope) {
       const response = await fetch(`/api/${scope}/csrf`, { credentials: 'same-origin', cache: 'no-store' });
       if (!response.ok) throw new Error(`CSRF 토큰을 받지 못했습니다. HTTP ${response.status}`);

@@ -37,8 +37,10 @@ public class LibraryService {
             default -> throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "지원하지 않는 작품 분류입니다.");
         };
         return library.list(member, contentType).stream().map(row -> new LibraryWorkResponse(
-                WorkMetadata.slug(row.slug()), WorkMetadata.requiredText(row.title(), "제목"),
+                WorkMetadata.slug(row.slug()), WorkMetadata.requiredText(row.title(), "제목"), WorkMetadata.requiredText(row.author(), "저자"),
                 WorkMetadata.imageUrl(row.imageUrl()), WorkMetadata.kind(row.contentType()),
-                LibraryWorkResponse.Status.valueOf(row.status()))).toList();
+                LibraryWorkResponse.Status.valueOf(row.status()), row.lastReadChapterNumber(),
+                row.contentType().equals("WEBNOVEL") ? new LibraryWorkResponse.Statistics(row.views(), row.recommendations(), row.chapterCount()) : null,
+                row.hasNextChapter())).toList();
     }
 }

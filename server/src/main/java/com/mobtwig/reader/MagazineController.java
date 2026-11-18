@@ -1,6 +1,8 @@
 package com.mobtwig.reader;
 
 import java.util.Map;
+import com.mobtwig.purchase.PurchaseFailure;
+import org.jspecify.annotations.NonNull;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.CacheControl;
 import org.springframework.http.MediaType;
@@ -37,8 +39,13 @@ public class MagazineController {
     }
 
     @ExceptionHandler(ResponseStatusException.class)
-    ResponseEntity<Map<String, String>> error(ResponseStatusException failure) {
+    ResponseEntity<Map<String, @NonNull String>> error(ResponseStatusException failure) {
+        if (failure instanceof PurchaseFailure purchase) {
+            return ResponseEntity.status(purchase.getStatusCode()).cacheControl(CacheControl.noStore())
+                    .body(Map.of("code", purchase.code(), "message", java.util.Objects.requireNonNull(purchase.getReason())));
+        }
+        String message = failure.getReason();
         return ResponseEntity.status(failure.getStatusCode()).cacheControl(CacheControl.noStore())
-                .body(Map.of("message", failure.getReason() == null ? "매거진을 제공할 수 없습니다." : failure.getReason()));
+                .body(Map.of("message", message == null ? "매거진을 제공할 수 없습니다." : message));
     }
 }

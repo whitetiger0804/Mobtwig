@@ -4,6 +4,8 @@ import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Optional;
+import com.mobtwig.purchase.PurchaseFailure;
+import com.mobtwig.purchase.PurchaseService;
 import com.mobtwig.reader.HighlightRepository.Saved;
 import com.mobtwig.reader.ReadingProgressRepository.Chapter;
 import com.mobtwig.reader.ReadingProgressRepository.Work;
@@ -12,17 +14,20 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-/** 표시 원문을 검증하여 회원의 하이라이트를 저장합니다. */
+/** 소장 권한과 표시 원문을 확인하여 회원의 하이라이트를 저장·조회합니다. */
 @Service
 public class HighlightService {
     private final HighlightRepository highlights;
     private final ReadingProgressRepository works;
     private final ReadingCoordinates coordinates;
+    private final PurchaseService purchases;
 
-    HighlightService(HighlightRepository highlights, ReadingProgressRepository works, ReadingCoordinates coordinates) {
+    HighlightService(HighlightRepository highlights, ReadingProgressRepository works, ReadingCoordinates coordinates,
+            PurchaseService purchases) {
         this.highlights = highlights;
         this.works = works;
         this.coordinates = coordinates;
+        this.purchases = purchases;
     }
 
     @Transactional(readOnly = true)
@@ -32,7 +37,7 @@ public class HighlightService {
         var rows = highlights.list(member, slug, chapter, (page - 1L) * 30);
         var published = new HashMap<String, Optional<Work>>();
         Instant now = Instant.now();
-        var items = rows.stream().limit(30).map(row -> describe(row,
+        var items = rows.stream().limit(30).map(row -> describe(member, row,
                 published.computeIfAbsent(row.slug(), key -> works.work(key, now, false)).orElse(null))).toList();
         return new Page(items, page, rows.size() > 30);
     }
@@ -43,6 +48,7 @@ public class HighlightService {
         lock(member);
         var work = works.work(input.workId(), Instant.now(), true).orElseThrow(ReadingProgressFailure::notFound);
         var chapter = visible(work, input.chapterId()).orElseThrow(ReadingProgressFailure::notFound);
+        purchases.requireRead(member, work.id(), chapter.id());
         String snippet = check(work, chapter, input.startOffset(), input.endOffset(), input.contentVersion(), input.contentHash());
         var saved = highlights.find(member, input).orElseGet(() -> highlights.insert(member, work.id(), input, snippet));
         return item(saved, work, chapter, "available", snippet);
@@ -54,13 +60,16 @@ public class HighlightService {
         if (!highlights.delete(member, id)) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "하이라이트가 없습니다.");
     }
 
-    private Item describe(Saved row, Work work) {
+    private Item describe(long member, Saved row, Work work) {
         var chapter = visible(work, row.chapter()).orElse(null);
         if (chapter == null) {
             return new Item(Long.toString(row.id()), "hidden", null, null, null, null, null, null, null, row.created().toString());
         }
         try {
+            purchases.requireRead(member, work.id(), chapter.id());
             return item(row, work, chapter, "available", check(work, chapter, row.start(), row.end(), row.version(), row.hash()));
+        } catch (PurchaseFailure unavailable) {
+            return new Item(Long.toString(row.id()), "hidden", null, null, null, null, null, null, null, row.created().toString());
         } catch (ResponseStatusException changed) {
             return item(row, work, chapter, "stale", null);
         }
