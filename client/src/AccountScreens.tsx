@@ -1,5 +1,5 @@
 // #region 의존성 가져오기
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Image, Modal, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { useMemberAuth } from './memberAuth';
 import { readPurchaseHistory, type PurchaseRecord } from './purchases';
@@ -117,11 +117,22 @@ export function LoginScreen() {
   const [error, setError] = useState('');
   const [identity, setIdentity] = useState(app.baseRoute.registeredEmail ?? '');
   const [password, setPassword] = useState('');
+  const mounted = useRef<typeof client | null>(null);
+  useLayoutEffect(() => {
+    mounted.current = client;
+    return () => { mounted.current = null; };
+  }, [client]);
   const submit = async () => {
     if (busy) return;
     if (!identity.trim() || !password) { setError('이메일과 비밀번호를 입력해 주십시오.'); return; }
     setBusy(true); setError('');
-    try { await client.login(identity, password); setPassword(''); app.navigate({ screen: 'home', kind: 'all' }, true); }
+    try {
+      await client.login(identity, password);
+      if (mounted.current !== client) return;
+      setPassword('');
+      if (app.baseRoute.returnToReview) app.back();
+      else app.navigate({ screen: 'home', kind: 'all' }, true);
+    }
     catch (failure) { setError(failure instanceof Error ? failure.message : '로그인하지 못했습니다.'); }
     finally { setBusy(false); }
   };

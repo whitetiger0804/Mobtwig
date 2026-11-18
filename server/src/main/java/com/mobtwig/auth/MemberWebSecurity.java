@@ -6,14 +6,19 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.HttpStatusEntryPoint;
+import org.springframework.security.web.access.AccessDeniedHandlerImpl;
 import org.springframework.security.web.context.SecurityContextHolderFilter;
 import org.springframework.security.web.access.intercept.AuthorizationFilter;
 import org.springframework.security.web.savedrequest.NullRequestCache;
+import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
@@ -22,6 +27,8 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 public class MemberWebSecurity {
     @Bean @Order(1)
     public SecurityFilterChain memberFilter(HttpSecurity http, AuthCookies cookies, MemberSessions sessions) throws Exception {
+        var reviewWrite = PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.POST, "/api/members/works/{slug}/reviews");
+        var defaultDenied = new AccessDeniedHandlerImpl();
         return http.securityMatcher("/api/auth/**", "/api/members/**")
                 .cors(Customizer.withDefaults())
                 .authorizeHttpRequests(auth -> auth.dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
@@ -29,7 +36,19 @@ public class MemberWebSecurity {
                         .anyRequest().authenticated())
                 .addFilterBefore(new AuthScopeGuard(AuthCookies.MEMBER, cookies), SecurityContextHolderFilter.class)
                 .addFilterBefore(new ActiveMemberGuard(sessions, cookies), AuthorizationFilter.class)
-                .exceptionHandling(e -> e.authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)))
+                .exceptionHandling(e -> e.authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED))
+                        .accessDeniedHandler((request, response, failure) -> {
+                            if (!reviewWrite.matches(request)) {
+                                defaultDenied.handle(request, response, failure);
+                                return;
+                            }
+                            // CSRF 실패가 회원 인증보다 먼저 발생해도 리뷰 등록의 미인증은 401로 반환한다.
+                            var auth = SecurityContextHolder.getContext().getAuthentication();
+                            boolean active = auth != null && auth.isAuthenticated() && !(auth instanceof AnonymousAuthenticationToken)
+                                    && sessions.current(auth.getName()).isPresent();
+                            response.setHeader("Cache-Control", "no-store");
+                            response.setStatus(active ? 403 : 401);
+                        }))
                 .requestCache(c -> c.requestCache(new NullRequestCache()))
                 .formLogin(login -> login.loginPage("/api/auth/login").loginProcessingUrl("/api/auth/login")
                         .usernameParameter("email")

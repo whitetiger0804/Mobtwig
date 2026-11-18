@@ -145,7 +145,8 @@ function Shell() {
             {route.screen === 'my' && <View style={styles.roundHeaderAction}><IconButton icon="gear" label="계정 설정" onPress={() => app.navigate({ screen: 'account' })} /></View>}
             {route.screen === 'detail' && <IconButton icon="share" label="공유" onPress={() => app.navigate({ screen: 'share' })} />}
             {route.screen === 'post' && <IconButton icon="more" label="게시글 메뉴" onPress={() => app.navigate({ screen: 'postMenu' })} />}
-            {route.screen === 'reviews' && <Action label="리뷰 쓰기" compact style={styles.headerAction} onPress={() => app.navigate({ screen: 'reviewWrite' })} />}
+            {route.screen === 'reviews' && route.workId && <Action label="리뷰 쓰기" compact style={styles.headerAction}
+              onPress={() => app.navigate({ screen: 'reviewWrite', kind: route.kind, workId: route.workId, workTitle: route.workTitle })} />}
           </View>
         </View>
       )}
