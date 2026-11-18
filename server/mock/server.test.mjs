@@ -7,6 +7,7 @@ import { basename, dirname, join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { createMockServer } from './index.mjs';
+import { readMemberLibrary } from '../../client/src/purchases.ts';
 
 // #region 테스트 서버와 요청 유틸리티
 
@@ -15,6 +16,81 @@ const fixturePath = join(mockDirectory, 'fixtures', 'home.json');
 const worksPath = join(mockDirectory, 'fixtures', 'works.json');
 const fixtures = JSON.parse(await readFile(fixturePath, 'utf8'));
 const works = JSON.parse(await readFile(worksPath, 'utf8'));
+const libraryPath = join(mockDirectory, 'fixtures', 'library.json');
+
+test('서재 예시는 클라이언트 응답 계약을 충족하고 종류별로 원래 순서를 유지합니다.', async context => {
+  const base = await startServer(context);
+  const path = '/api/members/library';
+  const client = { request: async path => {
+    const response = await fetch(base + path);
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('Cache-Control'), 'no-store');
+    return response.json();
+  } };
+  const all = await readMemberLibrary(client, 'all');
+  assert.deepEqual(all.map(work => work.id), ['novel-record', 'book-quiet', 'magazine-frame', 'novel-dungeon']);
+  assert.deepEqual(all.map(work => work.libraryStatus), ['READING', 'WANT_TO_READ', 'READING', 'COMPLETED']);
+  for (const entry of all) {
+    const work = works.find(work => work.id === entry.id);
+    assert.ok(work);
+    assert.deepEqual(Object.keys(entry).sort(),
+      ['author', 'hasNextChapter', 'id', 'imageUrl', 'kind', 'lastReadChapterNumber', 'libraryStatus', 'statistics', 'title']);
+    for (const key of ['title', 'author', 'kind', 'imageUrl']) assert.equal(entry[key], work[key]);
+    if (entry.kind === 'novel') {
+      assert.deepEqual(Object.keys(entry.statistics).sort(), ['chapterCount', 'recommendations', 'views']);
+      assert.equal(entry.statistics.chapterCount, work.contents.length);
+    }
+    if (entry.lastReadChapterNumber !== null) {
+      assert.ok(entry.lastReadChapterNumber <= work.contents.length);
+      assert.equal(entry.hasNextChapter, entry.lastReadChapterNumber < work.contents.length);
+    }
+  }
+  assert.deepEqual(await client.request(path), all);
+  for (const kind of ['book', 'magazine', 'novel']) {
+    assert.deepEqual(await readMemberLibrary(client, kind), all.filter(work => work.kind === kind));
+  }
+});
+
+test('서재 예시에는 세션을 사용하지 않고 쓰기 요청과 잘못된 종류를 거절합니다.', async context => {
+  const base = await startServer(context);
+  const url = base + '/api/members/library';
+  const anonymous = await fetch(url);
+  assert.equal(anonymous.status, 200);
+  const extra = await fetch(url + '?memberId=another', { headers: { Cookie: 'MEMBER_SESSION=ignored' } });
+  assert.equal(extra.status, 200);
+  assert.equal(extra.headers.get('Set-Cookie'), null);
+  assert.deepEqual(await extra.json(), await anonymous.json());
+
+  for (const query of ['kind=', 'kind=other', 'kind=BOOK', 'kind=book&kind=book', 'kind=all&kind=novel']) {
+    const invalid = await fetch(url + '?' + query);
+    assert.equal(invalid.status, 400, query);
+    assert.equal(typeof (await invalid.json()).error, 'string');
+  }
+  const write = await fetch(url, { method: 'POST' });
+  assert.equal(write.status, 405);
+  assert.equal(write.headers.get('Allow'), 'GET');
+});
+
+test('서재 예시는 파일 갱신과 빈 목록을 반영하고 파일 오류는 500으로 반환합니다.', async context => {
+  const copied = await copyFixture(context, libraryPath);
+  const base = await startServer(context, { libraryPath: copied });
+  const url = base + '/api/members/library';
+  const all = await (await fetch(url)).json();
+  await writeFile(copied, JSON.stringify(all.filter(work => work.kind === 'book')), 'utf8');
+  const filtered = await fetch(url + '?kind=novel');
+  assert.equal(filtered.status, 200);
+  assert.deepEqual(await filtered.json(), []);
+  await writeFile(copied, '[]', 'utf8');
+  assert.deepEqual(await (await fetch(url)).json(), []);
+  for (const invalid of ['{', '{}']) {
+    await writeFile(copied, invalid, 'utf8');
+    assert.equal((await fetch(url)).status, 500);
+  }
+  await unlink(copied);
+  const missing = await fetch(url);
+  assert.equal(missing.status, 500);
+  assert.deepEqual(await missing.json(), { error: '서재 응답 파일을 읽지 못했습니다.' });
+});
 
 test('공개 검색은 제목·저자·출판사의 일부와 종류를 사용하고 네 필드만 반환합니다.', async context => {
   const base = await startServer(context);
