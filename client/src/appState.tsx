@@ -55,6 +55,10 @@ export interface Route {
   mode?: CommunityTab;
   /** 작품 상세를 조회할 식별자입니다. 상세 화면으로 이동할 때 지정합니다. */
   workId?: string;
+  /** 리뷰 화면에 표시할 작품 제목입니다. */
+  workTitle?: string;
+  /** 리뷰 작성 화면에서 시작한 로그인은 성공 후 작성 화면으로 돌아갑니다. */
+  returnToReview?: boolean;
   /** 본문에서 선택한 공개 회차의 식별자입니다. 숫자 순서로 해석하지 않습니다. */
   chapterId?: string;
   /** 작품 상세의 이어보기에서 확인한 표시 위치입니다. */

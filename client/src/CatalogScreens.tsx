@@ -17,6 +17,7 @@ import { readMemberLibrary, type LibraryWork, type PurchaseProduct } from './pur
 import { useWorkProducts } from './useWorkProducts';
 import { searchWorks, type WorkSearchResult } from './workSearch';
 import { Action, Chip, colors, Icon, IconButton, s, Title } from './ui';
+import { WorkReviewPreview } from './ReviewScreens';
 // #endregion
 
 // #region 홈 화면
@@ -391,6 +392,7 @@ export function DetailScreen({ route }: {
   </View>;
 
   const kind = work.kind;
+  const openReviews = () => navigate({ screen: 'reviews', kind, workId: work.id, workTitle: work.title });
   const firstChapter = work.contents[0];
   const resumePosition = reading?.position?.unit === (kind === 'magazine' ? 'page' : 'utf16')
     && work.contents.some(chapter => chapter.id === reading.position?.chapterId)
@@ -446,7 +448,7 @@ export function DetailScreen({ route }: {
         </View>
       </View>
       <View style={c.detailTabs}>
-        {['회차', '리뷰'].map(label => <Pressable key={label} accessibilityRole="tab" accessibilityState={{ selected: tab === label }} onPress={() => label === '리뷰' ? navigate({ screen: 'reviews', kind, workId: work.id }) : setTab(label)} style={[c.detailTab, tab === label && c.categoryTabSelected]}><Text style={[c.categoryTabLabel, tab === label && c.selectedLabel]}>{label}</Text></Pressable>)}
+        {['회차', '리뷰'].map(label => <Pressable key={label} accessibilityRole="tab" accessibilityState={{ selected: tab === label }} onPress={() => label === '리뷰' ? openReviews() : setTab(label)} style={[c.detailTab, tab === label && c.categoryTabSelected]}><Text style={[c.categoryTabLabel, tab === label && c.selectedLabel]}>{label}</Text></Pressable>)}
         <Text style={[s.muted, c.chapterCount]}>전체 {work.contents.length}화</Text>
       </View>
       <DetailContents items={work.contents} kind={kind} workId={work.id} {...contentsProps} />
@@ -462,7 +464,6 @@ export function DetailScreen({ route }: {
         </View>
         {work.quote && <View style={c.quoteEmpty}><Text style={c.quoteText}>{work.quote}</Text></View>}
       </View>
-      <View style={c.detailSection}><Title action={<Action compact tone="secondary" label="리뷰 작성" onPress={() => navigate({ screen: 'reviewWrite', kind, workId: work.id })} />}>리뷰</Title><EmptyState title="표시할 리뷰가 없습니다." /></View>
     </> : <>
       <View style={c.detailSection}>
         <Title>이번 호의 이야기</Title>
@@ -485,6 +486,14 @@ export function DetailScreen({ route }: {
         </View>
       </View>
     </>}
+    <View style={c.detailSection}>
+      <Title action={<View style={[s.row, { gap: 8 }]}>
+        <Action compact tone="secondary" label="리뷰 보기" onPress={openReviews} />
+        {kind === 'book' && <Action compact tone="secondary" label="리뷰 작성"
+          onPress={() => navigate({ screen: 'reviewWrite', kind, workId: work.id, workTitle: work.title })} />}
+      </View>}>리뷰</Title>
+      <WorkReviewPreview workId={work.id} />
+    </View>
   </View>;
 }
 // #endregion
