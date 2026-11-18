@@ -15,6 +15,7 @@ import { highlightColors } from './HighlightControls';
 import { fetchWorkDetail, type WorkDetail } from './workDetails';
 import { readMemberLibrary, type LibraryWork, type PurchaseProduct } from './purchases';
 import { useWorkProducts } from './useWorkProducts';
+import { WorkFollowActions } from './WorkFollowScreens';
 import { searchWorks, type WorkSearchResult } from './workSearch';
 import { Action, Chip, colors, Icon, IconButton, s, Title } from './ui';
 // #endregion
@@ -321,7 +322,7 @@ function DetailContents({ items, kind, workId, products, ready, busy, authentica
  * @remarks
  * 표지·소개·출판정보·목차는 작품 API에서 받으며 화면 구성을 서버에서 받지 않습니다.
  * 조회 중·실패·자료가 없는 항목을 구분하고 화면을 떠나면 진행 중인 요청을 취소합니다.
- * 상품별 소장·열람 권한을 확인하고 구매를 연결합니다. 찜·구독은 미연동 상태입니다.
+ * 상품별 소장·열람 권한, 구매와 작품 찜·구독을 연결합니다.
  *
  * @param props - 조회할 작품 식별자를 포함하는 화면 이동 정보입니다.
  * @returns 서버의 작품 정보와 분류에 맞는 상세 화면입니다.
@@ -436,14 +437,11 @@ export function DetailScreen({ route }: {
       <Action compact label="상품 다시 불러오기" onPress={offer.refresh} /></View>}
     {offer.message !== null && <Text accessibilityLiveRegion="polite" style={s.muted}>{offer.message}</Text>}
     {readingFailed && <Action compact tone="secondary" label="저장 위치 다시 확인" onPress={() => setReadingAttempt(value => value + 1)} />}
+    <WorkFollowActions key={work.id} workId={work.id} kind={kind} />
     {kind === 'novel' ? <>
       <View style={c.detailTags}><Text style={c.kindPill}>웹소설</Text><Text style={c.kindPill}>{work.category}</Text></View>
       <View style={c.novelIntroduction}>
         <View style={s.grow}><Text style={s.subtitle}>작품 소개</Text><Text style={[c.detailBody, c.description]}>{work.description}</Text></View>
-        <View style={c.novelActions}>
-          <View style={c.labeledIcon}><IconButton icon="heart" label="찜" disabled /><Text style={s.muted}>찜</Text></View>
-          <View style={c.labeledIcon}><IconButton icon="bookmark" label="구독" disabled /><Text style={s.muted}>구독</Text></View>
-        </View>
       </View>
       <View style={c.detailTabs}>
         {['회차', '리뷰'].map(label => <Pressable key={label} accessibilityRole="tab" accessibilityState={{ selected: tab === label }} onPress={() => label === '리뷰' ? navigate({ screen: 'reviews', kind, workId: work.id }) : setTab(label)} style={[c.detailTab, tab === label && c.categoryTabSelected]}><Text style={[c.categoryTabLabel, tab === label && c.selectedLabel]}>{label}</Text></Pressable>)}
@@ -921,9 +919,7 @@ const c = StyleSheet.create({
   detailTags: { flexDirection: 'row', marginTop: 20, marginBottom: 16, gap: 8 },
   kindPill: { paddingHorizontal: 18, paddingVertical: 6, borderRadius: 14, overflow: 'hidden', backgroundColor: colors.pale, color: colors.green, fontSize: 11 },
   novelIntroduction: { padding: 16, flexDirection: 'row', minHeight: 126, borderRadius: 22, backgroundColor: colors.pale, gap: 12 },
-  novelActions: { flexDirection: 'row', alignItems: 'center', gap: 2 },
   description: { marginTop: 10 },
-  labeledIcon: { alignItems: 'center' },
   detailTabs: { flexDirection: 'row', marginTop: 14, borderBottomWidth: 1, borderBottomColor: colors.line },
   detailTab: { width: 91, height: 48, justifyContent: 'center', borderBottomWidth: 3, borderBottomColor: 'transparent', paddingHorizontal: 4 },
   chapterCount: { flex: 1, textAlign: 'right', alignSelf: 'center' },

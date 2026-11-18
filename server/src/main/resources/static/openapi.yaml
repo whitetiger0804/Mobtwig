@@ -687,6 +687,115 @@ paths:
         '404': {$ref: '#/components/responses/MagazinePageError'}
         '409': {$ref: '#/components/responses/MagazinePageError'}
         '503': {$ref: '#/components/responses/MagazinePageError'}
+  /api/members/works/{slug}/state:
+    parameters:
+      - {name: slug, in: path, required: true, schema: {type: string, pattern: '^[a-z0-9-]{1,120}$'}}
+    get:
+      operationId: getWorkFollowState
+      summary: 작품의 찜·구독 상태를 조회합니다.
+      security: [{MemberSessionCookie: []}]
+      responses:
+        '200':
+          description: 현재 회원의 작품 상태입니다.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/WorkFollowState'}
+        '400': {$ref: '#/components/responses/WorkFollowError'}
+        '401': {description: 활성 회원 세션 필요}
+        '404': {$ref: '#/components/responses/WorkFollowError'}
+  /api/members/works/{slug}/favorite:
+    parameters:
+      - {name: slug, in: path, required: true, schema: {type: string, pattern: '^[a-z0-9-]{1,120}$'}}
+    put:
+      operationId: addWorkFavorite
+      summary: 작품을 찜합니다.
+      security: [{MemberSessionCookie: [], MemberCsrfToken: []}]
+      responses:
+        '200':
+          description: 현재 회원의 작품 상태입니다.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/WorkFollowState'}
+        '400': {$ref: '#/components/responses/WorkFollowError'}
+        '401': {description: 활성 회원 세션 필요}
+        '403': {description: 회원 CSRF 검증 실패}
+        '404': {$ref: '#/components/responses/WorkFollowError'}
+    delete:
+      operationId: removeWorkFavorite
+      summary: 작품 찜을 해제합니다.
+      security: [{MemberSessionCookie: [], MemberCsrfToken: []}]
+      responses:
+        '200':
+          description: 현재 회원의 작품 상태입니다.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/WorkFollowState'}
+        '400': {$ref: '#/components/responses/WorkFollowError'}
+        '401': {description: 활성 회원 세션 필요}
+        '403': {description: 회원 CSRF 검증 실패}
+        '404': {$ref: '#/components/responses/WorkFollowError'}
+  /api/members/works/{slug}/subscription:
+    parameters:
+      - {name: slug, in: path, required: true, schema: {type: string, pattern: '^[a-z0-9-]{1,120}$'}}
+    put:
+      operationId: subscribeToWork
+      summary: 웹소설을 구독합니다.
+      security: [{MemberSessionCookie: [], MemberCsrfToken: []}]
+      responses:
+        '200':
+          description: 현재 회원의 작품 상태입니다.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/WorkFollowState'}
+        '400': {$ref: '#/components/responses/WorkFollowError'}
+        '401': {description: 활성 회원 세션 필요}
+        '403': {description: 회원 CSRF 검증 실패}
+        '404': {$ref: '#/components/responses/WorkFollowError'}
+    delete:
+      operationId: unsubscribeFromWork
+      summary: 웹소설 구독을 해제합니다.
+      security: [{MemberSessionCookie: [], MemberCsrfToken: []}]
+      responses:
+        '200':
+          description: 현재 회원의 작품 상태입니다.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/WorkFollowState'}
+        '400': {$ref: '#/components/responses/WorkFollowError'}
+        '401': {description: 활성 회원 세션 필요}
+        '403': {description: 회원 CSRF 검증 실패}
+        '404': {$ref: '#/components/responses/WorkFollowError'}
+  /api/members/favorites:
+    get:
+      operationId: listWorkFavorites
+      summary: 회원 본인이 찜한 공개 작품의 목록을 최신순으로 조회합니다.
+      security: [{MemberSessionCookie: []}]
+      parameters:
+        - {name: page, in: query, schema: {type: integer, format: int32, minimum: 1, default: 1}}
+        - {name: size, in: query, schema: {type: integer, minimum: 1, maximum: 50, default: 20}}
+      responses:
+        '200':
+          description: 찜 목록입니다. 작품이 없으면 빈 배열을 반환합니다.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, page, hasNext]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, title, imageUrl, kind]
+                      properties:
+                        id: {type: string, description: 공개 작품 slug}
+                        title: {type: string}
+                        imageUrl: {type: string}
+                        kind: {type: string, enum: [book, magazine, novel]}
+                  page: {type: integer, minimum: 1}
+                  hasNext: {type: boolean}
+        '400': {$ref: '#/components/responses/WorkFollowError'}
+        '401': {description: 활성 회원 세션 필요}
   /api/members/library:
     get:
       tags: [회원 인증]
@@ -1272,6 +1381,11 @@ components:
       schema: {type: integer, format: int64}
       example: 1
   responses:
+    WorkFollowError:
+      description: 잘못된 요청이거나 공개 작품을 찾을 수 없습니다.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/AdminError'}
     PurchaseProducts:
       description: 공개된 상품·가격·소장 여부의 목록이며 상품 미설정은 빈 배열입니다. Cache-Control은 no-store입니다.
       content:
@@ -1390,6 +1504,12 @@ components:
           schema:
             $ref: '#/components/schemas/HttpError'
   schemas:
+    WorkFollowState:
+      type: object
+      required: [favorite, subscribed]
+      properties:
+        favorite: {type: boolean}
+        subscribed: {type: boolean, description: 웹소설 이외의 작품에서는 항상 false입니다.}
     PurchaseProduct:
       type: object
       additionalProperties: false
