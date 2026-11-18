@@ -537,6 +537,86 @@ paths:
         '401': {description: 활성 회원 세션 필요}
         '403': {description: 회원 CSRF 검증 실패}
         '404': {$ref: '#/components/responses/RecentWorkError'}
+  /api/members/favorites:
+    get:
+      tags: [회원 인증]
+      operationId: listFavorites
+      summary: 회원 본인이 찜한 공개 작품을 모두 조회합니다.
+      description: |
+        찜한 시각 내림차순, 같은 시각이면 찜 ID 내림차순으로 모두 반환합니다. 개수 제한은 없습니다.
+        비공개 작품은 제외하며 찜 기록 자체는 삭제하지 않습니다. 찜이 없으면 빈 배열입니다.
+        author는 작품 상세와 같이 저자 ID 순으로 쉼표와 공백을 넣어 연결합니다.
+        공개 작품의 필수 정보가 잘못되면 오류를 반환하며 항목을 조용히 누락하지 않습니다. 서재의 즐겨찾기(is_favorite)와는 관계없습니다.
+      security: [{MemberSessionCookie: []}]
+      responses:
+        '200':
+          description: 찜한 작품 목록입니다. 찜이 없으면 빈 배열입니다.
+          headers:
+            Cache-Control:
+              description: 회원 목록을 캐시하지 않습니다.
+              schema: {type: string, enum: [no-store]}
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/FavoriteWork'}
+              example:
+                - id: sample-book
+                  kind: book
+                  title: 예시 도서
+                  author: 예시 저자, 두 번째 저자
+                  imageUrl: /media/covers/sample-book.png
+        '401': {description: 활성 회원 세션 필요}
+        '500': {description: 공개 작품의 필수 정보가 계약에 맞지 않습니다.}
+  /api/members/favorites/{slug}:
+    parameters:
+      - name: slug
+        in: path
+        required: true
+        schema: {type: string, pattern: '^[a-z0-9-]+$', maxLength: 120}
+    get:
+      tags: [회원 인증]
+      operationId: getFavoriteStatus
+      summary: 회원 본인이 공개 작품을 찜했는지 확인합니다.
+      security: [{MemberSessionCookie: []}]
+      responses:
+        '200':
+          description: 찜 여부입니다.
+          headers:
+            Cache-Control:
+              description: 회원 상태를 캐시하지 않습니다.
+              schema: {type: string, enum: [no-store]}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/FavoriteStatus'}
+              example: {favorite: true}
+        '400': {$ref: '#/components/responses/FavoriteError'}
+        '401': {description: 활성 회원 세션 필요}
+        '404': {$ref: '#/components/responses/FavoriteError'}
+    post:
+      tags: [회원 인증]
+      operationId: addFavorite
+      summary: 공개 작품을 찜합니다.
+      description: 요청 본문이 없습니다. 이미 찜한 작품이면 변경 없이 204입니다. 실제로 찜을 추가했을 때만 같은 트랜잭션에서 작품의 찜 수를 1 늘립니다.
+      security: [{MemberSessionCookie: [], MemberCsrfToken: []}]
+      responses:
+        '204': {description: 찜했거나 이미 찜한 상태이며 본문은 없습니다.}
+        '400': {$ref: '#/components/responses/FavoriteError'}
+        '401': {description: 활성 회원 세션 필요}
+        '403': {description: 회원 CSRF 검증 실패}
+        '404': {$ref: '#/components/responses/FavoriteError'}
+    delete:
+      tags: [회원 인증]
+      operationId: removeFavorite
+      summary: 공개 작품의 찜을 해제합니다.
+      description: 찜하지 않은 작품이면 변경 없이 204입니다. 실제로 찜을 삭제했을 때만 같은 트랜잭션에서 작품의 찜 수를 1 줄입니다. 비공개가 된 작품은 404입니다.
+      security: [{MemberSessionCookie: [], MemberCsrfToken: []}]
+      responses:
+        '204': {description: 해제했거나 찜하지 않은 상태이며 본문은 없습니다.}
+        '400': {$ref: '#/components/responses/FavoriteError'}
+        '401': {description: 활성 회원 세션 필요}
+        '403': {description: 회원 CSRF 검증 실패}
+        '404': {$ref: '#/components/responses/FavoriteError'}
   /api/auth/terms:
     get:
       tags: [회원 인증]
@@ -1080,6 +1160,16 @@ components:
             properties:
               code: {type: string, enum: [INVALID_SLUG, NOT_FOUND, UNAVAILABLE]}
               message: {type: string}
+    FavoriteError:
+      description: 작품 식별자 또는 공개 범위 안내입니다.
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [code, message]
+            properties:
+              code: {type: string, enum: [INVALID_SLUG, NOT_FOUND, UNAVAILABLE]}
+              message: {type: string}
     SignupFieldError:
       description: 입력 또는 문서 버전과 중복 여부를 확인하십시오.
       content:
@@ -1249,6 +1339,22 @@ components:
         imageUrl: {type: string, minLength: 1, description: http(s) 주소 또는 서버 기준 /media/... 경로입니다.}
         kind: {type: string, enum: [book, novel, magazine]}
         lastReadAt: {type: string, format: date-time, description: 마지막으로 연 UTC 시각입니다.}
+    FavoriteWork:
+      type: object
+      additionalProperties: false
+      required: [id, kind, title, author, imageUrl]
+      properties:
+        id: {type: string, pattern: '^[a-z0-9-]+$', maxLength: 120, description: 상세 조회에 사용하는 작품 slug입니다.}
+        kind: {type: string, enum: [book, magazine, novel]}
+        title: {type: string, minLength: 1}
+        author: {type: string, minLength: 1, description: 저자 ID 순으로 쉼표와 공백을 넣어 연결한 저자 이름입니다.}
+        imageUrl: {type: string, minLength: 1, description: HTTP(S) 주소 또는 API 서버 기준 절대 경로인 표지입니다.}
+    FavoriteStatus:
+      type: object
+      additionalProperties: false
+      required: [favorite]
+      properties:
+        favorite: {type: boolean, description: 회원 본인이 찜했으면 true입니다.}
     SignupDocument:
       type: object
       additionalProperties: false
