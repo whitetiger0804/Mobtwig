@@ -7,6 +7,7 @@ import { useApiUrl } from './serverConnection';
 import { buildSignupInput, SignupProblem, type SignupAcceptance, type SignupDocument, type SignupFields, type SignupForm } from './memberSignup';
 import { useApp } from './appState';
 import { EmptyState } from './EmptyState';
+export { FavoriteWorksScreen as FavoritesScreen } from './WorkFollowScreens';
 import { Action, colors, Icon, s } from './ui';
 // #endregion
 
@@ -420,27 +421,6 @@ export function PurchaseHistoryScreen() {
                 </View>
               </View>)}
             </View>}
-      <Action label="작품 둘러보기" onPress={() => app.navigate({ screen: 'home', kind: 'all' }, true)} />
-    </View>
-  );
-}
-
-/**
- * 즐겨찾기 작품 데이터가 연결되지 않은 상태를 안내합니다.
- *
- * @remarks
- * 즐겨찾기 목록을 조회하거나 변경하지 않고 빈 상태와 홈 이동만 제공합니다.
- *
- * @returns 즐겨찾기 미연동 빈 상태 화면입니다.
- */
-export function FavoritesScreen() {
-  const app = useApp();
-  return (
-    <View style={s.page}>
-      <EmptyState
-        title="즐겨찾기한 작품이 없어요"
-        description="마음에 드는 작품을 즐겨찾기에 담으면 이곳에서 모아볼 수 있어요."
-      />
       <Action label="작품 둘러보기" onPress={() => app.navigate({ screen: 'home', kind: 'all' }, true)} />
     </View>
   );

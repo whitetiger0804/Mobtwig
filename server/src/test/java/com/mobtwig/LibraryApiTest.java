@@ -69,6 +69,8 @@ class LibraryApiTest {
         sessions.clear();
         jdbc.update("DELETE FROM SPRING_SESSION WHERE PRINCIPAL_NAME IN ('-11901','-11902')");
         jdbc.update("DELETE FROM reading_progress WHERE book_id BETWEEN -11922 AND -11901");
+        jdbc.update("DELETE FROM wishlist WHERE book_id BETWEEN -11922 AND -11901");
+        jdbc.update("DELETE FROM work_subscription WHERE book_id BETWEEN -11922 AND -11901");
         jdbc.update("DELETE FROM library_book WHERE book_id BETWEEN -11922 AND -11901");
         jdbc.update("DELETE FROM chapter WHERE book_id BETWEEN -11922 AND -11901");
         jdbc.update("DELETE FROM book_author WHERE book_id BETWEEN -11922 AND -11901");
@@ -196,6 +198,55 @@ class LibraryApiTest {
         jdbc.update("UPDATE book SET cover_image_url=NULL WHERE id=-11901");
         assertEquals(500, get(PATH, a).statusCode());
         assertEquals(1L, jdbc.queryForObject("SELECT COUNT(*) FROM library_book WHERE member_id=-11901", Long.class));
+    }
+
+    @Test void managesOwnFavoritesAndWebnovelSubscriptions() throws Exception {
+        String a = login("a");
+        String b = login("b");
+        String favorites = "/api/members/favorites";
+        String novel = "/api/members/works/" + slug(2);
+        String book = "/api/members/works/" + slug(1);
+        String magazine = "/api/members/works/" + slug(3);
+        assertEquals(401, get(favorites, null).statusCode());
+        assertEquals(403, change(novel + "/subscription", "PUT", a, false).statusCode());
+        assertEquals(400, change(book + "/subscription", "PUT", a, true).statusCode());
+        assertEquals(400, change(magazine + "/subscription", "DELETE", a, true).statusCode());
+        assertTrue(ok(change(novel + "/subscription", "PUT", a, true)).get("subscribed").asBoolean());
+        assertTrue(ok(change(novel + "/subscription", "PUT", a, true)).get("subscribed").asBoolean());
+        assertEquals(1L, jdbc.queryForObject("SELECT COUNT(*) FROM work_subscription WHERE member_id=-11901", Long.class));
+        assertFalse(ok(get(novel + "/state", b)).get("subscribed").asBoolean());
+        for (String work : List.of(book, novel, magazine)) {
+            assertTrue(ok(change(work + "/favorite", "PUT", a, true)).get("favorite").asBoolean());
+        }
+        assertTrue(ok(change(magazine + "/favorite", "PUT", a, true)).get("favorite").asBoolean());
+        assertEquals(3L, jdbc.queryForObject("SELECT COUNT(*) FROM wishlist WHERE member_id=-11901", Long.class));
+        assertEquals(1, jdbc.queryForObject("SELECT wishlist_count FROM book WHERE id=-11902", Integer.class));
+        var firstPage = ok(get(favorites + "?page=1&size=2", a));
+        assertEquals(List.of(slug(3), slug(2)), ids(firstPage.get("items")));
+        assertTrue(firstPage.get("hasNext").asBoolean());
+        var lastPage = ok(get(favorites + "?page=2&size=2", a));
+        assertEquals(List.of(slug(1)), ids(lastPage.get("items")));
+        assertFalse(lastPage.get("hasNext").asBoolean());
+        assertEquals(0, ok(get(favorites, b)).get("items").size());
+        assertEquals(400, get(favorites + "?size=51", a).statusCode());
+        assertEquals(400, get(favorites + "?page=1&page=2", a).statusCode());
+        assertFalse(ok(change(novel + "/favorite", "DELETE", b, true)).get("favorite").asBoolean());
+        assertTrue(ok(get(novel + "/state", a)).get("favorite").asBoolean());
+        assertFalse(ok(change(novel + "/favorite", "DELETE", a, true)).get("favorite").asBoolean());
+        assertEquals(0, jdbc.queryForObject("SELECT wishlist_count FROM book WHERE id=-11902", Integer.class));
+        assertTrue(ok(change(novel + "/favorite", "PUT", a, true)).get("favorite").asBoolean());
+        assertFalse(ok(change(novel + "/subscription", "DELETE", a, true)).get("subscribed").asBoolean());
+        assertFalse(ok(change(novel + "/subscription", "DELETE", a, true)).get("subscribed").asBoolean());
+        jdbc.update("UPDATE book SET publish_status='DRAFT' WHERE id=-11903");
+        assertEquals(404, get(magazine + "/state", a).statusCode());
+        assertEquals(404, change(magazine + "/favorite", "PUT", a, true).statusCode());
+        assertEquals(List.of(slug(2), slug(1)), ids(ok(get(favorites, a)).get("items")));
+    }
+
+    private HttpResponse<String> change(String path, String method, String session, boolean csrf) throws Exception {
+        var request = base(path).header("Cookie", session);
+        if (csrf) request.header("X-CSRF-TOKEN", ok(get("/api/auth/csrf", session)).get("token").asString());
+        return http.send(request.method(method, HttpRequest.BodyPublishers.noBody()).build(), HttpResponse.BodyHandlers.ofString());
     }
 
     private static String slug(int i) { return "library-" + i; }
