@@ -2,12 +2,72 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createServer } from 'node:http';
 import { randomUUID } from 'node:crypto';
-import { createMemberSessionClient, parseMemberIdentity } from '../src/memberSession.ts';
+import { createMemberSessionClient, MemberRequestError, parseMemberIdentity } from '../src/memberSession.ts';
 
 const a = { id: '9007199254740994', email: 'a@example.test', nickname: '첫 회원', createdAt: '2026-11-07T01:00:00Z' };
 const b = { id: '2', email: 'b@example.test', nickname: '다른 회원', createdAt: '2026-11-07T02:00:00Z' };
 const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 const deferred = () => { let resolve; const promise = new Promise(r => { resolve = r; }); return { promise, resolve }; };
+
+test('회원 PNG는 쿠키를 포함하여 Blob으로 받고 JSON 파서를 호출하지 않습니다.', async t => {
+  const calls = [];
+  const png = new Blob([new Uint8Array([137, 80, 78, 71])], { type: 'image/png' });
+  let page = { ok: true, status: 200, headers: new Headers({ 'Content-Type': 'image/png' }),
+    blob: async () => png, json: () => assert.fail('PNG를 JSON으로 읽었습니다.') };
+  const client = createMemberSessionClient('https://api.example.test', async (url, init) => {
+    calls.push({ url, init });
+    return url.endsWith('/api/auth/session') ? json(a) : page;
+  });
+  t.after(() => client.dispose());
+  await client.refresh();
+  const path = '/api/members/works/magazine/magazine/pages/1?contentVersion=3';
+  assert.equal(await client.requestPng(path), png);
+  assert.equal(calls.at(-1).url, 'https://api.example.test' + path);
+  assert.equal(calls.at(-1).init.credentials, 'include');
+  page = json({ code: 'PURCHASE_REQUIRED' }, 402);
+  await assert.rejects(client.requestPng(path), failure => failure instanceof MemberRequestError && failure.status === 402);
+  page = json({ unexpected: true });
+  await assert.rejects(client.requestPng(path), /형식/);
+  await assert.rejects(client.requestPng('/works/public'), /경로/);
+});
+
+test('PNG 본문을 받는 중 회원이 바뀌면 지연된 이미지 바이트를 반환하지 않습니다.', async t => {
+  let identity = a;
+  const bytes = deferred(), started = deferred();
+  const client = createMemberSessionClient('https://api.example.test', async url => {
+    if (url.endsWith('/api/auth/session')) return json(identity);
+    return { ok: true, status: 200, headers: new Headers({ 'Content-Type': 'image/png' }), blob: () => { started.resolve(); return bytes.promise; } };
+  });
+  t.after(() => client.dispose());
+  await client.refresh();
+  const pending = client.requestPng('/api/members/works/issue/magazine/pages/1?contentVersion=1');
+  const rejected = assert.rejects(pending, { name: 'AbortError' });
+  await started.promise;
+  identity = b; await client.refresh();
+  bytes.resolve(new Blob(['이전 회원의 페이지'], { type: 'image/png' }));
+  await rejected;
+  assert.equal(client.getSnapshot().member.id, b.id);
+});
+
+test('화면의 취소 신호는 회원 요청에도 전달되며 늦은 JSON 응답을 버립니다.', async t => {
+  const body = deferred(), started = deferred();
+  let receivedSignal;
+  const client = createMemberSessionClient('https://api.example.test', async (url, init) => {
+    if (url.endsWith('/api/auth/session')) return json(a);
+    receivedSignal = init.signal;
+    return { ok: true, status: 200, json: () => { started.resolve(); return body.promise; } };
+  });
+  t.after(() => client.dispose());
+  await client.refresh();
+  const controller = new AbortController();
+  const pending = client.request('/api/members/works/book/chapters/1', { signal: controller.signal });
+  const rejected = assert.rejects(pending, { name: 'AbortError' });
+  await started.promise;
+  controller.abort();
+  assert.equal(receivedSignal.aborted, true);
+  body.resolve({ body: '취소된 본문' });
+  await rejected;
+});
 
 test('로그인 확인 실패는 미인증 화면의 세대를 바꾸지 않으며 재시도 중에는 확인 상태를 표시합니다.', async () => {
   let requester = async () => { throw new Error('연결 실패'); };

@@ -17,18 +17,19 @@ public class ChapterTextService {
     private final BookRepository books;
     private final ChapterRepository chapters;
     private final PlainTextSource source;
+    private final TextVersionRegistry versions;
     private final Clock clock;
 
     @Autowired
-    public ChapterTextService(BookRepository books, ChapterRepository chapters, PlainTextSource source) {
-        this(books, chapters, source, Clock.systemUTC());
+    public ChapterTextService(BookRepository books, ChapterRepository chapters, PlainTextSource source, TextVersionRegistry versions) {
+        this(books, chapters, source, versions, Clock.systemUTC());
     }
 
-    ChapterTextService(BookRepository books, ChapterRepository chapters, PlainTextSource source, Clock clock) {
-        this.books = books; this.chapters = chapters; this.source = source; this.clock = clock;
+    ChapterTextService(BookRepository books, ChapterRepository chapters, PlainTextSource source, TextVersionRegistry versions, Clock clock) {
+        this.books = books; this.chapters = chapters; this.source = source; this.versions = versions; this.clock = clock;
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public ChapterTextResponse read(String slug, String chapterId) {
         if (slug == null || slug.length() > 120 || !slug.matches("[a-z0-9-]+")
                 || chapterId == null || chapterId.length() > 80 || !chapterId.matches("[A-Za-z0-9_-]+")) {
@@ -40,11 +41,13 @@ public class ChapterTextService {
         for (int i = 0; i < published.size(); i++) if (published.get(i).getId().toString().equals(chapterId)) index = i;
         if (index < 0) throw notFound();
         var refs = published.stream().map(c -> new ChapterTextResponse.ChapterRef(c.getId().toString(), c.getTitle(), c.getChapterNo())).toList();
-        var text = source.read(published.get(index).getContentUrl());
+        var chapter = published.get(index);
+        var text = source.read(chapter.getContentUrl());
+        versions.pin(chapter.getId(), chapter.getContentVersion(), text.version());
         return new ChapterTextResponse(slug, book.getTitle(), WorkMetadata.kind(book.getContentType()),
                 refs.get(index), refs, index, index == 0 ? null : refs.get(index - 1),
                 index + 1 == refs.size() ? null : refs.get(index + 1),
-                text.body(), text.characterCount(), published.get(index).getContentVersion(), text.version());
+                text.body(), text.characterCount(), chapter.getContentVersion(), text.version());
     }
 
     private static ResponseStatusException notFound() {

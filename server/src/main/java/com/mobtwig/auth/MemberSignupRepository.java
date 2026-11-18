@@ -11,7 +11,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.stereotype.Repository;
 
-/** 가입 레코드, 기본 읽기 설정, 동의 원문을 서비스 트랜잭션에서 저장합니다. */
+/** 가입 레코드, 기본 읽기 설정, 버전별 약관 및 동의 이력을 서비스 트랜잭션에서 저장합니다. */
 @Repository
 public class MemberSignupRepository {
     private static final String DUPLICATE_EMAIL = "이미 사용 중인 이메일입니다.";
@@ -65,11 +65,32 @@ public class MemberSignupRepository {
 
     public void insertConsents(long id, List<SignupPolicies.Document> documents, Instant agreedAt) {
         var timestamp = Timestamp.from(agreedAt);
+        for (var document : documents) {
+            ensureDocumentVersion(document);
+        }
         jdbc.batchUpdate("""
-                INSERT INTO member_policy_consent
-                    (member_id,document_kind,document_version,document_title,document_body,content_hash,temporary,agreed_at)
-                VALUES (?,?,?,?,?,?,?,?)
-                """, documents.stream().map(document -> new Object[]{id, document.kind(), document.version(),
-                document.title(), document.body(), document.contentHash(), document.temporary(), timestamp}).toList());
+                INSERT INTO member_policy_consent (member_id,document_kind,document_version,agreed_at)
+                VALUES (?,?,?,?)
+                """, documents.stream().map(document ->
+                new Object[]{id, document.kind(), document.version(), timestamp}).toList());
+    }
+
+    private void ensureDocumentVersion(SignupPolicies.Document document) {
+        jdbc.update("""
+                INSERT INTO policy_document_version
+                    (document_kind,document_version,document_title,document_body,content_hash,temporary)
+                VALUES (?,?,?,?,?,?)
+                ON DUPLICATE KEY UPDATE document_kind=policy_document_version.document_kind
+                """, document.kind(), document.version(), document.title(), document.body(),
+                document.contentHash(), document.temporary());
+        var stored = jdbc.queryForObject("""
+                SELECT document_kind,document_version,document_title,document_body,content_hash,temporary
+                FROM policy_document_version WHERE document_kind=? AND document_version=? FOR SHARE
+                """, (row, number) -> new SignupPolicies.Document(row.getString(1), row.getString(2),
+                row.getString(3), row.getString(4), row.getString(5), row.getBoolean(6)),
+                document.kind(), document.version());
+        if (!document.equals(stored)) {
+            throw new IllegalStateException("등록된 약관 버전의 내용이 다릅니다. 새 버전을 발행해 주세요.");
+        }
     }
 }

@@ -1,4 +1,5 @@
 import type { WorkKind } from './workDetails.ts';
+import { MemberRequestError, type MemberSessionClient } from './memberSession.ts';
 
 /** 공개 목차의 순서와 실제 장 번호를 구분합니다. ID는 계산하지 않습니다. */
 export interface ReaderChapter {
@@ -76,10 +77,11 @@ export function parseChapterText(value: unknown): ChapterText {
  * @param workId - 선택한 작품의 slug입니다.
  * @param chapterId - 공개 목차에서 선택한 회차 식별자입니다.
  * @param signal - 회차 변경·화면 이탈 시 요청을 취소하는 신호입니다.
+ * @param client - 로그인 상태이면 회원 쿠키 경로로 소장 본문을 조회합니다.
  * @returns 요청한 작품·회차와 일치하고 검증을 통과한 본문 응답입니다.
  * @throws Error HTTP 오류·응답 불일치·시간 초과·취소 시 발생합니다.
  */
-export async function fetchChapterText(apiUrl: string, workId: string, chapterId: string, signal: AbortSignal): Promise<ChapterText> {
+export async function fetchChapterText(apiUrl: string, workId: string, chapterId: string, signal: AbortSignal, client?: MemberSessionClient): Promise<ChapterText> {
   const controller = new AbortController();
   const abort = () => controller.abort();
   signal.addEventListener('abort', abort, { once: true });
@@ -87,22 +89,29 @@ export async function fetchChapterText(apiUrl: string, workId: string, chapterId
   let timedOut = false;
   const timer = setTimeout(() => { timedOut = true; controller.abort(); }, 15000);
   try {
-    const response = await fetch(apiUrl + '/works/' + encodeURIComponent(workId) + '/chapters/' + encodeURIComponent(chapterId),
-      { signal: controller.signal, headers: { Accept: 'application/json' } });
-    if (!response.ok) throw new Error(response.status === 404 ? '선택한 작품이나 공개 회차를 찾을 수 없습니다.'
-      : response.status === 415 ? '이 회차는 아직 텍스트 열람을 지원하지 않습니다.'
-      : response.status === 503 ? '본문이 준비되지 않았거나 읽을 수 없습니다. 다시 시도해 주십시오.'
-      : '본문을 불러오지 못했습니다. (HTTP ' + response.status + ')');
+    const path = '/works/' + encodeURIComponent(workId) + '/chapters/' + encodeURIComponent(chapterId);
     let value: unknown;
-    try { value = await response.json(); } catch (error) {
-      if (controller.signal.aborted) throw error;
-      throw new Error('본문 응답 형식이 올바르지 않습니다.');
+    if (client) value = await client.request('/api/members' + path, { signal: controller.signal });
+    else {
+      const response = await fetch(apiUrl + path,
+        { signal: controller.signal, headers: { Accept: 'application/json' } });
+      if ([401, 402].includes(response.status)) throw new MemberRequestError(response.status, null);
+      if (!response.ok) throw new Error(response.status === 404 ? '선택한 작품이나 공개 회차를 찾을 수 없습니다.'
+        : response.status === 409 ? '본문이 변경되었습니다. 새 버전이 제공되면 다시 열어 주세요.'
+        : response.status === 415 ? '이 회차는 아직 텍스트 열람을 지원하지 않습니다.'
+        : response.status === 503 ? '본문이 준비되지 않았거나 읽을 수 없습니다. 다시 시도해 주십시오.'
+        : '본문을 불러오지 못했습니다. (HTTP ' + response.status + ')');
+      try { value = await response.json(); } catch (error) {
+        if (controller.signal.aborted) throw error;
+        throw new Error('본문 응답 형식이 올바르지 않습니다.');
+      }
     }
     const result = parseChapterText(value);
     if (result.workId !== workId || result.chapter.id !== chapterId) throw new Error('선택한 작품·회차와 응답이 일치하지 않습니다.');
     return result;
   } catch (error) {
     if (timedOut) throw new Error('본문 요청 시간이 초과됐습니다. 다시 시도해 주십시오.');
+    if (error instanceof MemberRequestError && error.status === 409) error.message = '본문이 변경되었습니다. 새 버전이 제공되면 다시 열어 주세요.';
     throw error;
   } finally {
     clearTimeout(timer); signal.removeEventListener('abort', abort);

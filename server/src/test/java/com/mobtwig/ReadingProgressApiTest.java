@@ -89,11 +89,42 @@ class ReadingProgressApiTest {
         var database = jdbc.queryForObject("SELECT DATABASE()", String.class);
         assertTrue(database != null && (database.equals("mobtwig_ci") || database.matches("[A-Za-z0-9_]+_test")));
         for (String id : sessions) jdbc.update("DELETE FROM SPRING_SESSION WHERE SESSION_ID=?", id);
-        for (String table : List.of("reading_progress", "library_book", "chapter")) {
+        for (String table : List.of("highlight", "bookmark", "reading_progress", "library_book", "chapter")) {
             jdbc.update("DELETE FROM " + table + " WHERE book_id BETWEEN -9606 AND -9601");
         }
+        jdbc.update("DELETE FROM book_author WHERE book_id BETWEEN -9606 AND -9601");
         jdbc.update("DELETE FROM book WHERE id BETWEEN -9606 AND -9601");
+        jdbc.update("DELETE FROM author WHERE id=-9601");
         jdbc.update("DELETE FROM member WHERE id IN (-9601,-9602)");
+    }
+
+    @Test void savedReadingPositionAutomaticallyAppearsInOwnLibraryAndUpdatesStatus() throws Exception {
+        jdbc.update("UPDATE book SET cover_image_url='/media/covers/progress.png' WHERE id=-9601");
+        jdbc.update("INSERT INTO author(id,name) VALUES(-9601,'독서 저자')");
+        jdbc.update("INSERT INTO book_author(book_id,author_id) VALUES(-9601,-9601)");
+        var a = login("a");
+        var b = login("b");
+        String library = "/api/members/library?kind=novel";
+        assertEquals(0, ok(get(library, a)).size());
+        ok(get(path(TEXT), a));
+        assertEquals(0, ok(get(library, a)).size());
+        ok(post(TEXT, a, input(-9610, 3, 1, hash(TEXT, -9610), null), true));
+        var response = get(library, a);
+        contract("/api/members/library", response, Request.Method.GET);
+        var items = ok(response);
+        assertEquals(1, items.size());
+        assertEquals(TEXT, items.get(0).get("id").asString());
+        assertEquals("READING", items.get(0).get("libraryStatus").asString());
+        assertEquals(2, items.get(0).get("lastReadChapterNumber").asInt());
+        assertTrue(items.get(0).get("hasNextChapter").asBoolean());
+        assertEquals(0, ok(get(library, b)).size());
+        ok(post(TEXT, a, input(-9609, 2, 1, hash(TEXT, -9609), "1"), true));
+        var completed = ok(get(library, a));
+        assertEquals(1, completed.size());
+        assertEquals("COMPLETED", completed.get(0).get("libraryStatus").asString());
+        assertEquals(7, completed.get(0).get("lastReadChapterNumber").asInt());
+        assertFalse(completed.get(0).get("hasNextChapter").asBoolean());
+        assertEquals(1L, count("library_book"));
     }
 
     @Test void privateGetAndSaveRestoreFromCanonicalTextAndKeepMaximumOnReread() throws Exception {
@@ -152,11 +183,23 @@ class ReadingProgressApiTest {
         assertEquals(0, legacy.get("position").get("offset").asInt());
         String oldHash = hash(TEXT, -9610);
         ok(post(TEXT, a, input(-9610, 3, 1, oldHash, "1"), true));
-        Files.writeString(CONTENT.resolve("first.txt"), "CD");
-        assertEquals("stale", ok(get(path(TEXT), a)).get("state").asString());
+        Files.writeString(CONTENT.resolve("first.txt"), "C😀D");
+        var changed = ok(get(path(TEXT), a));
+        assertEquals("stale", changed.get("state").asString());
+        assertEquals("-9609", changed.get("position").get("chapterId").asString());
         assertError(post(TEXT, a, input(-9610, 3, 1, oldHash, "2"), true), 409, "CONTENT_CHANGED");
-        jdbc.update("UPDATE chapter SET content_version=2 WHERE id=-9610");
-        assertError(post(TEXT, a, input(-9610, 0, 1, hash(TEXT, -9610), "2"), true), 409, "CONTENT_CHANGED");
+        var hashless = input(-9610, 3, 1, null, "2");
+        hashless.remove("contentHash");
+        assertError(post(TEXT, a, hashless, true), 409, "CONTENT_CHANGED");
+        assertEquals(409, get("/works/" + TEXT + "/chapters/-9610", null).statusCode());
+        Files.writeString(CONTENT.resolve("first-v2.txt"), "C😀D");
+        jdbc.update("UPDATE chapter SET content_url='/content/first-v2.txt',char_count=4,content_version=2 WHERE id=-9610 AND content_version=1");
+        String newHash = hash(TEXT, -9610);
+        assertNotEquals(oldHash, newHash);
+        assertError(post(TEXT, a, input(-9610, 0, 1, newHash, "2"), true), 409, "CONTENT_CHANGED");
+        var newPosition = input(-9610, 3, 2, null, "2");
+        newPosition.remove("contentHash");
+        assertEquals(newHash, ok(post(TEXT, a, newPosition, true)).get("position").get("contentHash").asString());
         jdbc.update("UPDATE chapter SET published_at=NULL WHERE id=-9610");
         var missing = ok(get(path(TEXT), a));
         assertEquals("stale", missing.get("state").asString());
@@ -317,6 +360,191 @@ class ReadingProgressApiTest {
         assertEquals(200, response.statusCode(), response.body());
         return mapper.readTree(response.body());
     }
+    @Test void bookmarksArePrivateIdempotentAndHideUnpublishedMetadata() throws Exception {
+        String root = "/api/members/bookmarks";
+        assertEquals(401, get(root, null).statusCode());
+        var a = login("a");
+        var b = login("b");
+        var input = new LinkedHashMap<String, Object>();
+        input.put("workId", TEXT);
+        input.put("chapterId", "-9610");
+        input.put("offset", 0);
+        input.put("contentVersion", 1);
+        input.put("contentHash", hash(TEXT, -9610));
+        assertEquals(403, bookmarkWrite(root, a, input, false).statusCode());
+        input.put("offset", 2);
+        assertEquals(400, bookmarkWrite(root, a, input, true).statusCode());
+        input.put("offset", 3);
+        assertEquals(400, bookmarkWrite(root, a, input, true).statusCode());
+        input.put("offset", 0);
+        var response = bookmarkWrite(root, a, input, true);
+        var saved = ok(response);
+        contract(root, response, Request.Method.POST);
+        assertEquals("A😀B", saved.get("snippet").asString());
+        assertEquals(saved, ok(bookmarkWrite(root, a, input, true)));
+        assertEquals(1L, count("bookmark"));
+        assertEquals(0L, count("reading_progress"));
+        assertEquals(0L, count("library_book"));
+        assertEquals(0, ok(get(root, b)).get("items").size());
+        assertEquals(0, ok(get(root + "?workId=" + MAG, a)).get("items").size());
+        assertEquals(saved, ok(get(root + "?workId=" + TEXT, a)).get("items").get(0));
+        String uri = root + "/" + saved.get("id").asString();
+        assertEquals(403, bookmarkWrite(uri, a, null, false).statusCode());
+        assertEquals(404, bookmarkWrite(uri, b, null, true).statusCode());
+
+        Files.writeString(CONTENT.resolve("first.txt"), "바뀐 글");
+        assertEquals(409, bookmarkWrite(root, a, input, true).statusCode());
+        jdbc.update("UPDATE chapter SET content_version=2 WHERE id=-9610");
+        input.put("contentVersion", 2);
+        input.put("contentHash", hash(TEXT, -9610));
+        var stale = ok(bookmarkWrite(root, a, input, true));
+        assertEquals(saved.get("id"), stale.get("id"));
+        assertEquals("stale", stale.get("state").asString());
+        assertTrue(stale.get("snippet").isNull());
+        jdbc.update("UPDATE chapter SET published_at=NULL WHERE id=-9610");
+        var hidden = ok(get(root, a)).get("items").get(0);
+        assertEquals("hidden", hidden.get("state").asString());
+        for (String field : List.of("workId", "workTitle", "kind", "chapterTitle", "position", "snippet")) assertTrue(hidden.get(field).isNull());
+        assertEquals(204, bookmarkWrite(uri, a, null, true).statusCode());
+        assertEquals(404, bookmarkWrite(uri, a, null, true).statusCode());
+    }
+
+    @Test void magazineBookmarksRespectIssueBoundariesAndPageSize() throws Exception {
+        String root = "/api/members/bookmarks";
+        var a = login("a");
+        var input = new LinkedHashMap<String, Object>();
+        input.put("workId", MAG);
+        input.put("chapterId", "-9621");
+        input.put("offset", 9);
+        input.put("contentVersion", 1);
+        input.put("contentHash", null);
+        assertEquals(400, bookmarkWrite(root, a, input, true).statusCode());
+        input.put("offset", 6);
+        var saved = ok(bookmarkWrite(root, a, input, true));
+        assertEquals("page", saved.get("position").get("unit").asString());
+        assertTrue(saved.get("snippet").isNull());
+        input.put("workId", MAG_TWO);
+        assertEquals(404, bookmarkWrite(root, a, input, true).statusCode());
+        for (int page = 1; page <= 31; page++) {
+            jdbc.update("INSERT INTO bookmark(member_id,book_id,chapter_id,chapter_offset,content_version) VALUES(-9601,-9603,-9630,?,1)", page);
+        }
+        var first = ok(get(root + "?workId=" + MAG_TWO, a));
+        assertEquals(30, first.get("items").size());
+        assertTrue(first.get("hasNext").asBoolean());
+        assertEquals(31, first.get("items").get(0).get("position").get("offset").asInt());
+        var second = ok(get(root + "?workId=" + MAG_TWO + "&page=2", a));
+        assertEquals(1, second.get("items").size());
+        assertEquals(1, second.get("items").get(0).get("position").get("offset").asInt());
+        assertFalse(second.get("hasNext").asBoolean());
+    }
+
+    @Test void highlightsStoreExactTextAndPreserveOldRevisionAndOwnership() throws Exception {
+        String endpoint = "/api/members/highlights";
+        assertEquals(401, get(endpoint, null).statusCode());
+        var a = login("a");
+        var b = login("b");
+        var input = highlightInput(TEXT, "-9610", 1, 3, hash(TEXT, -9610));
+        assertEquals(403, bookmarkWrite(endpoint, a, input, false).statusCode());
+        input.put("endOffset", 2);
+        assertEquals(400, bookmarkWrite(endpoint, a, input, true).statusCode());
+        input.put("endOffset", 1);
+        assertEquals(400, bookmarkWrite(endpoint, a, input, true).statusCode());
+        input.put("endOffset", 3);
+        var response = bookmarkWrite(endpoint, a, input, true);
+        var original = ok(response);
+        contract(endpoint, response, Request.Method.POST);
+        assertEquals("😀", original.get("snippet").asString());
+        input.put("color", "GREEN");
+        assertEquals(original, ok(bookmarkWrite(endpoint, a, input, true)));
+        assertEquals(0L, count("reading_progress"));
+        assertEquals(0, ok(get(endpoint, b)).get("items").size());
+        String first = endpoint + "/" + original.get("id").asString();
+        assertEquals(403, bookmarkWrite(first, a, null, false).statusCode());
+        assertEquals(404, bookmarkWrite(first, b, null, true).statusCode());
+
+        Files.writeString(CONTENT.resolve("first.txt"), "A다시B");
+        assertEquals(409, bookmarkWrite(endpoint, a, input, true).statusCode());
+        jdbc.update("UPDATE chapter SET content_version=2 WHERE id=-9610");
+        input.put("contentVersion", 2);
+        input.put("contentHash", hash(TEXT, -9610));
+        var current = ok(bookmarkWrite(endpoint, a, input, true));
+        assertEquals("다시", current.get("snippet").asString());
+        assertEquals("GREEN", current.get("color").asString());
+        assertNotEquals(original.get("id"), current.get("id"));
+        assertEquals(current, ok(bookmarkWrite(endpoint, a, input, true)));
+        var items = ok(get(endpoint + "?workId=" + TEXT + "&chapterId=-9610", a)).get("items");
+        assertEquals(2, items.size());
+        assertEquals(current, items.get(0));
+        assertEquals("stale", items.get(1).get("state").asString());
+        assertTrue(items.get(1).get("snippet").isNull());
+        jdbc.update("UPDATE chapter SET published_at=NULL WHERE id=-9610");
+        var hidden = ok(get(endpoint, a)).get("items").get(0);
+        assertEquals("hidden", hidden.get("state").asString());
+        for (String field : List.of("workId", "workTitle", "kind", "chapterTitle", "range", "color", "snippet")) {
+            assertTrue(hidden.get(field).isNull(), field);
+        }
+        assertEquals(204, bookmarkWrite(first, a, null, true).statusCode());
+        assertEquals(404, bookmarkWrite(first, a, null, true).statusCode());
+    }
+
+    @Test void magazineHighlightsAllowOnePageAndRejectCrossArticleRanges() throws Exception {
+        String endpoint = "/api/members/highlights";
+        var a = login("a");
+        var input = highlightInput(MAG, "-9621", 6, 9, null);
+        assertEquals(400, bookmarkWrite(endpoint, a, input, true).statusCode());
+        input.put("endOffset", 6);
+        var saved = ok(bookmarkWrite(endpoint, a, input, true));
+        assertEquals("page", saved.get("range").get("unit").asString());
+        assertTrue(saved.get("snippet").isNull());
+        assertEquals(saved, ok(bookmarkWrite(endpoint, a, input, true)));
+        assertEquals(0, ok(get(endpoint + "?workId=" + MAG_TWO, a)).get("items").size());
+        assertEquals(400, get(endpoint + "?chapterId=-9621", a).statusCode());
+    }
+
+    private Map<String, Object> highlightInput(String slug, String chapter, int start, int end, String hash) {
+        var input = new LinkedHashMap<String, Object>();
+        input.put("workId", slug); input.put("chapterId", chapter);
+        input.put("startOffset", start); input.put("endOffset", end);
+        input.put("contentVersion", 1); input.put("contentHash", hash); input.put("color", "YELLOW");
+        return input;
+    }
+
+    @Test void hashlessWritesUsePinnedTextAndLegacyHashesAreStillVerified() throws Exception {
+        var member = login("a");
+        var write = input(-9610, 0, 1, null, null);
+        write.remove("contentHash");
+        assertError(post(TEXT, member, write, true), 409, "CONTENT_CHANGED");
+        String original = hash(TEXT, -9610);
+        var progress = ok(post(TEXT, member, write, true));
+        assertEquals(original, progress.get("position").get("contentHash").asString());
+        assertEquals(progress, ok(get(path(TEXT), member)));
+        assertEquals(1L, jdbc.queryForObject("SELECT COUNT(*) FROM reading_progress WHERE book_id=-9601 AND content_hash IS NULL AND version_bound", Long.class));
+
+        var place = new LinkedHashMap<>(write);
+        place.remove("expectedRevision");
+        place.put("workId", TEXT);
+        String bookmarks = "/api/members/bookmarks";
+        var added = ok(bookmarkWrite(bookmarks, member, place, true));
+        assertEquals(original, added.get("position").get("contentHash").asString());
+        assertEquals(1L, jdbc.queryForObject("SELECT COUNT(*) FROM bookmark WHERE book_id=-9601 AND content_hash IS NULL AND version_bound", Long.class));
+
+        jdbc.update("UPDATE reading_progress SET content_hash=?,version_bound=FALSE WHERE book_id=-9601", original);
+        jdbc.update("UPDATE bookmark SET content_hash=?,version_bound=FALSE WHERE book_id=-9601", original);
+        assertEquals("saved", ok(get(path(TEXT), member)).get("state").asString());
+        assertEquals("available", ok(get(bookmarks, member)).get("items").get(0).get("state").asString());
+        jdbc.update("UPDATE reading_progress SET content_hash=NULL WHERE book_id=-9601");
+        jdbc.update("UPDATE bookmark SET content_hash=NULL WHERE book_id=-9601");
+        assertEquals("stale", ok(get(path(TEXT), member)).get("state").asString());
+        assertEquals("stale", ok(get(bookmarks, member)).get("items").get(0).get("state").asString());
+    }
+
+    private HttpResponse<String> bookmarkWrite(String path, Session session, Map<String, Object> input, boolean csrf) throws Exception {
+        var builder = base(path).header("Cookie", session.cookie());
+        if (csrf) builder.header("X-CSRF-TOKEN", session.token());
+        return send(input == null ? builder.DELETE().build() : builder.header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(input))).build());
+    }
+
     private void contract(HttpResponse<String> response, Request.Method method) throws Exception {
         contract(path(TEXT), response, method);
     }

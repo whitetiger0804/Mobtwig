@@ -13,9 +13,7 @@ export interface EmptyStateProps {
    */
   title?: string;
   /**
-   * 제목 아래에 표시하는 안내 문구입니다.
-   *
-   * @defaultValue `'데이터를 불러오면 이곳에 표시됩니다.'`
+   * 제목 아래에 필요한 안내 문구입니다. 생략하면 제목만 표시합니다.
    */
   description?: string;
   /**
@@ -53,7 +51,7 @@ export interface EmptyStateProps {
  */
 export function EmptyState({
   title = '표시할 데이터가 없습니다.',
-  description = '데이터를 불러오면 이곳에 표시됩니다.',
+  description,
   compact = false,
   tone = 'light',
   style,
@@ -61,7 +59,7 @@ export function EmptyState({
   return (
     <View style={[s.empty, compact && { paddingVertical: 12, paddingHorizontal: 8, gap: 8 }, style]} accessibilityLiveRegion="polite">
       <Text style={[s.subtitle, { textAlign: 'center' }, compact && { fontSize: 12, lineHeight: 18, fontWeight: '400', color: colors.muted }, tone === 'dark' && { color: '#F3F6EC' }]}>{title}</Text>
-      {!compact && <Text style={[s.muted, { textAlign: 'center' }, tone === 'dark' && { color: '#CDD8CE' }]}>{description}</Text>}
+      {!compact && !!description && <Text style={[s.muted, { textAlign: 'center' }, tone === 'dark' && { color: '#CDD8CE' }]}>{description}</Text>}
     </View>
   );
 }

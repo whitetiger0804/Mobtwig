@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { adjacentMagazinePage, magazineArticle, magazinePageUrl, parseMagazineIssue, startMagazinePage } from '../src/magazineReader.ts';
+import { adjacentMagazinePage, fetchMagazineIssue, fetchMagazinePage, magazineArticle, magazinePageUrl, parseMagazineIssue, startMagazinePage } from '../src/magazineReader.ts';
+import { MemberRequestError } from '../src/memberSession.ts';
 
 const issue = {
   workId: 'issue-one', title: '검증 호', pageCount: 12,
@@ -10,6 +11,56 @@ const issue = {
     { chapterId: '4', title: '넷째 기사', startPage: 11, endPage: 12, contentVersion: 2 },
   ],
 };
+
+test('소장 매거진의 목차와 PNG는 회원 경로·버전을 유지하고 이미지만 데이터 URL로 표시합니다.', async t => {
+  const previous = globalThis.FileReader;
+  globalThis.FileReader = class {
+    readAsDataURL(blob) {
+      blob.arrayBuffer().then(bytes => {
+        this.result = 'data:' + blob.type + ';base64,' + Buffer.from(bytes).toString('base64');
+        this.onload();
+      });
+    }
+  };
+  t.after(() => { if (previous === undefined) delete globalThis.FileReader; else globalThis.FileReader = previous; });
+  const calls = [];
+  const png = new Blob([new Uint8Array([137, 80, 78, 71])], { type: 'image/png' });
+  const client = {
+    getSnapshot: () => ({ generation: 1 }),
+    request: async path => { calls.push(path); return issue; },
+    requestPng: async (path, signal) => { calls.push(path); assert.ok(signal instanceof AbortSignal); return png; },
+  };
+  const controller = new AbortController();
+  assert.deepEqual(await fetchMagazineIssue('', issue.workId, controller.signal, client), issue);
+  const uri = await fetchMagazinePage('', issue, 6, controller.signal, client);
+  assert.equal(uri, 'data:image/png;base64,iVBORw==');
+  assert.deepEqual(calls, ['/api/members/works/issue-one/magazine', '/api/members/works/issue-one/magazine/pages/6?contentVersion=3']);
+  client.requestPng = async () => { throw new MemberRequestError(402, 'PURCHASE_REQUIRED'); };
+  await assert.rejects(fetchMagazinePage('', issue, 6, controller.signal, client), failure => failure.status === 402);
+});
+
+test('이미지 디코딩 도중 계정 전환이나 페이지 취소가 발생하면 데이터 URL을 버립니다.', async t => {
+  const previous = globalThis.FileReader;
+  let reader;
+  globalThis.FileReader = class {
+    readAsDataURL() { reader = this; }
+    abort() { this.aborted = true; }
+  };
+  t.after(() => { if (previous === undefined) delete globalThis.FileReader; else globalThis.FileReader = previous; });
+  for (const reason of ['member', 'page']) {
+    let generation = 1;
+    const client = { getSnapshot: () => ({ generation }), requestPng: async () => new Blob(['png'], { type: 'image/png' }) };
+    const controller = new AbortController();
+    const pending = fetchMagazinePage('', issue, 6, controller.signal, client);
+    const rejected = assert.rejects(pending, { name: 'AbortError' });
+    await new Promise(resolve => setImmediate(resolve));
+    if (reason === 'member') generation++;
+    else controller.abort();
+    reader.result = 'data:image/png;base64,cG5n';
+    reader.onload();
+    await rejected;
+  }
+});
 
 test('호 식별자와 겹치지 않는 쪽 범위를 검증합니다.', () => {
   assert.deepEqual(parseMagazineIssue(issue, 'issue-one'), issue);

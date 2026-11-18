@@ -110,10 +110,10 @@ export async function readReadingProgress(client: MemberSessionClient, slug: str
  */
 export async function saveReadingProgress(client: MemberSessionClient, slug: string, position: ReadingPosition,
   expectedRevision: string | null): Promise<ReadingProgress> {
-  const { chapterId, offset, contentVersion, contentHash } = position;
+  const { chapterId, offset, contentVersion } = position;
   const result = parseReadingProgress(await client.request(path(slug), {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chapterId, offset, contentVersion, contentHash, expectedRevision }),
+    body: JSON.stringify({ chapterId, offset, contentVersion, expectedRevision }),
   }), slug);
   if (result.state !== 'saved' || !sameReadingPosition(result.position, position)) throw invalid();
   return result;

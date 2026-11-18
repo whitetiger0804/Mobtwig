@@ -20,7 +20,17 @@ public final class WorkMetadata {
      * @return 쉼표로 연결한 필수 저자 이름입니다.
      */
     public static String authors(List<Author> authors) {
-        return requiredText(authors.stream().map(author -> requiredText(author.getName(), "저자"))
+        return authorNames(authors.stream().map(Author::getName).toList());
+    }
+
+    /**
+     * JDBC로 읽은 저자 이름에 홈·상세와 같은 표시 규칙을 적용합니다.
+     * @param names 저자 ID 오름차순의 이름입니다.
+     * @return 쉼표와 공백으로 연결한 필수 저자 이름입니다.
+     * @throws IllegalStateException 저자가 없거나 이름이 비어 있으면 발생합니다.
+     */
+    public static String authorNames(List<String> names) {
+        return requiredText(names.stream().map(name -> requiredText(name, "저자"))
                 .collect(Collectors.joining(", ")), "저자");
     }
 

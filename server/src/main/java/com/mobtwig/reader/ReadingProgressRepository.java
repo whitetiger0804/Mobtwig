@@ -38,11 +38,11 @@ public class ReadingProgressRepository {
 
     Optional<Saved> saved(long member, long book) {
         return jdbc.query("""
-                SELECT chapter_id,chapter_offset,max_chapter_id,content_version,content_hash,revision,last_read_at
+                SELECT chapter_id,chapter_offset,max_chapter_id,content_version,content_hash,version_bound,revision,last_read_at
                 FROM reading_progress WHERE member_id=? AND book_id=?
                 """, (rs, row) -> new Saved(rs.getLong("chapter_id"), rs.getInt("chapter_offset"),
                 rs.getObject("max_chapter_id", Long.class), rs.getInt("content_version"), rs.getString("content_hash"),
-                rs.getLong("revision"), rs.getTimestamp("last_read_at").toInstant()), member, book).stream().findFirst();
+                rs.getBoolean("version_bound"), rs.getLong("revision"), rs.getTimestamp("last_read_at").toInstant()), member, book).stream().findFirst();
     }
 
     String libraryStatus(long member, long book) {
@@ -54,16 +54,16 @@ public class ReadingProgressRepository {
         if (existing) {
             jdbc.update("""
                     UPDATE reading_progress
-                    SET chapter_id=?,chapter_offset=?,max_chapter_id=?,content_version=?,content_hash=?,revision=?,last_read_at=?
+                    SET chapter_id=?,chapter_offset=?,max_chapter_id=?,content_version=?,content_hash=NULL,version_bound=?,revision=?,last_read_at=?
                     WHERE member_id=? AND book_id=?
-                    """, next.chapter(), next.offset(), next.maxChapter(), next.version(), next.hash(), next.revision(),
+                    """, next.chapter(), next.offset(), next.maxChapter(), next.version(), next.bound(), next.revision(),
                     Timestamp.from(next.lastReadAt()), member, book);
         } else {
             jdbc.update("""
                     INSERT INTO reading_progress
-                      (member_id,book_id,chapter_id,chapter_offset,max_chapter_id,content_version,content_hash,revision,last_read_at)
+                      (member_id,book_id,chapter_id,chapter_offset,max_chapter_id,content_version,version_bound,revision,last_read_at)
                     VALUES (?,?,?,?,?,?,?,?,?)
-                    """, member, book, next.chapter(), next.offset(), next.maxChapter(), next.version(), next.hash(), next.revision(),
+                    """, member, book, next.chapter(), next.offset(), next.maxChapter(), next.version(), next.bound(), next.revision(),
                     Timestamp.from(next.lastReadAt()));
         }
     }
@@ -81,5 +81,5 @@ public class ReadingProgressRepository {
         List<Chapter> visible() { return chapters.stream().filter(Chapter::visible).toList(); }
     }
     record Chapter(long id, int number, String title, int version, Integer startPage, String url, boolean visible) { }
-    record Saved(long chapter, int offset, Long maxChapter, int version, String hash, long revision, Instant lastReadAt) { }
+    record Saved(long chapter, int offset, Long maxChapter, int version, String hash, boolean bound, long revision, Instant lastReadAt) { }
 }

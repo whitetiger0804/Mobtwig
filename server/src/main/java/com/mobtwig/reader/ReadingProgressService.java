@@ -2,10 +2,12 @@ package com.mobtwig.reader;
 
 import java.time.Instant;
 import java.util.Objects;
+import com.mobtwig.purchase.PurchaseService;
 
 import com.mobtwig.reader.ReadingProgressRepository.Chapter;
 import com.mobtwig.reader.ReadingProgressRepository.Saved;
 import com.mobtwig.reader.ReadingProgressRepository.Work;
+import com.mobtwig.reader.ReadingCoordinates.Checked;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -16,10 +18,17 @@ import org.springframework.web.server.ResponseStatusException;
 public class ReadingProgressService {
     private final ReadingProgressRepository repository;
     private final PlainTextSource source;
+    private final ReadingCoordinates coordinates;
+    private final PurchaseService purchases;
+    private final TextVersionRegistry versions;
 
-    public ReadingProgressService(ReadingProgressRepository repository, PlainTextSource source) {
+    public ReadingProgressService(ReadingProgressRepository repository, PlainTextSource source, ReadingCoordinates coordinates,
+            PurchaseService purchases, TextVersionRegistry versions) {
         this.repository = repository;
         this.source = source;
+        this.coordinates = coordinates;
+        this.purchases = purchases;
+        this.versions = versions;
     }
 
     @Transactional(readOnly = true)
@@ -32,14 +41,17 @@ public class ReadingProgressService {
         Chapter chapter = work.visible().stream().filter(c -> c.id() == saved.chapter()).findFirst().orElse(null);
         if (chapter != null) {
             try {
-                var checked = verify(work, chapter, saved.offset(), saved.version(), saved.hash());
+                var checked = coordinates.verifyPosition(work, chapter, saved.offset(), saved.version(), saved.hash(), saved.bound(), false);
                 return response(work, "saved", saved, checked, library);
             } catch (ResponseStatusException unavailable) {
                 // 구버전·불일치·일시적 본문 부재에서는 기존 저장값을 유지합니다.
             }
         }
         var fallback = start(work, chapter);
-        if (fallback == null && !Objects.equals(first, chapter)) fallback = start(work, first);
+        if (fallback == null) {
+            fallback = work.visible().stream().filter(candidate -> !Objects.equals(candidate, chapter)).limit(64)
+                    .map(candidate -> start(work, candidate)).filter(Objects::nonNull).findFirst().orElse(null);
+        }
         return response(work, "stale", saved, fallback, library);
     }
 
@@ -53,15 +65,16 @@ public class ReadingProgressService {
         Work work = work(slug, now, true);
         Chapter chapter = work.visible().stream().filter(c -> c.id() == input.chapterId()).findFirst()
                 .orElseThrow(ReadingProgressFailure::notFound);
+        purchases.requireRead(member, work.id(), chapter.id());
         Saved previous = repository.saved(member, work.id()).orElse(null);
         Long currentRevision = previous == null ? null : previous.revision();
         if (!Objects.equals(currentRevision, input.expectedRevision())) throw ReadingProgressFailure.conflict();
-        var checked = verify(work, chapter, input.offset(), input.contentVersion(), input.contentHash());
+        var checked = coordinates.verifyPosition(work, chapter, input.offset(), input.contentVersion(), input.contentHash(), false, true);
 
         var previousMax = previous == null ? null : maxChapter(work, previous);
         long max = previousMax != null && previousMax.number() > chapter.number() ? previousMax.id() : chapter.id();
         long revision = previous == null ? 1 : Math.addExact(previous.revision(), 1);
-        var next = new Saved(chapter.id(), input.offset(), max, chapter.version(), checked.hash(), revision, now);
+        var next = new Saved(chapter.id(), input.offset(), max, chapter.version(), null, !work.magazine(), revision, now);
         String library = completed(work, checked) ? "COMPLETED" : "READING";
         repository.store(member, work.id(), next, previous != null);
         repository.storeLibrary(member, work.id(), library);
@@ -73,34 +86,16 @@ public class ReadingProgressService {
         return repository.work(slug, now, writing).orElseThrow(ReadingProgressFailure::notFound);
     }
 
-    private Checked verify(Work work, Chapter chapter, int offset, int version, String hash) {
-        if (chapter.version() != version) throw ReadingProgressFailure.contentChanged();
-        if (work.magazine()) {
-            if (hash != null) throw ReadingProgressFailure.invalid();
-            var pages = MagazineLayout.range(work, chapter);
-            if (!pages.contains(offset)) throw ReadingProgressFailure.invalid();
-            return new Checked(chapter, offset, pages.start(), pages.end(), null);
-        }
-        if (hash == null) throw ReadingProgressFailure.invalid();
-        var text = source.read(chapter.url());
-        if (!hash.equals(text.version())) throw ReadingProgressFailure.contentChanged();
-        if (offset < 0 || offset > text.characterCount()
-                || offset > 0 && offset < text.characterCount()
-                && Character.isHighSurrogate(text.body().charAt(offset - 1)) && Character.isLowSurrogate(text.body().charAt(offset))) {
-            throw ReadingProgressFailure.invalid();
-        }
-        return new Checked(chapter, offset, 0, text.characterCount(), text.version());
-    }
-
     private Checked start(Work work, Chapter chapter) {
         if (chapter == null) return null;
         try {
             if (work.magazine()) {
                 var pages = MagazineLayout.range(work, chapter);
-                return new Checked(chapter, pages.start(), pages.start(), pages.end(), null);
+                return new Checked(chapter, pages.start(), pages.start(), pages.end(), null, null);
             }
             var text = source.read(chapter.url());
-            return new Checked(chapter, 0, 0, text.characterCount(), text.version());
+            versions.verify(chapter.id(), chapter.version(), text.version(), false);
+            return new Checked(chapter, 0, 0, text.characterCount(), text.version(), text.body());
         } catch (ResponseStatusException unavailable) {
             return null;
         }
@@ -143,7 +138,14 @@ public class ReadingProgressService {
         long reached = position.offset();
         try {
             for (var chapter : visible) {
-                int length = chapter.id() == position.chapter().id() ? position.end() : source.read(chapter.url()).characterCount();
+                int length;
+                if (chapter.id() == position.chapter().id()) {
+                    length = position.end();
+                } else {
+                    var text = source.read(chapter.url());
+                    versions.verify(chapter.id(), chapter.version(), text.version(), false);
+                    length = text.characterCount();
+                }
                 total += length;
                 if (total > 2_000_000) return null;
                 if (chapter.number() < position.chapter().number()) reached += length;
@@ -160,5 +162,4 @@ public class ReadingProgressService {
 
     /** 쓰기 요청은 소유자와 진행률을 받지 않습니다. */
     public record Input(long chapterId, int offset, int contentVersion, String contentHash, Long expectedRevision) { }
-    private record Checked(Chapter chapter, int offset, int start, Integer end, String hash) { }
 }
