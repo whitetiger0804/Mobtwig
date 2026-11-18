@@ -37,10 +37,15 @@ node server/mock/index.mjs
 | `GET /works/:id` | 해당 ID의 작품 상세 정보 객체 하나를 반환합니다. |
 | `GET /works?query={query}&kind={kind}` | `{query}`는 검색어, `{kind}`는 `all`, `book`, `magazine`, `novel` 중 선택한 종류입니다. 제목·저자·출판사 부분 검색 결과를 `id`, `title`, `imageUrl`, `kind` 배열로 반환하며 결과가 없으면 `[]`입니다. 종류는 생략할 수 있습니다. |
 | `GET /api/members/recent-works` | `fixtures/recent-works.json`의 최근 본 작품 고정 예시를 반환합니다. 인증을 확인하지 않으며 기록 요청(`POST /api/members/recent-works/{slug}`)은 제공하지 않습니다. |
+| `GET /api/members/library?kind={kind}` | `fixtures/library.json`의 서재 고정 예시를 반환합니다. 종류는 `all`, `book`, `magazine`, `novel`이며 생략하면 전체입니다. |
 | `GET /media/covers/...` | 공용 `media/covers/`의 도서·매거진·웹소설 표지 PNG를 반환합니다. |
 | `GET /media/backgrounds/...` | 공용 `media/backgrounds/`의 배경 PNG를 반환합니다. |
 
 홈 요청의 `kind`는 반드시 한 번 지정합니다. 누락하거나 지원하지 않는 값을 지정하면 `400`, 없는 경로나 작품 ID는 `404`, GET 이외의 메서드는 `405`를 반환합니다. 파일을 읽거나 JSON을 해석하지 못하면 `500`을 반환합니다. 웹 개발 화면의 GET 요청을 위해 CORS를 허용하며 인증이나 개인정보 처리에는 사용하지 않습니다.
+
+서재 예시는 작품 종류에 맞는 항목만 JSON 배열로 반환하며 예시 파일의 순서를 유지합니다. 일치하는 항목이 없으면 `200`과 `[]`를 반환합니다. `kind`가 비어 있거나 지원하지 않는 값이거나 여러 번 지정되면 `400`, 파일이 없거나 올바른 JSON 배열이 아니면 `500`을 반환합니다. 응답에는 `Cache-Control: no-store`를 사용합니다. 예시 파일을 바꾸면 다음 조회에 반영됩니다.
+
+예를 들어 서버를 실행한 뒤 `curl.exe "http://127.0.0.1:8090/api/members/library?kind=novel"`로 웹소설의 최근 열람 회차와 다음 회차 유무를 확인할 수 있습니다. 이 경로는 쿠키나 회원 ID에 관계없이 누구에게나 동일한 합성 예시를 반환하므로 예시 파일에는 실제 회원 데이터나 토큰을 넣지 않습니다. 앱의 로그인·독서 위치 저장·본인 서재 표시를 연결해서 테스트하려면 실제 회원 API가 있는 Spring 개발 서버와 테스트 계정을 사용합니다.
 
 `fixtures/home.json`의 각 응답은 `{ "version": 1, "sections": [...] }` 형태입니다. 섹션은 `bannerCarousel`(배너 목록), `featuredWork`(좌측 정보·우측 표지의 추천 작품), `workShelf`(작품 목록), `linkRow`(바로가기 목록) 중 하나를 지정합니다. 서버에서 섹션의 제목·순서·항목 수를 바꾸면 앱이 그 구성을 렌더링합니다. `bannerCarousel`은 배경 이미지와 문구를 표시하며, 별도 표지 배치가 필요하면 `featuredWork`를 선택합니다.
 

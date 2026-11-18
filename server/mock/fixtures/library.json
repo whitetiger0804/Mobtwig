@@ -1,0 +1,46 @@
+[
+  {
+    "id": "novel-record",
+    "title": "괴이청 야간기록관",
+    "author": "백서림",
+    "imageUrl": "/media/covers/웹소설/괴이청 야간기록관.png",
+    "kind": "novel",
+    "libraryStatus": "READING",
+    "lastReadChapterNumber": 2,
+    "statistics": { "views": 8400, "recommendations": 320, "chapterCount": 14 },
+    "hasNextChapter": true
+  },
+  {
+    "id": "book-quiet",
+    "title": "고요를 연습하는 시간",
+    "author": "한서윤",
+    "imageUrl": "/media/covers/도서/고요를 연습하는 시간.png",
+    "kind": "book",
+    "libraryStatus": "WANT_TO_READ",
+    "lastReadChapterNumber": null,
+    "statistics": null,
+    "hasNextChapter": false
+  },
+  {
+    "id": "magazine-frame",
+    "title": "FRAME 디자인 저널",
+    "author": "FRAME 편집부",
+    "imageUrl": "/media/covers/매거진/FRAME 디자인 저널.png",
+    "kind": "magazine",
+    "libraryStatus": "READING",
+    "lastReadChapterNumber": 1,
+    "statistics": null,
+    "hasNextChapter": true
+  },
+  {
+    "id": "novel-dungeon",
+    "title": "퇴근 후 던전 관리인",
+    "author": "이월",
+    "imageUrl": "/media/covers/웹소설/퇴근 후 던전 관리인.png",
+    "kind": "novel",
+    "libraryStatus": "COMPLETED",
+    "lastReadChapterNumber": 5,
+    "statistics": { "views": 5400, "recommendations": 190, "chapterCount": 5 },
+    "hasNextChapter": false
+  }
+]
