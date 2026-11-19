@@ -143,7 +143,6 @@ function Shell() {
             {(branded || route.screen === 'search' || route.screen === 'library') && <IconButton icon="bell" label="알림" iconSize={26} style={styles.headerIconButton} onPress={() => app.navigate({ screen: 'notifications' })} />}
             {(branded || route.screen === 'search' || route.screen === 'library') && <IconButton icon="user" label="마이페이지" iconSize={26} style={styles.headerIconButton} onPress={() => app.navigate({ screen: 'my' })} />}
             {route.screen === 'my' && <View style={styles.roundHeaderAction}><IconButton icon="gear" label="계정 설정" onPress={() => app.navigate({ screen: 'account' })} /></View>}
-            {route.screen === 'detail' && <IconButton icon="share" label="공유" onPress={() => app.navigate({ screen: 'share' })} />}
             {route.screen === 'post' && <IconButton icon="more" label="게시글 메뉴" onPress={() => app.navigate({ screen: 'postMenu' })} />}
             {route.screen === 'reviews' && route.workId && <Action label="리뷰 쓰기" compact style={styles.headerAction}
               onPress={() => app.navigate({ screen: 'reviewWrite', kind: route.kind, workId: route.workId, workTitle: route.workTitle })} />}

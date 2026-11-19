@@ -84,7 +84,7 @@ export type { ReadingPreferences } from './readingPreferences';
 /** 바탕 화면을 유지한 채 하단 패널로 여는 화면 이름의 집합입니다. */
 const overlays = new Set<Screen>([
   'readingSettings', 'filters', 'libraryManage',
-  'postMenu', 'commentCompose', 'withdraw',
+  'postMenu', 'commentCompose', 'withdraw', 'share',
 ]);
 
 /**
