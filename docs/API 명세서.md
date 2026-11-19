@@ -14,6 +14,14 @@
 
 후속 본문·독서 기록 API의 식별자·표시 텍스트·UTF-16 offset·매거진 쪽 번호·개정 시 처리 기준은 [본문·독서위치 규약 v1](본문·독서위치%20규약.md)(#18)을 따릅니다. 해당 문서의 논리 필드 예시는 현재 HTTP API에 추가된 경로/응답이 아니며, 후속 구현 시 OpenAPI에 반영합니다.
 
+## 공유 작품 웹 안내 · #63~#65
+
+`GET /s/works/{slug}`는 로그인 없이 모바일 웹 안내 HTML(`text/html`)을 제공합니다. slug는 영문 소문자·숫자·하이픈 1~120자입니다. 형식이 맞으면 HTML은 200이며 작품의 존재·공개 여부는 브라우저에서 기존 `GET /works/{slug}`를 쿠키 없이 한 번 조회해 확인합니다. 상세 조회의 기존 조회수 집계가 적용되며 자동 폴링은 하지 않습니다. 실패한 조회는 사용자가 재시도할 수 있습니다. 상세 404는 공개 작품 없음, 기타 통신·응답 오류는 재시도 안내로 표시합니다.
+
+HTML은 `Cache-Control: no-store`, `Referrer-Policy: no-referrer`와 CSP를 사용하며 JavaScript·CSS·API는 같은 origin에서 읽습니다. `GET /share/app.js`, `GET /share/work.js`, `GET /share/style.css`, `GET /share/header.png`는 공개 정적 자원입니다. 제목·저자는 DOM 텍스트로 표시하고 표지 주소는 HTTP(S) 또는 서버 기준 절대 경로를 검증하여 사용합니다. query의 제목·문장·이동 주소를 HTML에 삽입하지 않습니다.
+
+앱의 공유 origin은 `EXPO_PUBLIC_SHARE_BASE_URL`이며 기본값은 `https://mobtwig.xn--3h3b098b.kro.kr`입니다. 안내 페이지의 앱 열기는 `mobtwig://works/{slug}`를 사용합니다. 설치 배포 주소가 없어 ‘설치 준비 중’으로 표시하며, 설치 후에는 같은 공유 링크를 다시 열도록 안내합니다. HTTPS OS 자동 연결의 서명·도메인 검증 설정과 실제 설치 전후 검증은 추후 확인 대상입니다.
+
 ## 하이라이트 · #40
 
 `GET /api/members/highlights`는 본인의 기록을 저장 시각과 ID 내림차순으로 반환합니다. 선택적 `workId`는 작품 slug이며 `chapterId`는 작품과 함께 지정합니다. `page`는 1부터 시작하고 응답은 최대 30건의 `items`, `page`, `hasNext`입니다.
@@ -195,6 +203,8 @@ Swagger UI는 자신을 제공한 서버에 요청합니다. 관리자 POST 요�
 | GET | `/works?query={query}&kind={kind}` | 공개 조회이며 query가 필수입니다. | 200 작품 검색 결과 배열입니다. |
 | GET | `/sdui/home?kind={kind}` | 공개 조회이며 kind가 필수입니다. | 200 홈 SDUI입니다. |
 | GET | `/works/{slug}` | 공개 작품만 조회합니다. | 200 작품 상세입니다. |
+| GET | `/s/works/{slug}` | 공개 공유 안내이며 브라우저가 기존 상세 API로 작품을 확인합니다. | 200 HTML 안내입니다. |
+| GET | `/share/{file}` | 공유 안내의 JavaScript·CSS·로고를 제공합니다. | 200 정적 파일입니다. |
 | GET | `/works/{slug}/reviews?page={page}&size={size}` | 공개 작품의 활성 리뷰를 최신순으로 조회합니다. | 200 전체 평점 요약과 리뷰 페이지입니다. |
 | POST | `/api/members/works/{slug}/reviews` | 회원 세션과 CSRF가 필요합니다. 별점은 필수이며 본문은 선택입니다. | 201 새 리뷰입니다. |
 | GET | `/works/{slug}/chapters/{chapterId}` | 공개 작품의 공개된 회차만 조회합니다. | 200 텍스트 본문·목차·회차 이동 정보입니다. |
