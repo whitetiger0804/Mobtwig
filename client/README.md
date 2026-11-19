@@ -8,6 +8,12 @@ React Native와 Expo를 사용하는 TypeScript 클라이언트입니다. 홈은
 
 작품 공유는 `EXPO_PUBLIC_SHARE_BASE_URL` origin과 `/s/works/{slug}`로 주소를 만듭니다. 미설정 기본값은 `https://mobtwig.xn--3h3b098b.kro.kr`이며 선택한 API 서버와 독립적입니다. 별도 테스트 웹을 사용하면 테스트용 빌드의 환경 변수로 지정합니다. origin에는 경로·계정·쿼리·해시를 넣을 수 없습니다. 하이라이트 문장은 URL에 포함하지 않고 공유 본문에만 넣습니다. 작품 상세와 독서 화면의 공유는 패널로 열어 아래 화면과 현재 읽기 위치를 보존합니다. 운영체제 공유 결과는 완료 수신을 보장하지 않으며 사용자가 취소하거나 실패하면 같은 화면에서 다시 시도할 수 있습니다.
 
+외부 작품 링크는 `mobtwig://works/{slug}` 또는 설정한 공유 origin의 `/s/works/{slug}`만 허용합니다. 서버 선택·읽기 설정·로그인 초기화 중 들어온 링크를 보관하고 최초 인증 확인 후 공개 작품 상세를 엽니다. 실행 중의 링크도 같은 상세로 이동합니다. 쿼리·해시·인코딩된 경로·외부 origin은 허용하지 않습니다. 잘못된 링크는 링크 안내, 조회할 수 없는 작품은 상세 오류 화면으로 구분합니다.
+
+`app.json`의 `scheme: mobtwig`, Android 패키지 `com.whitetiger0804.mobtwig`를 포함한 개발 또는 배포 빌드로 검사합니다. Expo Go는 이 앱의 custom scheme 등록을 대신하지 않습니다. Android cold 검사는 `adb shell am force-stop com.whitetiger0804.mobtwig` 후 `adb shell am start -a android.intent.action.VIEW -d "mobtwig://works/novel-record" com.whitetiger0804.mobtwig`로 시작합니다. 같은 명령을 앱 실행 중 다시 보내 warm 진입을 확인합니다. 존재하지 않는 slug, 잘못된 링크와 하이라이트 공유 취소 후 위치 복귀도 확인합니다.
+
+HTTPS 주소를 OS가 앱으로 자동 연결하려면 Android 서명 지문을 포함한 도메인 검증과 iOS 앱 식별·도메인 검증 파일이 필요합니다. 현재 연결은 custom scheme과 웹 안내의 앱 열기 버튼이며 HTTPS 자동 연결·설치 후 자동 복원은 미구성입니다. 설치 후에는 원래 공유 링크를 다시 열어 같은 작품으로 이동합니다.
+
 | 도구 | 버전 |
 | --- | --- |
 | Node.js | 24.21.0 LTS |

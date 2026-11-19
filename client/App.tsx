@@ -1,5 +1,5 @@
 // #region 의존성 가져오기
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
@@ -18,11 +18,13 @@ import { CommentComposeScreen, CommunityScreen, PostMenuScreen, PostScreen, Repo
 import { ReviewCommentsScreen, ReviewsScreen, ReviewWriteScreen } from './src/ReviewScreens';
 import { ImageFullScreen, ReadingScreen, WorldScreen, WorldTermsScreen } from './src/ReadingScreens';
 import { NotificationsScreen } from './src/NotificationScreens';
+import { WorkLinkProvider, useWorkLink } from './src/WorkLinkProvider';
 // #endregion
 
 // #region 화면 제목
 /** 각 화면의 공통 헤더에 표시하는 고정 제목입니다. */
 const titles: Record<Screen, string> = {
+  linkError: '작품 링크',
   home: '홈', search: '통합 검색', detail: '작품 상세', reader: '독서', media: '앱북',
   world: '세계관', worldTerms: '세계관 용어', imageFull: '이미지 확대', library: '내 서재', records: '밑줄과 책갈피', recent: '최근 본',
   community: '커뮤니티', post: '게시글', writePost: '글쓰기',
@@ -51,6 +53,7 @@ function Content({ route }: {
   route: Route;
 }) {
   switch (route.screen) {
+    case 'linkError': return <View style={s.page}><Text accessibilityRole="alert" style={s.error}>올바른 모북이 작품 링크가 아닙니다.</Text></View>;
     case 'home': return <HomeScreen route={route} />;
     case 'search': return <SearchScreen route={route} />;
     case 'filters': return <FiltersScreen />;
@@ -229,6 +232,19 @@ interface StartupState {
   route: Route;
   /** 기기 저장소에서 복원한 읽기 설정입니다. */
   preferences: ReadingPreferences;
+  linkSequence: number;
+}
+
+function IncomingWorkLink({ initialSequence }: { initialSequence: number }) {
+  const { target } = useWorkLink();
+  const { navigate } = useApp();
+  const handled = useRef(initialSequence);
+  useEffect(() => {
+    if (!target || target.sequence === handled.current) return;
+    handled.current = target.sequence;
+    navigate(target.workId ? { screen: 'detail', workId: target.workId } : { screen: 'linkError' }, true);
+  }, [target, navigate]);
+  return null;
 }
 
 /**
@@ -236,6 +252,7 @@ interface StartupState {
  * @returns 로딩·재시도 안내 또는 초기화된 앱 화면입니다.
  */
 function AppStartup() {
+  const link = useWorkLink();
   const { state: auth, client } = useMemberAuth();
   const [preferences, setPreferences] = useState<ReadingPreferences | null>(null);
   const [settingsError, setSettingsError] = useState<string | null>(null);
@@ -255,16 +272,23 @@ function AppStartup() {
   }, [attempt]);
 
   useEffect(() => {
-    if (startup !== null || preferences === null) return;
-    if (auth.status === 'authenticated') {
-      setStartup({ route: { screen: 'home', kind: 'all' }, preferences });
-    } else if (auth.status === 'anonymous') {
-      setStartup({ route: { screen: 'login' }, preferences });
+    if (startup !== null || preferences === null || !link.ready) return;
+    if (link.target && ['authenticated', 'anonymous'].includes(auth.status)) {
+      setStartup({ route: link.target.workId ? { screen: 'detail', workId: link.target.workId } : { screen: 'linkError' },
+        preferences, linkSequence: link.target.sequence });
+      return;
     }
-  }, [auth.status, preferences, startup]);
+    if (auth.status === 'authenticated') {
+      setStartup({ route: { screen: 'home', kind: 'all' }, preferences, linkSequence: 0 });
+    } else if (auth.status === 'anonymous') {
+      setStartup({ route: { screen: 'login' }, preferences, linkSequence: 0 });
+    }
+  }, [auth.status, preferences, startup, link]);
 
   if (startup !== null) {
-    return <AppProvider initialRoute={startup.route} initialReadingPreferences={startup.preferences}><Shell /></AppProvider>;
+    return <AppProvider initialRoute={startup.route} initialReadingPreferences={startup.preferences}>
+      <IncomingWorkLink initialSequence={startup.linkSequence} /><Shell />
+    </AppProvider>;
   }
   if (settingsError !== null || auth.status === 'error') {
     return <View style={s.page}>
@@ -293,7 +317,7 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <View style={styles.outer}>
-        <ServerConnectionProvider><MemberAuthProvider><RecentWorksProvider><AppStartup /></RecentWorksProvider></MemberAuthProvider></ServerConnectionProvider>
+        <WorkLinkProvider><ServerConnectionProvider><MemberAuthProvider><RecentWorksProvider><AppStartup /></RecentWorksProvider></MemberAuthProvider></ServerConnectionProvider></WorkLinkProvider>
       </View>
     </SafeAreaProvider>
   );
