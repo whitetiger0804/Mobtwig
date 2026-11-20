@@ -12,9 +12,27 @@ React Native와 Expo를 사용하는 TypeScript 클라이언트입니다. 홈은
 
 `app.json`의 `scheme: mobtwig`, Android 패키지 `com.whitetiger0804.mobtwig`를 포함한 개발 또는 배포 빌드로 검사합니다. Expo Go는 이 앱의 custom scheme 등록을 대신하지 않습니다. Android cold 검사는 `adb shell am force-stop com.whitetiger0804.mobtwig` 후 `adb shell am start -a android.intent.action.VIEW -d "mobtwig://works/novel-record" com.whitetiger0804.mobtwig`로 시작합니다. 같은 명령을 앱 실행 중 다시 보내 warm 진입을 확인합니다. 존재하지 않는 slug, 잘못된 링크와 하이라이트 공유 취소 후 위치 복귀도 확인합니다.
 
-HTTPS 주소를 OS가 앱으로 자동 연결하려면 Android 서명 지문을 포함한 도메인 검증과 iOS 앱 식별·도메인 검증 파일이 필요합니다. 현재 연결은 custom scheme과 웹 안내의 앱 열기 버튼이며 HTTPS 자동 연결·설치 후 자동 복원은 미구성입니다. 설치 후에는 원래 공유 링크를 다시 열어 같은 작품으로 이동합니다.
+HTTPS 앱 연결은 `app.config.js`에서 공유 origin에 맞춰 준비합니다. Android는 `/s/works/` 경로의 `autoVerify` intent filter를 생성하고, iOS는 확정한 `IOS_BUNDLE_IDENTIFIER`가 있을 때 associated domain을 설정합니다. `APPLE_TEAM_ID`는 확정한 Apple 개발 팀을 사용할 때 지정합니다. 로컬 HTTP 공유 origin에서는 HTTPS 앱 연결을 추가하지 않습니다. 설정 변경 후에는 네이티브 앱을 다시 빌드해야 합니다.
 
 공유 웹 안내는 Spring 서버의 `/s/works/{slug}`에서 제공합니다. 기존 공개 `GET /works/{slug}`를 로그인 쿠키 없이 한 번 요청하고 제목·표지·종류·저자를 표시합니다. 실패 시에만 사용자 재시도를 제공하며 자동 갱신이나 폴링은 없습니다. 기존 상세 API에는 조회수 집계가 있으므로 안내 페이지 한 번의 정상 조회에도 기존 집계가 적용됩니다. query의 제목·문장·이동 주소는 사용하지 않습니다. 앱 열기는 검증된 slug의 `mobtwig://works/{slug}`이며 설치 주소는 아직 없어 ‘설치 준비 중’으로 표시합니다. 실제 설치 전후 흐름은 배포 주소가 준비된 뒤 별도 검증이 필요합니다.
+
+### HTTPS 도메인 검증 파일 준비 · #64
+
+`npm run links:files`는 지정한 출력 폴더에 Android의 `assetlinks.json`과 선택적인 iOS의 `apple-app-site-association`을 생성합니다. 배포할 Android 앱의 실제 서명 인증서 SHA-256을 사용합니다. Play 배포 시에는 Play Console의 앱 서명 인증서를 확인합니다. 개인 키나 비밀번호는 생성 도구에 전달하지 않습니다. iOS의 Bundle ID·Apple 팀 정보와 application-identifier는 Apple Developer 및 서명한 앱의 entitlement에서 확인합니다. 이전 앱은 application-identifier의 prefix와 Team ID가 다를 수 있어 AASA에는 실제 application-identifier를 입력합니다.
+
+PowerShell에서 Android 파일을 준비하는 명령입니다. `ANDROID_APP_LINKS_SHA256`은 미리 확인한 콜론 구분 32바이트 지문이며 인증서 교체 시 `--android-sha256`을 여러 번 지정할 수 있습니다.
+
+```powershell
+npm run links:files -- --output-dir .expo/app-links/.well-known --android-sha256 "$env:ANDROID_APP_LINKS_SHA256"
+```
+
+iOS도 준비된 경우 프로세스 환경의 `IOS_BUNDLE_IDENTIFIER`와 필요 시 `APPLE_TEAM_ID`를 설정한 뒤 `--ios-app-id "$env:IOS_APPLICATION_IDENTIFIER"`를 추가합니다. 이 명령은 Expo CLI와 별개로 실행하므로 프로세스 환경 변수를 사용합니다. 값이 없거나 형식·Bundle ID가 다르면 파일 생성 전에 오류로 종료합니다. 서명 정보가 미확정이면 검증 파일을 생성하지 않고 설정·단위 검사까지만 진행합니다.
+
+생성한 파일은 추후 승인된 배포에서 공유 origin의 `/.well-known/`에 HTTPS·200·`application/json`으로 제공하며 리다이렉트 없이 접근되어야 합니다. 설치 앱의 서명이 파일의 인증서와 일치해야 합니다. 현재 공개 서버 반영은 별도 배포 작업이며 설정 준비만으로 기기의 도메인 검증이 완료되지는 않습니다.
+
+Android에서 새 앱 설치와 파일 배포 후 `adb shell pm verify-app-links --re-verify com.whitetiger0804.mobtwig`, `adb shell pm get-app-links --user 0 com.whitetiger0804.mobtwig`로 검증 결과를 확인합니다. 도메인이 `verified`인지 확인한 다음 HTTPS 공유 링크를 눌러 종료·실행 상태에서 같은 작품으로 이동하는지 검사합니다. iOS는 Associated Domains 권한이 포함된 서명 앱을 실제 iPhone에 설치한 뒤 Safari·메시지의 HTTPS 링크로 확인합니다. 설치 후에는 원래 공유 링크를 다시 열어 같은 작품으로 이동합니다. 자동 설치 후 복원은 후속 검증 대상입니다.
+
+[Expo Android App Links](https://docs.expo.dev/linking/android-app-links/), [Expo iOS Universal Links](https://docs.expo.dev/linking/ios-universal-links/)와 [Apple 도메인 연결 안내](https://developer.apple.com/documentation/xcode/supporting-associated-domains)를 기준으로 합니다.
 
 | 도구 | 버전 |
 | --- | --- |
