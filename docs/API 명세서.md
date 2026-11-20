@@ -1,5 +1,14 @@
 # Mobtwig HTTP API 명세서
 
+## 공유 작품 웹 안내 · #63~#65
+
+`GET /s/works/{slug}`는 로그인 없이 모바일 웹 안내 HTML(`text/html`)을 제공합니다. slug는 영문 소문자·숫자·하이픈 1~120자입니다. 형식이 맞으면 HTML은 200이며 작품의 존재·공개 여부는 브라우저에서 기존 `GET /works/{slug}`를 쿠키 없이 한 번 조회해 확인합니다. 상세 조회의 기존 조회수 집계가 적용되며 자동 폴링은 하지 않습니다. 실패한 조회는 사용자가 재시도할 수 있습니다. 상세 404는 공개 작품 없음, 기타 통신·응답 오류는 재시도 안내로 표시합니다.
+
+HTML은 `Cache-Control: no-store`, `Referrer-Policy: no-referrer`와 CSP를 사용하며 JavaScript·CSS·API는 같은 origin에서 읽습니다. `GET /share/app.js`, `GET /share/work.js`, `GET /share/style.css`, `GET /share/header.png`는 공개 정적 자원입니다. 제목·저자는 DOM 텍스트로 표시하고 표지 주소는 HTTP(S) 또는 서버 기준 절대 경로를 검증하여 사용합니다. query의 제목·문장·이동 주소를 HTML에 삽입하지 않습니다.
+
+앱의 공유 origin은 `EXPO_PUBLIC_SHARE_BASE_URL`이며 기본값은 `https://mobtwig.xn--3h3b098b.kro.kr`입니다. 안내 페이지의 앱 열기는 `mobtwig://works/{slug}`를 사용합니다. 설치 배포 주소가 없어 ‘설치 준비 중’으로 표시하며, 설치 후에는 같은 공유 링크를 다시 열도록 안내합니다. HTTPS OS 자동 연결의 서명·도메인 검증 설정과 실제 설치 전후 검증은 추후 확인 대상입니다.
+
+
 클라이언트가 Java 소스를 읽지 않고 HTTP 요청을 작성할 수 있도록 현재 구현한 계약을 설명합니다. 필드별 타입·필수 여부·최대 길이의 정본은 [OpenAPI 명세](../server/src/main/resources/static/openapi.yaml)입니다. 클래스·메서드의 역할은 기존 Javadoc에서 확인합니다.
 
 이 문서와 명세를 포함한 커밋이 배포된 서버를 기준으로 합니다. 같은 주소라도 이전 버전의 서버에는 새 경로가 없을 수 있습니다. 서버 실행·배포 절차는 [배포 안내](배포%20안내.md)를 참고합니다.
