@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>공유 작품 · 모북이</title>
+  <link rel="icon" href="/share/header.png">
+  <link rel="stylesheet" href="/share/style.css">
+  <script type="module" src="/share/app.js"></script>
+</head>
+<body>
+  <main>
+    <header><img src="/share/header.png" alt="" width="42" height="42"><span>모북이</span></header>
+    <section aria-labelledby="work-title">
+      <p id="status" role="status">작품 정보를 불러오고 있습니다.</p>
+      <div id="work" hidden>
+        <img id="cover" alt="작품 표지" width="132" height="198" referrerpolicy="no-referrer">
+        <div><p id="kind"></p><h1 id="work-title"></h1><p id="author"></p></div>
+      </div>
+      <button id="retry" type="button" hidden>다시 불러오기</button>
+      <a id="open-app" class="primary" hidden>앱에서 작품 열기</a>
+    </section>
+    <section class="installation" aria-labelledby="install-title">
+      <h2 id="install-title">설치 준비 중</h2>
+      <p>앱 설치 주소가 준비되면 안내해 드립니다.</p>
+      <p>앱을 설치한 뒤 이 공유 링크를 다시 열고 ‘앱에서 작품 열기’를 눌러 주세요.</p>
+      <p id="address" class="address"></p>
+    </section>
+    <noscript>작품 정보와 앱 열기를 사용하려면 브라우저의 JavaScript를 켜 주세요.</noscript>
+  </main>
+</body>
+</html>
