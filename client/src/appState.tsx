@@ -1,5 +1,5 @@
 // #region 의존성 가져오기
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useMemberAuth } from './memberAuth';
 import { saveReadingPreferences, type ReadingPreferences } from './readingPreferences';
@@ -38,7 +38,7 @@ export type Screen =
   | 'reviews' | 'reviewWrite' | 'reviewComments' | 'login' | 'signup' | 'my'
   | 'account' | 'password' | 'withdraw' | 'readingSettings' | 'filters' | 'share'
   | 'libraryManage' | 'postMenu' | 'report' | 'commentCompose' | 'events' | 'purchaseHistory'
-  | 'notifications' | 'webFallback' | 'favorites';
+  | 'notifications' | 'webFallback' | 'favorites' | 'linkError';
 
 /**
  * 화면 이동에 필요한 화면 이름, 선택 탭과 작품 식별자입니다.
@@ -84,7 +84,7 @@ export type { ReadingPreferences } from './readingPreferences';
 /** 바탕 화면을 유지한 채 하단 패널로 여는 화면 이름의 집합입니다. */
 const overlays = new Set<Screen>([
   'readingSettings', 'filters', 'libraryManage',
-  'postMenu', 'commentCompose', 'withdraw',
+  'postMenu', 'commentCompose', 'withdraw', 'share',
 ]);
 
 /**
@@ -174,11 +174,14 @@ export function AppProvider({ children, initialRoute, initialReadingPreferences 
   const [searchHistory, setSearchHistory] = useState<string[]>([]);
   const baseRoute = stack[stack.length - 1];
   const { state: auth } = useMemberAuth();
+  const previousGeneration = useRef(auth.generation);
   useEffect(() => {
+    if (previousGeneration.current === auth.generation) return;
+    previousGeneration.current = auth.generation;
     setOverlay(null);
     setStack(previous => {
       const current = previous[previous.length - 1];
-      return [['login', 'signup', 'account', 'my'].includes(current.screen) ? current : { screen: 'home', kind: 'all' }];
+      return [['login', 'signup', 'account', 'my', 'detail', 'linkError'].includes(current.screen) ? current : { screen: 'home', kind: 'all' }];
     });
   }, [auth.generation]);
 

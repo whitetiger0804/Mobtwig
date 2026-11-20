@@ -31,6 +31,58 @@ tags:
     description: API와 DB의 준비 상태를 확인합니다.
 security: []
 paths:
+  /s/works/{slug}:
+    get:
+      tags: [공개 조회]
+      operationId: showSharedWorkLanding
+      summary: 공유 작품의 모바일 웹 안내 HTML을 제공합니다.
+      description: |
+        로그인 없이 고정 HTML을 반환합니다. 브라우저는 /share/의 JavaScript·CSS·로고를 읽고
+        기존 GET /works/{slug}를 쿠키 없이 한 번 호출하여 작품 정보를 표시합니다.
+        상세 API의 기존 조회수 집계가 적용되며 자동 폴링은 하지 않습니다.
+        유효한 slug이면 작품이 없어도 HTML은 200이며 상세 API의 404를 웹에서 안내합니다.
+        사용자 query의 제목·문장·이동 주소는 사용하지 않습니다.
+        앱 열기는 mobtwig://works/{slug}이며 설치 주소가 준비될 때까지 설치 준비 중으로 표시합니다.
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema: {type: string, pattern: '^[a-z0-9-]{1,120}$', maxLength: 120}
+      responses:
+        '200':
+          description: 공유 작품 안내 HTML입니다.
+          headers:
+            Cache-Control: {schema: {type: string, enum: [no-store]}}
+            Referrer-Policy: {schema: {type: string, enum: [no-referrer]}}
+            Content-Security-Policy:
+              description: 같은 origin의 스크립트·스타일·API와 HTTP(S) 표지만 허용하며 인라인 스크립트와 프레임 삽입은 차단합니다.
+              schema: {type: string}
+          content:
+            text/html:
+              schema: {type: string}
+        '404': {description: slug 형식 또는 공유 경로가 올바르지 않습니다.}
+  /share/{file}:
+    get:
+      tags: [공개 조회]
+      operationId: getSharedWorkAsset
+      summary: 공유 웹 안내의 JavaScript·CSS·로고를 제공합니다.
+      description: 공개 정적 자원입니다. 사용자 입력이나 인증 쿠키를 콘텐츠에 반영하지 않습니다.
+      parameters:
+        - name: file
+          in: path
+          required: true
+          schema: {type: string, enum: [app.js, work.js, style.css, header.png]}
+      responses:
+        '200':
+          description: 요청한 공유 웹 정적 파일입니다.
+          content:
+            text/javascript:
+              schema: {type: string}
+            text/css:
+              schema: {type: string}
+            image/png:
+              schema: {type: string, format: binary}
+        '404': {description: 요청한 정적 파일이 없습니다.}
   /works:
     get:
       tags: [공개 조회]

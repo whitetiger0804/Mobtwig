@@ -369,6 +369,8 @@ function MagazineReader() {
         else app.back();
       }} />
       <View style={styles.magazineHeaderSpace} />
+      <IconButton icon="share" label="작품 공유" disabled={!issue}
+        onPress={() => issue && app.navigate({ screen: 'share', workId, shareWorkTitle: issue.title })} />
       <IconButton icon="list" label="매거진 목차" disabled={!issue?.articles.length} onPress={() => setContentsOpen(true)} />
       <BookmarkButton key={key} workId={workId} disabled={!ready} position={() => ready ? position : null}
         highlightsFailed={highlights.failed} refreshHighlights={highlights.refresh} onHighlight={() => {
@@ -651,6 +653,8 @@ function TextReader() {
     <View style={[styles.readerHeader, { backgroundColor: readingPalette.background }]}>
       <View style={styles.roundTool}><IconButton icon="back" label="읽기 화면에서 돌아가기" onPress={() => leave(app.back)} /></View>
       <Text numberOfLines={1} style={[s.subtitle, styles.readerTitle, { color: readingPalette.muted }]}>{data?.workTitle ?? '독서'}</Text>
+      <View style={styles.roundTool}><IconButton icon="share" label="작품 공유" disabled={!data}
+        onPress={() => data && app.navigate({ screen: 'share', workId, shareWorkTitle: data.workTitle })} /></View>
       <View style={styles.roundTool}><IconButton icon="list" label="목차" disabled={!data} onPress={() => setContentsOpen(true)} /></View>
       <View style={styles.roundTool}><BookmarkButton workId={workId} disabled={!data} position={currentPosition}
         highlightsFailed={highlights.failed} refreshHighlights={highlights.refresh} onHighlight={() => selectPart()} /></View>

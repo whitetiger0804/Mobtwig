@@ -1,6 +1,9 @@
 // #region 의존성 가져오기
 import { useRecentWorks } from './recentWorksContext';
 import { useEffect, useRef, useState } from 'react';
+import { Share } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
+import { workShare } from './workSharing';
 import { parseHomeResponse, type SduiSection } from './homeSchema';
 import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { kindLabel, useApp, type Route } from './appState';
@@ -416,6 +419,8 @@ export function DetailScreen({ route }: {
           {work.title.split(/\s+/).map((word, index) => <Text key={index} style={c.detailTitle}>{word}</Text>)}
         </View>
         <Text style={c.detailAuthor}>{work.author}</Text>
+        <Action compact tone="secondary" label="작품 공유" icon="share"
+          onPress={() => navigate({ screen: 'share', workId: work.id, shareWorkTitle: work.title })} />
         {kind === 'book' && <View style={c.publisherRow}><Text style={s.muted}>출판사</Text><Text style={[s.text, s.grow]}>{work.publisher}</Text></View>}
         {kind === 'magazine' && work.issue && <Text style={c.detailIssue}>{work.issue}</Text>}
         {kind === 'novel' && work.statistics && <View style={c.stats}>
@@ -831,25 +836,54 @@ export function RecentScreen() {
 // #endregion
 
 // #region 공유와 안내
-/**
- * 시안의 전체 화면 공유 페이지를 구성합니다.
- *
- * @remarks
- * 기록에서 전달한 문장과 작품 제목을 표시합니다. 공유와 링크 복사는 비활성 상태이며
- * 주소 생성, 클립보드 변경, 운영체제 공유창 호출을 수행하지 않습니다.
- *
- * @returns 선택 문장 또는 빈 상태 안내와 두 개의 비활성 공유 버튼입니다.
- */
+/** 작품 링크 복사와 운영체제 공유를 제공하며 아래 화면과 읽기 위치를 유지합니다. */
 export function ShareScreen() {
-  const { baseRoute } = useApp();
+  const { route } = useApp();
+  const [message, setMessage] = useState('');
+  const [busy, setBusy] = useState(false);
+  const writing = useRef(false);
+  const active = useRef(false);
+  useEffect(() => {
+    active.current = true;
+    return () => { active.current = false; };
+  }, []);
+  let content: ReturnType<typeof workShare> | null = null;
+  let error = '';
+  try {
+    content = workShare(route.workId ?? '', route.shareWorkTitle ?? route.workTitle, route.shareExcerpt,
+      process.env.EXPO_PUBLIC_SHARE_BASE_URL);
+  } catch (failure) { error = failure instanceof Error ? failure.message : '공유할 작품을 확인해 주세요.'; }
+  async function send(copy: boolean) {
+    if (!content || writing.current) return;
+    writing.current = true;
+    setBusy(true);
+    setMessage('');
+    try {
+      if (copy) {
+        const copied = await Clipboard.setStringAsync(content.url);
+        if (active.current) setMessage(copied ? '작품 링크를 복사했습니다.' : '링크를 복사하지 못했습니다. 다시 시도해 주세요.');
+      } else {
+        const result = await Share.share({ title: content.title, message: content.message });
+        if (active.current && result.action === Share.dismissedAction) setMessage('공유를 취소했습니다.');
+      }
+    } catch {
+      if (active.current) setMessage(copy ? '링크를 복사하지 못했습니다. 다시 시도해 주세요.' : '공유를 열지 못했습니다. 다시 시도해 주세요.');
+    } finally {
+      writing.current = false;
+      if (active.current) setBusy(false);
+    }
+  }
   return <View style={c.sharePage}>
-    {baseRoute.shareExcerpt ? <View style={c.bookmarkCard}>
-      <Text style={s.subtitle}>{baseRoute.shareWorkTitle}</Text>
-      <Text selectable style={s.text}>{baseRoute.shareExcerpt}</Text>
-    </View> : <EmptyState compact title="공유할 작품 정보가 없습니다." />}
+    {content && <View style={c.bookmarkCard}>
+      <Text style={s.subtitle}>{content.title}</Text>
+      {!!route.shareExcerpt && <Text selectable style={s.text}>{route.shareExcerpt}</Text>}
+      <Text selectable style={s.muted}>{content.url}</Text>
+    </View>}
     <View style={c.shareDescription}><Title>작품 링크 공유</Title><Text style={s.text}>받는 사람도 같은 작품으로 이동합니다.</Text></View>
-    <Pressable disabled accessibilityRole="button" accessibilityState={{ disabled: true }} style={[c.shareAction, c.sharePrimary]}><Text style={c.sharePrimaryText}>공유</Text><Icon name="share" color="#fff" size={20} /></Pressable>
-    <Pressable disabled accessibilityRole="button" accessibilityState={{ disabled: true }} style={c.shareAction}><Text style={c.shareActionText}>링크 복사</Text><Icon name="link" size={20} /></Pressable>
+    {!!error && <Text accessibilityRole="alert" style={s.error}>{error}</Text>}
+    <Action disabled={!content || busy} label="공유" icon="share" onPress={() => void send(false)} />
+    <Action disabled={!content || busy} tone="secondary" label="링크 복사" icon="link" onPress={() => void send(true)} />
+    {!!message && <Text accessibilityLiveRegion="polite" style={s.muted}>{message}</Text>}
   </View>;
 }
 
