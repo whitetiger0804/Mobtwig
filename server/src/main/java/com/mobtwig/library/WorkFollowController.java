@@ -13,11 +13,13 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
 @RestController
+@RequestMapping("/api/members")
 public class WorkFollowController {
     private final WorkFollowService follows;
 
@@ -25,32 +27,32 @@ public class WorkFollowController {
         this.follows = follows;
     }
 
-    @GetMapping("/api/members/works/{slug}/state")
+    @GetMapping("/works/{slug}/state")
     ResponseEntity<WorkFollowService.State> state(Principal principal, @PathVariable String slug) {
         return response(follows.state(member(principal), slug));
     }
 
-    @PutMapping("/api/members/works/{slug}/favorite")
+    @PutMapping("/works/{slug}/favorite")
     ResponseEntity<WorkFollowService.State> addFavorite(Principal principal, @PathVariable String slug) {
         return response(follows.change(member(principal), slug, Kind.FAVORITE, true));
     }
 
-    @DeleteMapping("/api/members/works/{slug}/favorite")
+    @DeleteMapping("/works/{slug}/favorite")
     ResponseEntity<WorkFollowService.State> removeFavorite(Principal principal, @PathVariable String slug) {
         return response(follows.change(member(principal), slug, Kind.FAVORITE, false));
     }
 
-    @PutMapping("/api/members/works/{slug}/subscription")
+    @PutMapping("/works/{slug}/subscription")
     ResponseEntity<WorkFollowService.State> subscribe(Principal principal, @PathVariable String slug) {
         return response(follows.change(member(principal), slug, Kind.SUBSCRIPTION, true));
     }
 
-    @DeleteMapping("/api/members/works/{slug}/subscription")
+    @DeleteMapping("/works/{slug}/subscription")
     ResponseEntity<WorkFollowService.State> unsubscribe(Principal principal, @PathVariable String slug) {
         return response(follows.change(member(principal), slug, Kind.SUBSCRIPTION, false));
     }
 
-    @GetMapping("/api/members/favorites")
+    @GetMapping("/favorites")
     ResponseEntity<WorkFollowService.Favorites> favorites(Principal principal,
             @RequestParam MultiValueMap<String, String> parameters) {
         return response(follows.favorites(member(principal), number(parameters, "page", 1, Integer.MAX_VALUE),
