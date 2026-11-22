@@ -17,6 +17,8 @@ BEGIN
        OR EXISTS (SELECT 1 FROM post_comment_sticker WHERE comment_id BETWEEN 81001 AND 81014
            AND id NOT IN (81001,81002))
        OR EXISTS (SELECT 1 FROM chapter_media WHERE book_id BETWEEN 81001 AND 81016 AND id <> 81001)
+       OR EXISTS (SELECT 1 FROM review_like WHERE review_comment_id BETWEEN 81001 AND 81004)
+       OR EXISTS (SELECT 1 FROM review_report WHERE review_comment_id BETWEEN 81001 AND 81004)
        OR EXISTS (SELECT 1 FROM book_author WHERE book_id BETWEEN 81001 AND 81016
            AND id NOT BETWEEN 81001 AND 81016)
        OR EXISTS (SELECT 1 FROM book_category WHERE book_id BETWEEN 81001 AND 81016
@@ -27,7 +29,7 @@ BEGIN
            WHERE p.book_id BETWEEN 81001 AND 81016)
        OR EXISTS (SELECT 1 FROM purchase_product WHERE book_id BETWEEN 81001 AND 81016
            AND NOT ((chapter_id IS NULL AND id=book_id) OR (chapter_id IS NOT NULL AND id=chapter_id))) THEN
-        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = '시드 식별자 불일치 또는 후속 구매/첨부/관계로 제거를 취소했습니다. 반복 테스트는 로컬 DB 초기화 후 재시딩하십시오.';
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = '시드 식별자 불일치 또는 후속 구매/첨부/관계/반응으로 제거를 취소했습니다. 반복 테스트는 로컬 DB 초기화 후 재시딩하십시오.';
     END IF;
     DELETE FROM post_reaction WHERE id BETWEEN 810101 AND 810805 AND post_id BETWEEN 81001 AND 81008;
     DELETE FROM post_comment_sticker WHERE id IN (81001, 81002) AND comment_id IN (81001, 81014);
