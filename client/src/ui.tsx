@@ -1,6 +1,6 @@
 // #region 의존성 가져오기
-import React, { type ReactNode } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View, type TextInputProps, type ViewStyle } from 'react-native';
+import { useEffect, useRef, type ReactNode } from 'react';
+import { ActivityIndicator, Animated, Platform, Pressable, StyleSheet, Text, View, useWindowDimensions, type StyleProp, type ViewStyle } from 'react-native';
 import Svg, { Path, Circle } from 'react-native-svg';
 // #endregion
 
@@ -76,18 +76,20 @@ const paths: Record<string, string> = {
  * `more`는 점 세 개로 표시하며, 등록되지 않은 이름은 책 아이콘으로 표시합니다.
  * 크기를 지정하지 않으면 22를 사용하고, 색상은 {@link colors}의 기본 글자색을 사용합니다.
  *
- * @param props - 아이콘 이름, 크기, 선 색상을 지정하는 속성입니다.
+ * @param props - 아이콘 이름, 크기, 색상과 내부 채움 여부를 지정하는 속성입니다.
  * @returns 지정한 아이콘의 선과 도형을 포함하는 SVG 요소를 반환합니다.
  */
-export function Icon({ name, size = 22, color = colors.ink }: {
+export function Icon({ name, size = 22, color = colors.ink, filled = false }: {
   /** 표시할 아이콘 이름입니다. 등록되지 않은 이름은 책 아이콘으로 표시합니다. */
   name: string;
   /** 아이콘의 가로와 세로 크기입니다. 생략하면 22를 사용합니다. */
   size?: number;
   /** 아이콘의 선 색상입니다. 생략하면 공통 기본 글자색을 사용합니다. */
-  color?: string
+  color?: string;
+  /** 선택된 책갈피·하트처럼 도형 내부를 같은 색으로 채울지 지정합니다. */
+  filled?: boolean;
 }) {
-  return <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
+  return <Svg width={size} height={size} viewBox="0 0 24 24" fill={filled ? color : 'none'} stroke={color} strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
     {name === 'more' ? <><Circle cx={5} cy={12} r={1}/><Circle cx={12} cy={12} r={1}/><Circle cx={19} cy={12} r={1}/></> : <Path d={paths[name] ?? paths.book}/>}
   </Svg>;
 }
@@ -109,7 +111,7 @@ export function Icon({ name, size = 22, color = colors.ink }: {
  * <Action label="저장" disabled />
  * ```
  */
-export function Action({ label, onPress, icon, disabled = false, tone = 'primary', compact = false, style }: {
+export function Action({ label, onPress, icon, disabled = false, loading = false, tone = 'primary', compact = false, style }: {
   /** 버튼에 표시하고 접근성 이름으로 사용하는 문자열입니다. */
   label: string;
   /** 버튼을 눌렀을 때 호출하는 함수입니다. */
@@ -118,6 +120,8 @@ export function Action({ label, onPress, icon, disabled = false, tone = 'primary
   icon?: string;
   /** 버튼의 비활성 여부입니다. 생략하면 false를 사용합니다. */
   disabled?: boolean;
+  /** 처리 중에는 버튼 안에 진행 표시를 넣고 중복 입력을 막습니다. */
+  loading?: boolean;
   /** 버튼 배경과 글자색을 결정하는 유형입니다. 생략하면 primary를 사용합니다. */
   tone?: 'primary' | 'secondary' | 'quiet' | 'danger';
   /** 작은 높이와 여백을 적용할지 지정합니다. 생략하면 false를 사용합니다. */
@@ -125,8 +129,9 @@ export function Action({ label, onPress, icon, disabled = false, tone = 'primary
   /** 시안에 맞춰 기본 버튼 다음에 적용할 크기와 배치입니다. */
   style?: ViewStyle;
 }) {
-  return <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ disabled }} disabled={disabled} onPress={onPress} style={({ pressed }) => [s.action, compact && s.compact, tone === 'primary' ? s.primary : tone === 'secondary' ? s.secondary : tone === 'danger' ? s.danger : s.quiet, style, (disabled || pressed) && { opacity: .55 }]}>
-    {icon && <Icon name={icon} size={18} color={tone === 'primary' ? '#fff' : tone === 'danger' ? colors.red : colors.ink}/>}
+  return <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ disabled: disabled || loading, busy: loading }} disabled={disabled || loading} onPress={onPress} style={({ pressed }) => [s.action, compact && s.compact, tone === 'primary' ? s.primary : tone === 'secondary' ? s.secondary : tone === 'danger' ? s.danger : s.quiet, style, (disabled || loading || pressed) && { opacity: .55 }]}>
+    {loading ? <ActivityIndicator size="small" color={tone === 'primary' ? '#fff' : colors.ink} />
+      : icon && <Icon name={icon} size={18} color={tone === 'primary' ? '#fff' : tone === 'danger' ? colors.red : colors.ink}/>}
     <Text style={[s.actionText, { color: tone === 'primary' ? '#fff' : tone === 'danger' ? colors.red : colors.ink }]}>{label}</Text>
   </Pressable>;
 }
@@ -141,7 +146,7 @@ export function Action({ label, onPress, icon, disabled = false, tone = 'primary
  * @param props - 아이콘 이름과 크기, 접근성 레이블, 클릭 콜백, 상태와 버튼 스타일을 지정하는 속성입니다.
  * @returns 선택 및 비활성 상태를 반영한 아이콘 버튼 요소를 반환합니다.
  */
-export function IconButton({ icon, label, onPress, selected = false, disabled = false, iconSize = 22, style }: {
+export function IconButton({ icon, label, onPress, selected = false, filled = false, disabled = false, iconSize = 22, style }: {
   /** 버튼에 표시할 아이콘 이름입니다. */
   icon: string;
   /** 화면 읽기 도구에 전달할 버튼의 접근성 이름입니다. */
@@ -150,6 +155,8 @@ export function IconButton({ icon, label, onPress, selected = false, disabled = 
   onPress?: () => void;
   /** 선택 색상과 접근성 선택 상태를 적용할지 지정합니다. 생략하면 false를 사용합니다. */
   selected?: boolean;
+  /** 아이콘의 내부를 현재 색으로 채울지 지정합니다. 생략하면 선만 표시합니다. */
+  filled?: boolean;
   /** 버튼의 비활성 여부입니다. 생략하면 false를 사용합니다. */
   disabled?: boolean;
   /** 아이콘의 가로와 세로 크기입니다. 생략하면 22를 사용합니다. */
@@ -157,7 +164,7 @@ export function IconButton({ icon, label, onPress, selected = false, disabled = 
   /** 기본 버튼 다음에 적용할 크기와 배치입니다. */
   style?: ViewStyle;
 }) {
-  return <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ selected, disabled }} disabled={disabled} onPress={onPress} style={[s.iconButton, style, selected && { backgroundColor: '#E5EDDA' }, disabled && { opacity: .3 }]}><Icon name={icon} size={iconSize} color={selected ? colors.green : colors.ink}/></Pressable>;
+  return <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ selected, disabled }} disabled={disabled} onPress={onPress} style={[s.iconButton, style, selected && { backgroundColor: '#E5EDDA' }, disabled && { opacity: .3 }]}><Icon name={icon} size={iconSize} color={selected ? colors.green : colors.ink} filled={filled}/></Pressable>;
 }
 
 /**
@@ -184,29 +191,7 @@ export function Chip({ label, selected, onPress, disabled = false }: {
 }
 // #endregion
 
-// #region 텍스트 입력
-/**
- * 레이블, 텍스트 입력란과 선택적인 오류 메시지를 표시합니다.
- *
- * @remarks
- * 추가 입력 속성은 입력란에 전달하고, 접근성 이름에는 레이블을 사용합니다.
- * {@link s}의 공통 입력 스타일에 여러 줄 입력 스타일과 호출자가 전달한 스타일을 순서대로 적용합니다.
- * 오류 문자열이 있으면 접근성 알림으로 표시하며, 값 검증은 호출하는 화면에서 처리합니다.
- *
- * @param props - 레이블, 오류 문자열 및 입력란에 전달할 텍스트 입력 속성입니다.
- * @returns 레이블과 입력란, 필요하면 오류 알림을 포함하는 컨테이너를 반환합니다.
- */
-export function Field({ label, error, ...props }: TextInputProps & {
-  /** 입력란 위에 표시하고 접근성 이름으로 사용하는 문자열입니다. */
-  label: string;
-  /** 입력란 아래에 알림으로 표시할 오류 문자열입니다. 비어 있거나 생략되면 표시하지 않습니다. */
-  error?: string
-}) {
-  return <View style={{ gap: 8 }}><Text style={s.label}>{label}</Text><TextInput {...props} accessibilityLabel={label} placeholderTextColor="#8B9387" style={[s.input, props.multiline && { minHeight: 132, textAlignVertical: 'top' }, props.style]}/>{!!error && <Text accessibilityRole="alert" style={s.error}>{error}</Text>}</View>;
-}
-// #endregion
-
-// #region 제목과 카드
+// #region 제목
 /**
  * 제목과 선택적인 부제목 및 오른쪽 동작 요소를 한 행에 표시합니다.
  *
@@ -228,22 +213,40 @@ export function Title({ children, subtitle, action }: {
   return <View style={s.titleRow}><View style={{ flex: 1, gap: 4 }}><Text style={s.title}>{children}</Text>{!!subtitle && <Text style={s.muted}>{subtitle}</Text>}</View>{action}</View>;
 }
 
+// #endregion
+
+// #region 모달 내용 전환
 /**
- * 공통 배경과 내부 여백을 가진 카드 컨테이너를 표시합니다.
+ * 고정된 모달 배경 안에서 내용에만 열기 애니메이션을 적용합니다.
  *
  * @remarks
- * {@link s}의 카드 스타일 다음에 호출자가 전달한 스타일을 적용합니다.
- * 자식 요소를 그대로 배치하며, 누름 동작은 제공하지 않습니다.
- *
- * @param props - 카드에 배치할 자식 요소와 추가 스타일을 지정하는 속성입니다.
- * @returns 자식 요소를 포함하는 카드 컨테이너를 반환합니다.
+ * 부모 Modal은 animationType="none"으로 표시하고, 어두운 배경은 이 요소 바깥에 둡니다.
+ * @param props - 표시 상태, 내용의 전환 방식, 배치와 자식 요소입니다.
+ * @returns 배경과 별도로 나타나는 모달 내용입니다.
  */
-export function Card({ children, style }: {
-  /** 카드 내부에 배치할 자식 요소입니다. */
+export function ModalPanel({ visible, animation = 'fade', style, children }: {
+  /** 모달이 열려 있는지 지정합니다. */
+  visible: boolean;
+  /** 내용만 아래에서 올리거나 서서히 표시합니다. */
+  animation?: 'slide' | 'fade';
+  /** 기존 패널의 크기, 여백과 배경을 유지합니다. */
+  style?: StyleProp<ViewStyle>;
+  /** 패널에 표시할 내용입니다. */
   children: ReactNode;
-  /** 공통 카드 스타일 다음에 적용할 추가 스타일입니다. */
-  style?: ViewStyle
-}) { return <View style={[s.card, style]}>{children}</View>; }
+}) {
+  const progress = useRef(new Animated.Value(0)).current;
+  const { height } = useWindowDimensions();
+  useEffect(() => {
+    progress.setValue(0);
+    if (!visible) return;
+    const transition = Animated.timing(progress, { toValue: 1, duration: 300, useNativeDriver: Platform.OS !== 'web' });
+    transition.start();
+    return () => transition.stop();
+  }, [visible, progress]);
+  return <Animated.View accessibilityViewIsModal style={[style, animation === 'slide'
+    ? { transform: [{ translateY: progress.interpolate({ inputRange: [0, 1], outputRange: [height, 0] }) }] }
+    : { opacity: progress }]}>{children}</Animated.View>;
+}
 // #endregion
 
 // #region 공통 스타일
@@ -273,15 +276,6 @@ export const s = StyleSheet.create({
     alignItems: 'center',
     /** 가로로 배치한 자식 요소 사이의 간격을 지정합니다. */
     gap: 10
-  },
-  /** 공간이 부족하면 다음 줄로 넘기는 가로 배치를 지정합니다. */
-  wrap: {
-    /** 자식 요소를 가로 방향으로 배치합니다. */
-    flexDirection: 'row',
-    /** 가로 공간이 부족하면 자식 요소를 다음 줄로 넘깁니다. */
-    flexWrap: 'wrap',
-    /** 자식 요소의 가로 간격과 줄 사이 간격을 지정합니다. */
-    gap: 8
   },
   /** 부모 배치에서 남는 공간을 채우도록 지정합니다. */
   grow: {
@@ -347,26 +341,6 @@ export const s = StyleSheet.create({
     alignItems: 'center',
     /** 제목 영역과 오른쪽 동작 요소 사이의 간격을 지정합니다. */
     gap: 10
-  },
-  // #endregion
-  // #region 카드와 구분선
-  /** 카드의 밝은 배경과 내부 간격을 지정합니다. */
-  card: {
-    /** 카드에 공통 밝은 배경색을 적용합니다. */
-    backgroundColor: colors.pale,
-    /** 카드 배경의 모서리를 둥글게 표시합니다. */
-    borderRadius: 14,
-    /** 카드 테두리와 내부 내용 사이의 여백을 지정합니다. */
-    padding: 16,
-    /** 카드의 바로 아래 자식 요소 사이의 간격을 지정합니다. */
-    gap: 12
-  },
-  /** 가로 구분선의 두께와 색상을 지정합니다. */
-  line: {
-    /** 가로 구분선의 세로 두께를 지정합니다. */
-    height: 1,
-    /** 가로 구분선에 공통 경계선 색상을 적용합니다. */
-    backgroundColor: colors.line
   },
   // #endregion
   // #region 버튼
@@ -476,28 +450,7 @@ export const s = StyleSheet.create({
     color: '#626C5C'
   },
   // #endregion
-  // #region 입력란과 오류
-  /** 텍스트 입력란의 크기, 테두리와 글자 스타일입니다. */
-  input: {
-    /** 텍스트 입력란의 기본 최소 높이를 지정합니다. */
-    minHeight: 48,
-    /** 입력 텍스트의 좌우 여백을 지정합니다. */
-    paddingHorizontal: 14,
-    /** 입력 텍스트의 위아래 여백을 지정합니다. */
-    paddingVertical: 12,
-    /** 입력란 테두리의 모서리를 둥글게 표시합니다. */
-    borderRadius: 16,
-    /** 입력란 테두리의 두께를 지정합니다. */
-    borderWidth: 1,
-    /** 입력란 테두리의 색상을 지정합니다. */
-    borderColor: '#DDE3D7',
-    /** 입력 텍스트의 글자 크기를 지정합니다. */
-    fontSize: 14,
-    /** 입력 텍스트에 공통 기본 글자색을 적용합니다. */
-    color: colors.ink,
-    /** 입력란 내부를 흰색으로 표시합니다. */
-    backgroundColor: '#fff'
-  },
+  // #region 오류
   /** 입력 오류 등 오류 메시지의 글자 스타일입니다. */
   error: {
     /** 오류 메시지에 공통 붉은색을 적용합니다. */
@@ -519,38 +472,6 @@ export const s = StyleSheet.create({
     paddingVertical: 40,
     /** 빈 상태 안내의 좌우 여백을 지정합니다. */
     paddingHorizontal: 15
-  },
-  // #endregion
-  // #region 탭
-  /** 탭의 내부 여백과 기본 하단 테두리를 지정합니다. */
-  tab: {
-    /** 탭 내용의 위아래 여백을 지정합니다. */
-    paddingVertical: 14,
-    /** 탭 내용의 좌우 여백을 지정합니다. */
-    paddingHorizontal: 8,
-    /** 탭 하단의 선택 표시 영역 두께를 지정합니다. */
-    borderBottomWidth: 2,
-    /** 선택되지 않은 탭의 하단 테두리를 투명하게 표시합니다. */
-    borderBottomColor: 'transparent'
-  },
-  /** 선택된 탭의 하단 표시 색상을 지정합니다. */
-  tabActive: {
-    /** 선택된 탭의 하단 테두리에 공통 녹색을 적용합니다. */
-    borderBottomColor: colors.green
-  },
-  /** 선택되지 않은 탭 레이블의 글자 스타일입니다. */
-  tabLabel: {
-    /** 선택되지 않은 탭 레이블에 공통 보조 글자색을 적용합니다. */
-    color: colors.muted,
-    /** 탭 레이블의 기본 글자 크기를 지정합니다. */
-    fontSize: 14
-  },
-  /** 선택된 탭 레이블의 강조 스타일입니다. */
-  tabLabelActive: {
-    /** 선택된 탭 레이블에 공통 녹색을 적용합니다. */
-    color: colors.green,
-    /** 선택된 탭 레이블을 굵은 글자로 표시합니다. */
-    fontWeight: '700'
   },
   // #endregion
 });

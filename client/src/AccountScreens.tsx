@@ -6,9 +6,10 @@ import { readPurchaseHistory, type PurchaseRecord } from './purchases';
 import { useApiUrl } from './serverConnection';
 import { buildSignupInput, SignupProblem, type SignupAcceptance, type SignupDocument, type SignupFields, type SignupForm } from './memberSignup';
 import { useApp } from './appState';
+import { readingFontNames, readingFonts } from './readingFonts';
 import { EmptyState } from './EmptyState';
 export { FavoriteWorksScreen as FavoritesScreen } from './WorkFollowScreens';
-import { Action, colors, Icon, s } from './ui';
+import { Action, colors, Icon, ModalPanel, s } from './ui';
 // #endregion
 
 // #region 계정 화면의 공통 입력과 메뉴
@@ -130,8 +131,20 @@ export function LoginScreen() {
       await client.login(identity, password);
       if (mounted.current !== client) return;
       setPassword('');
-      if (app.baseRoute.returnToReview) app.back();
-      else app.navigate({ screen: 'home', kind: 'all' }, true);
+      const reviewScreen = app.baseRoute.reviewReturnScreen;
+      if (reviewScreen) {
+        const reviewContext = { kind: app.baseRoute.kind, workId: app.baseRoute.workId, workTitle: app.baseRoute.workTitle,
+          workAuthor: app.baseRoute.workAuthor, workImageUrl: app.baseRoute.workImageUrl };
+        if (reviewScreen === 'reviewWrite' || reviewScreen === 'reviewComments') {
+          app.navigate({ ...reviewContext, screen: 'reviews' }, true);
+          app.navigate({ ...reviewContext, screen: reviewScreen, reviewId: app.baseRoute.reviewId });
+        } else app.navigate({ ...reviewContext, screen: reviewScreen }, true);
+      } else if (app.baseRoute.communityReturnScreen) {
+        const { communityReturnScreen, ...destination } = app.baseRoute;
+        app.navigate(communityReturnScreen === 'community' ? { ...destination, screen: 'community' }
+          : { screen: 'community', mode: destination.mode }, true);
+        if (communityReturnScreen !== 'community') app.navigate({ ...destination, screen: communityReturnScreen });
+      } else app.navigate({ screen: 'home', kind: 'all' }, true);
     }
     catch (failure) { setError(failure instanceof Error ? failure.message : '로그인하지 못했습니다.'); }
     finally { setBusy(false); }
@@ -142,7 +155,6 @@ export function LoginScreen() {
         <Image source={require('../assets/brand/header.png')} style={styles.loginLogo} />
         <Text style={[s.title, styles.brandName]}>모북이</Text>
       </View>
-      {!!app.baseRoute.registeredEmail && <Text accessibilityRole="alert" style={s.muted}>가입했습니다. 새 계정으로 로그인해 주세요.</Text>}
       <AccountField label="이메일" value={identity} onChangeText={setIdentity} placeholder="로그인 이메일" tall />
       <View style={styles.loginPassword}><AccountField label="비밀번호" value={password} onChangeText={setPassword} placeholder="비밀번호" password tall /></View>
       <View style={styles.loginSubmit}><Action label={busy ? '로그인 중…' : '로그인'} disabled={busy || auth.status === 'checking'} onPress={() => void submit()} style={styles.authButton} /></View>
@@ -290,16 +302,16 @@ export function SignupScreen() {
           onPress={() => void submit()} style={styles.authButton} />
       </View>
       <View style={styles.authFooter}><Text style={[s.text, styles.smallText]}>이미 계정이 있으신가요?</Text><Pressable accessibilityRole="button" onPress={() => app.navigate({ screen: 'login' })}><Text style={[s.text, styles.textLink]}>로그인</Text></Pressable></View>
-      {openDocument && <Modal visible transparent animationType="fade" onRequestClose={() => setOpenDocument(null)}>
+      {openDocument && <Modal visible transparent animationType="none" onRequestClose={() => setOpenDocument(null)}>
         <View style={styles.policyBackdrop}>
-          <View accessibilityViewIsModal style={styles.policyCard}>
+          <ModalPanel visible style={styles.policyCard}>
             <Text accessibilityRole="header" style={s.subtitle}>{openDocument.title}</Text>
             <Text style={s.muted}>문서 버전 {openDocument.version}</Text>
             <ScrollView style={styles.policyScroll}>
               <Text selectable style={[s.text, styles.policyBody]}>{openDocument.body}</Text>
             </ScrollView>
             <Action label="닫기" onPress={() => setOpenDocument(null)} />
-          </View>
+          </ModalPanel>
         </View>
       </Modal>}
     </ScrollView>
@@ -317,12 +329,13 @@ function SignupFieldError({ message }: { message?: string }) {
  * 회원 영역, 세 열의 개인 메뉴, 내 작품 카드와 설정 메뉴를 표시합니다.
  *
  * @remarks
- * 회원 이름은 서버 세션에서 읽고 통계·작품은 {@link EmptyState}로 표시합니다.
+ * 회원 이름은 서버 세션에서 읽고 미연동 작품은 {@link EmptyState}로 표시합니다.
+ * 개인 메뉴는 집계되지 않은 숫자 대신 아이콘과 이름을 표시합니다.
  * 내 작품 영역에는 고정된 표지 자리나 작품 개수를 만들지 않습니다.
  * 서재·즐겨찾기·독서 기록·읽기 설정·구매 내역 화면 이동을 제공합니다. 작품 관리와
  * 즐겨찾기 데이터 조회는 수행하지 않습니다.
  *
- * @returns 마이 시안의 회원·통계·작품·메뉴 영역입니다.
+ * @returns 회원 정보·개인 메뉴·작품·설정 영역입니다.
  */
 export function MyScreen() {
   const app = useApp();
@@ -336,11 +349,11 @@ export function MyScreen() {
         <View style={styles.profileText}><Text style={s.subtitle}>{state.member.nickname}</Text></View>
       </View>
       <View style={styles.stats}>
-        <Pressable accessibilityRole="button" onPress={() => app.navigate({ screen: 'library' })} style={styles.stat}><EmptyState compact title="—" style={styles.statEmpty} /><Text style={[s.text, styles.statLabel]}>내 서재</Text></Pressable>
+        <Pressable accessibilityRole="button" onPress={() => app.navigate({ screen: 'library' })} style={styles.stat}><Icon name="library" size={22} color={colors.green} /><Text style={[s.text, styles.statLabel]}>내 서재</Text></Pressable>
         <View style={styles.statDivider} />
-        <Pressable accessibilityRole="button" onPress={() => app.navigate({ screen: 'favorites' })} style={styles.stat}><EmptyState compact title="—" style={styles.statEmpty} /><Text style={[s.text, styles.statLabel]}>즐겨찾기</Text></Pressable>
+        <Pressable accessibilityRole="button" onPress={() => app.navigate({ screen: 'favorites' })} style={styles.stat}><Icon name="heart" size={22} color={colors.green} /><Text style={[s.text, styles.statLabel]}>즐겨찾기</Text></Pressable>
         <View style={styles.statDivider} />
-        <Pressable accessibilityRole="button" onPress={() => app.navigate({ screen: 'records' })} style={styles.stat}><EmptyState compact title="—" style={styles.statEmpty} /><Text style={[s.text, styles.statLabel]}>독서 기록</Text></Pressable>
+        <Pressable accessibilityRole="button" onPress={() => app.navigate({ screen: 'records' })} style={styles.stat}><Icon name="bookmark" size={22} color={colors.green} /><Text style={[s.text, styles.statLabel]}>독서 기록</Text></Pressable>
       </View>
       <View style={styles.ownedHeading}><Text style={[s.subtitle, styles.sectionTitle]}>내 작품</Text><Pressable accessibilityRole="button" accessibilityState={{ disabled: true }} disabled style={styles.manage}><Text style={[s.text, styles.manageText]}>관리하기</Text></Pressable></View>
       <View style={styles.ownedCard}><EmptyState compact title="표시할 내 작품이 없습니다." style={styles.ownedInfo} /></View>
@@ -370,20 +383,18 @@ export function PurchaseHistoryScreen() {
   const [history, setHistory] = useState<{
     client: typeof client;
     generation: number;
-    memberId: string;
     attempt: number;
     items: PurchaseRecord[] | null;
     error: string | null;
   } | null>(null);
 
   useEffect(() => {
-    if (auth.status !== 'authenticated' || !auth.member) return;
+    if (auth.status !== 'authenticated') return;
     let active = true;
-    const owner = { client, generation: auth.generation, memberId: auth.member.id, attempt };
+    const owner = { client, generation: auth.generation, attempt };
     const current = () => {
       const state = client.getSnapshot();
-      return active && state.status === 'authenticated' && state.generation === owner.generation
-        && state.member?.id === owner.memberId;
+      return active && state.status === 'authenticated' && state.generation === owner.generation;
     };
     readPurchaseHistory(client).then(items => {
       if (current()) setHistory({ ...owner, items, error: null });
@@ -392,10 +403,10 @@ export function PurchaseHistoryScreen() {
         error: reason instanceof Error ? reason.message : '구매 내역을 불러오지 못했습니다.' });
     });
     return () => { active = false; };
-  }, [client, auth.status, auth.generation, auth.member?.id, attempt]);
+  }, [client, auth.status, auth.generation, attempt]);
 
   const visible = history?.client === client && history.generation === auth.generation
-    && history.memberId === auth.member?.id && history.attempt === attempt ? history : null;
+    && history.attempt === attempt ? history : null;
 
   return (
     <View style={s.page}>
@@ -452,11 +463,20 @@ export function AccountScreen() {
   useEffect(() => { void client.refresh(); }, [client]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const pendingLogout = useRef<object | null>(null);
+  useLayoutEffect(() => {
+    setBusy(false); setError('');
+    return () => { pendingLogout.current = null; };
+  }, [client]);
   const logout = async () => {
+    if (pendingLogout.current) return;
+    const operation = {};
+    pendingLogout.current = operation;
+    const current = () => pendingLogout.current === operation;
     setBusy(true); setError('');
-    try { await client.logout(); app.navigate({ screen: 'login' }, true); }
-    catch { setError('로그아웃 완료를 확인하지 못했습니다. 다시 시도해 주십시오.'); }
-    finally { setBusy(false); }
+    try { await client.logout(); if (current()) app.navigate({ screen: 'login' }, true); }
+    catch { if (current()) setError('로그아웃 완료를 확인하지 못했습니다. 다시 시도해 주십시오.'); }
+    finally { if (current()) { pendingLogout.current = null; setBusy(false); } }
   };
   if (!state.member) return <View style={s.page}><Text accessibilityRole="alert" style={s.muted}>{error || state.error || '로그인이 필요합니다.'}</Text><Action label="로그인" onPress={() => app.navigate({ screen: 'login' })} /><Action label="로그아웃 다시 시도" disabled={busy} onPress={() => void logout()} /></View>;
   return (
@@ -531,8 +551,8 @@ export function WithdrawScreen() {
  * 테마 미리보기, 글꼴 타일, 글자 크기와 읽기 효과 선택을 표시합니다.
  *
  * @remarks
- * 테마·글꼴 계열·글자 크기는 현재 앱 실행 중에 적용합니다. 서버 계정 설정으로
- * 저장하지 않으며, 페이지 넘김 방식과 효과 설정은 독서 화면 지원 전까지 비활성화합니다.
+ * 테마·글꼴 계열·글자 크기는 현재 기기에 저장하여 다음 실행에도 적용합니다.
+ * 서버 계정 설정과 동기화하지 않으며, 페이지 넘김 방식과 효과 설정은 지원 전까지 비활성화합니다.
  *
  * @returns 읽기 설정 시안의 미리보기와 선택 도구입니다.
  */
@@ -572,21 +592,21 @@ export function ReadingSettingsScreen() {
       <View style={styles.themeRow}>
         {([['크림', '#F7F1E4'], ['연노랑', '#FFF3C7'], ['연회색', '#ECEEF1'], ['다크', '#233B2F']] as const).map(([label, background]) => (
           <Pressable key={label} accessibilityRole="radio" accessibilityState={{ checked: theme === label }} accessibilityLabel={label + ' 테마'} onPress={() => setTheme(label)} style={styles.themeItem}>
-            <View style={[styles.themePreview, { backgroundColor: background }, theme === label && styles.selectedBorder]}><Text style={[s.text, styles.previewLetter, label === '다크' && styles.lightText]}>가</Text>{theme === label && <View style={styles.themeCheck}><Icon name="check" size={11} color="#FFFFFF" /></View>}</View>
+            <View style={[styles.themePreview, { backgroundColor: background }, theme === label && styles.selectedBorder]}><Text style={[s.text, styles.previewLetter, { fontFamily: readingFonts[font].family }, label === '다크' && styles.lightText]}>가</Text>{theme === label && <View style={styles.themeCheck}><Icon name="check" size={11} color="#FFFFFF" /></View>}</View>
             <Text style={[s.muted, styles.themeLabel, theme === label && styles.selectedText]}>{label}</Text>
           </Pressable>
         ))}
       </View>
       <Text style={[s.label, styles.settingsLabel]}>글꼴</Text>
       <View style={styles.fontGrid}>
-        {['기본 명조', '기본 고딕', '나눔명조', '나눔고딕', '고운바탕', '고운돋움', '함렛', '플렉스고딕'].map(label => (
-          <Pressable key={label} accessibilityRole="radio" accessibilityState={{ checked: font === label }} onPress={() => setFont(label)} style={[styles.fontTile, font === label && styles.selectedBorder]}>
-            <Text style={[s.text, styles.fontPreview, font === label && styles.selectedText]}>가</Text><Text numberOfLines={1} style={[s.text, styles.fontLabel, font === label && styles.selectedText]}>{label}</Text>{font === label && <Icon name="check" size={14} color={colors.green} />}
+        {readingFontNames.map(name => (
+          <Pressable key={name} accessibilityRole="radio" accessibilityState={{ checked: font === name }} onPress={() => setFont(name)} style={[styles.fontTile, font === name && styles.selectedBorder]}>
+            <Text style={[s.text, styles.fontPreview, { fontFamily: readingFonts[name].family }, font === name && styles.selectedText]}>가</Text><Text numberOfLines={1} style={[s.text, styles.fontLabel, font === name && styles.selectedText]}>{readingFonts[name].label}</Text>{font === name && <Icon name="check" size={14} color={colors.green} />}
           </Pressable>
         ))}
       </View>
       <Text style={[s.label, styles.settingsLabel]}>글자 크기</Text>
-      <View style={styles.sizeRow}>{[13, 15, 17, 19, 21].map((fontSize, index) => <Pressable key={fontSize} accessibilityRole="radio" accessibilityLabel={`글자 크기 ${index + 1}단계`} accessibilityState={{ checked: size === index }} onPress={() => setSize(index)} style={[styles.sizeOption, size === index && styles.sizeSelected]}><Text style={[s.text, { fontSize }, size === index && styles.selectedText]}>가</Text></Pressable>)}</View>
+      <View style={styles.sizeRow}>{[13, 15, 17, 19, 21].map((fontSize, index) => <Pressable key={fontSize} accessibilityRole="radio" accessibilityLabel={`글자 크기 ${index + 1}단계`} accessibilityState={{ checked: size === index }} onPress={() => setSize(index)} style={[styles.sizeOption, size === index && styles.sizeSelected]}><Text style={[s.text, { fontSize, fontFamily: readingFonts[font].family }, size === index && styles.selectedText]}>가</Text></Pressable>)}</View>
       <View style={styles.settingRow}><Text numberOfLines={1} style={[s.text, styles.settingName, styles.unsupportedSetting]}>읽기 방식</Text><View style={styles.modeRow}>{['스크롤', '책장'].map(label => <Pressable key={label} disabled accessibilityRole="radio" accessibilityState={{ checked: mode === label, disabled: true }} style={[styles.modeOption, styles.unsupportedSetting, mode === label && styles.modeSelected]}><Text numberOfLines={1} style={[s.text, styles.modeLabel, styles.unsupportedSetting, mode === label && styles.lightText]}>{label}</Text></Pressable>)}</View></View>
       <View style={styles.settingRow}><Text numberOfLines={1} style={[s.text, styles.settingName, styles.unsupportedSetting]}>페이지 전환 애니메이션</Text><Switch disabled accessibilityLabel="페이지 전환 애니메이션" accessibilityState={{ disabled: true }} value={animation} trackColor={{ false: '#E3E8DC', true: colors.green }} thumbColor="#FFFFFF" /></View>
       <View style={styles.settingRow}><Text numberOfLines={1} style={[s.text, styles.settingName, styles.unsupportedSetting]}>페이지 전환 효과음</Text><Switch disabled accessibilityLabel="페이지 전환 효과음" accessibilityState={{ disabled: true }} value={sound} trackColor={{ false: '#E3E8DC', true: colors.green }} thumbColor="#FFFFFF" /></View>
@@ -653,23 +673,21 @@ const styles = StyleSheet.create({
   avatar: { width: 64, height: 64, borderRadius: 32, backgroundColor: '#EEE3D3', alignItems: 'center', justifyContent: 'center' },
   avatarLogo: { width: 44, height: 48, resizeMode: 'contain' },
   profileText: { flex: 1, minWidth: 0 },
-  profileEmpty: { padding: 0, minHeight: 58, alignItems: 'flex-start' },
-  stats: { flexDirection: 'row', alignItems: 'center', minHeight: 101, borderRadius: 22, backgroundColor: '#F2F6ED', marginTop: 28 },
-  stat: { flex: 1, alignItems: 'center', paddingVertical: 10 },
-  statEmpty: { minHeight: 44, padding: 0 },
+  stats: { flexDirection: 'row', alignItems: 'center', borderRadius: 16, backgroundColor: '#F2F6ED', marginTop: 20 },
+  stat: { flex: 1, minHeight: 64, alignItems: 'center', justifyContent: 'center', paddingVertical: 12, gap: 6 },
   statLabel: { fontSize: 12, color: '#625D50' },
-  statDivider: { width: 1, height: 48, backgroundColor: '#E3E8DC' },
-  ownedHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 30, marginBottom: 12 },
+  statDivider: { width: 1, height: 32, backgroundColor: '#E3E8DC' },
+  ownedHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 24, marginBottom: 8 },
   sectionTitle: { fontSize: 20 },
   manage: { paddingHorizontal: 18, paddingVertical: 8, borderRadius: 20, backgroundColor: '#F2F6ED' },
   manageText: { color: colors.green, fontSize: 12, fontWeight: '700' },
-  ownedCard: { borderRadius: 20, backgroundColor: '#F2F6ED', padding: 16 },
+  ownedCard: { borderRadius: 16, backgroundColor: '#F2F6ED', padding: 16 },
   purchaseList: { gap: 16 },
   purchaseItem: { gap: 14 },
   purchaseSummary: { flexDirection: 'row', alignItems: 'flex-start', gap: 14 },
   purchaseCover: { width: 56, height: 80 },
   purchaseActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  ownedInfo: { padding: 0 },
+  ownedInfo: { minHeight: 0, paddingVertical: 8, paddingHorizontal: 0 },
   myMenus: { marginTop: 24 },
   menu: { minHeight: 80, flexDirection: 'row', alignItems: 'center', gap: 16 },
   menuIcon: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#F2F6ED', alignItems: 'center', justifyContent: 'center' },
@@ -684,7 +702,6 @@ const styles = StyleSheet.create({
   accountDivider: { height: 1, backgroundColor: '#E3E8DC', marginTop: 18, marginBottom: 10 },
   accountIdRow: { flexDirection: 'row', alignItems: 'center' },
   accountIdLabel: { width: 92, fontSize: 12 },
-  valueEmpty: { minHeight: 28, padding: 0, flexDirection: 'row', gap: 6 },
   accountSection: { fontSize: 18, marginTop: 38, marginBottom: 14 },
   infoRow: { minHeight: 58, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderBottomWidth: 1, borderColor: '#E3E8DC' },
   infoLabel: { fontSize: 13, color: '#625D50' },

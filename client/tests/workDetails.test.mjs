@@ -48,6 +48,22 @@ test('검색어와 종류를 전달하고 검색 결과의 slug로 상세를 조
   assert.deepEqual(await fetchWorkDetail(apiUrl, results[0].id, AbortSignal.timeout(5000)), work);
 });
 
+test('선택 장르는 한 번만 인코딩해 전달하고 해제하면 요청에서 생략합니다.', async context => {
+  const requests = [];
+  const apiUrl = await startServer(context, createServer((request, response) => {
+    requests.push(new URL(request.url, 'http://localhost').searchParams);
+    response.writeHead(200, { 'Content-Type': 'application/json' });
+    response.end('[]');
+  }));
+  const genre = '로맨스 판타지 & +😀';
+  await searchWorks(apiUrl, '제목 & 저자', 'novel', AbortSignal.timeout(5000), genre);
+  await searchWorks(apiUrl, '제목 & 저자', 'novel', AbortSignal.timeout(5000));
+  assert.deepEqual(requests[0].getAll('genre'), [genre]);
+  assert.equal(requests[0].get('query'), '제목 & 저자');
+  assert.equal(requests[0].get('kind'), 'novel');
+  assert.equal(requests[1].has('genre'), false);
+});
+
 test('검색 결과 없음과 서버 오류·잘못된 응답을 구분합니다.', async context => {
   let status = 200;
   let body = [];

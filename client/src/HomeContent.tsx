@@ -140,7 +140,7 @@ function Section({ section }: {
         {section.items.map(item => <Pressable key={item.id} testID={`work-${item.id}`} accessibilityRole="button"
           accessibilityLabel={item.title + ' 상세 보기'} onPress={() => navigate({ screen: 'detail', workId: item.id })} style={styles.work}>
           <Image accessibilityLabel={`${item.title} 표지`} source={{ uri: new URL(item.imageUrl, `${apiUrl}/`).href }} resizeMode="cover" style={styles.cover} />
-          <Text style={styles.workTitle}>{item.title}</Text>
+          <Text numberOfLines={2} style={styles.workTitle}>{item.title}</Text>
           {item.subtitle && <Text style={s.muted}>{item.subtitle}</Text>}
         </Pressable>)}
       </ScrollView>
@@ -204,7 +204,7 @@ export function HomeContent({ kind }: {
   if (response === null) return <View style={styles.status} accessibilityLiveRegion="polite">
     <ActivityIndicator color={colors.green} /><Text style={s.muted}>홈을 불러오고 있습니다.</Text>
   </View>;
-  if (response.sections.length === 0) return <EmptyState title="표시할 홈 구성이 없습니다." description="서버에서 표시할 구역을 보내지 않았습니다." />;
+  if (response.sections.length === 0) return <EmptyState title="표시할 콘텐츠가 없습니다." />;
   return <View style={styles.page}>{response.sections.map(section => <Section key={section.id} section={section} />)}</View>;
 }
 // #endregion
@@ -212,8 +212,8 @@ export function HomeContent({ kind }: {
 // #region 공통 요소 스타일
 /** 서버가 선택하는 공통 요소의 표시 규칙입니다. 항목 수를 지정하지 않습니다. */
 const styles = StyleSheet.create({
-  page: { paddingTop: 20, paddingBottom: 32, gap: 28 },
-  section: { gap: 14 },
+  page: { paddingTop: 12, paddingBottom: 24, gap: 24 },
+  section: { gap: 10 },
   heading: { paddingHorizontal: 20 },
   items: { paddingHorizontal: 20, gap: 14, alignItems: 'flex-start' },
   carousel: { paddingHorizontal: 20, gap: 12 },
@@ -225,12 +225,12 @@ const styles = StyleSheet.create({
   bannerAction: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 6, paddingVertical: 8 },
   bannerActionText: { color: '#fff', fontSize: 13, fontWeight: '600' },
   featuredList: { gap: 20 },
-  featured: { minHeight: 238, paddingVertical: 20, paddingLeft: 20, paddingRight: 40, flexDirection: 'row', alignItems: 'flex-start', gap: 20, backgroundColor: '#EEE3D3' },
-  featuredCopy: { flex: 1, minWidth: 0, gap: 12 },
-  featuredInfo: { gap: 12 },
+  featured: { paddingVertical: 20, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'flex-start', gap: 16, backgroundColor: '#EEE3D3' },
+  featuredCopy: { flex: 1, minWidth: 0, gap: 10 },
+  featuredInfo: { gap: 10 },
   featuredLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   featuredLabel: { flex: 1, color: colors.green, fontSize: 13, lineHeight: 20, fontWeight: '700' },
-  featuredTitle: { maxWidth: 184, fontSize: 28, lineHeight: 38, fontWeight: '700', color: colors.ink },
+  featuredTitle: { maxWidth: 184, fontSize: 24, lineHeight: 32, fontWeight: '700', color: colors.ink },
   featuredSubtitle: { fontSize: 12, lineHeight: 20, color: '#625D50' },
   featuredAction: { minHeight: 44, flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 6 },
   featuredActionText: { flexShrink: 1, fontSize: 13, lineHeight: 20, fontWeight: '700', color: colors.ink },
