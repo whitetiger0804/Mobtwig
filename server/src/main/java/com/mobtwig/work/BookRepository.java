@@ -15,15 +15,18 @@ import org.springframework.data.repository.query.Param;
 public interface BookRepository extends JpaRepository<Book, Long> {
     /**
      * 제목·저자·출판사의 부분 일치로 공개 작품을 검색합니다.
-     * 저자 일치는 EXISTS로 검사하여 공동 저자 때문에 작품이 중복되지 않습니다.
+     * 저자·장르 일치는 EXISTS로 검사하여 공동 저자나 복수 장르 때문에 작품이 중복되지 않습니다.
      * @param pattern 느낌표를 이스케이프 문자로 사용하는 LIKE 검색 패턴입니다.
      * @param contentType DB 콘텐츠 종류이며 null이면 전체입니다.
+     * @param genre 장르 이름이며 null이면 장르를 제한하지 않습니다.
      * @return 출간일과 식별자 내림차순의 검색 결과입니다.
      */
     @Query("""
             SELECT b FROM Book b
             WHERE b.publishStatus = 'PUBLISHED'
               AND (:contentType IS NULL OR b.contentType = :contentType)
+              AND (:genre IS NULL OR EXISTS (SELECT g.id FROM Book tagged JOIN tagged.genres g
+                                             WHERE tagged.id = b.id AND g.name = :genre))
               AND (b.title LIKE :pattern ESCAPE '!'
                    OR b.publisher LIKE :pattern ESCAPE '!'
                    OR EXISTS (SELECT a.id FROM Book authored JOIN authored.authors a
@@ -31,7 +34,7 @@ public interface BookRepository extends JpaRepository<Book, Long> {
             ORDER BY b.publishedDate DESC, b.id DESC
             """)
     List<Book> searchPublished(@Param("pattern") String pattern,
-            @Param("contentType") @Nullable String contentType);
+            @Param("contentType") @Nullable String contentType, @Param("genre") @Nullable String genre);
 
     /**
      * 지정한 게시 상태의 작품을 출간일과 식별자 내림차순으로 조회합니다.

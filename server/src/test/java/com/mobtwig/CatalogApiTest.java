@@ -284,10 +284,12 @@ class CatalogApiTest {
         assertEquals(400, get("/sdui/home" + query).statusCode());
     }
 
-    @ParameterizedTest
-    @ValueSource(strings = {"TEST-BOOK", "test_book", "test.book"})
-    void rejectsMalformedSlugs(String slug) throws Exception {
-        assertEquals(400, get("/works/" + slug).statusCode());
+    @Test
+    void usesDatabaseSlugMatchingAndReturnsCanonicalIdentifier() throws Exception {
+        var response = get("/works/TEST-BOOK");
+        assertEquals(200, response.statusCode());
+        assertEquals("test-book", object(response).get("id"));
+        for (String slug : List.of("test_book", "test.book")) assertEquals(404, get("/works/" + slug).statusCode());
     }
 
     @ParameterizedTest

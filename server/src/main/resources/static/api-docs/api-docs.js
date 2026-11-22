@@ -17,7 +17,7 @@ SwaggerUIBundle({
     }
     const scope = target.pathname.startsWith('/api/admin/') ? 'admin'
       : target.pathname.startsWith('/api/auth/') || target.pathname.startsWith('/api/members/') ? 'auth' : null;
-    if (request.method === 'POST' && scope) {
+    if (['POST', 'PUT', 'DELETE'].includes(request.method) && scope) {
       const response = await fetch(`/api/${scope}/csrf`, { credentials: 'same-origin', cache: 'no-store' });
       if (!response.ok) throw new Error(`CSRF 토큰을 받지 못했습니다. HTTP ${response.status}`);
       const csrf = await response.json();

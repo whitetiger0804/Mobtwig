@@ -1109,48 +1109,48 @@ INSERT INTO board (id, type, book_id, name, created_at) VALUES
     (81015, 'WORK', 81015, NULL, DATE_SUB(v_now, INTERVAL 720 HOUR)),
     (81016, 'WORK', 81016, NULL, DATE_SUB(v_now, INTERVAL 720 HOUR));
 
-INSERT INTO post (id, board_id, book_id, member_id, head, title, body, spoiler_chapter_id, status, published_at, created_at, updated_at) VALUES
+INSERT INTO post (id, board_id, book_id, member_id, head, title, body, spoiler_chapter_id, has_spoiler, status, published_at, created_at, updated_at) VALUES
     (81001, 81002, 81002, 81004, 'IMPRESSION', '읽고 나서 어떤 메모를 남기셨나요?', '감정에 이름을 붙이는 부분을 읽고 오늘 마음을 한 줄씩 적어봤어요.
 그냥 피곤하다고 쓰던 날도 이유를 나눠 적으니 조금 다르게 보이네요.
-다른 분들은 책에 나온 질문 중 어떤 걸 적어보셨나요?', NULL, 'PUBLISHED', DATE_SUB(v_now, INTERVAL 9 HOUR), DATE_SUB(v_now, INTERVAL 9 HOUR), DATE_SUB(v_now, INTERVAL 9 HOUR)),
+다른 분들은 책에 나온 질문 중 어떤 걸 적어보셨나요?', NULL, FALSE, 'PUBLISHED', DATE_SUB(v_now, INTERVAL 9 HOUR), DATE_SUB(v_now, INTERVAL 9 HOUR), DATE_SUB(v_now, INTERVAL 9 HOUR)),
     (81002, 81004, 81004, 81005, 'IMPRESSION', '이번 호는 관측 기사부터 읽었어요', '밤하늘에서 목성을 찾는 기사를 먼저 읽었습니다.
 사진 옆에 관측할 때 볼 지점이 정리돼 있어서 따라가기 편했어요.
-망원경 없이 읽으시는 분들은 어느 기사가 가장 재미있으셨나요?', NULL, 'PUBLISHED', DATE_SUB(v_now, INTERVAL 8 HOUR), DATE_SUB(v_now, INTERVAL 8 HOUR), DATE_SUB(v_now, INTERVAL 8 HOUR)),
+망원경 없이 읽으시는 분들은 어느 기사가 가장 재미있으셨나요?', NULL, FALSE, 'PUBLISHED', DATE_SUB(v_now, INTERVAL 8 HOUR), DATE_SUB(v_now, INTERVAL 8 HOUR), DATE_SUB(v_now, INTERVAL 8 HOUR)),
     (81003, 81001, 81001, 81006, 'IMPRESSION', '기록관 분위기 때문에 계속 읽게 돼요', '무서운 장면보다 기록관에서 일하는 장면이 더 오래 기억에 남아요.
 
 한 사건이 끝나면 잠깐 숨을 돌릴 시간이 있어서 다음 화도 자연스럽게 읽게 됩니다. 밤에 불 하나 켜놓고 읽으면 분위기가 잘 맞아요.
 
-아직 초반인데, 저처럼 배경 묘사 때문에 읽고 계신 분도 있나요?', NULL, 'PUBLISHED', DATE_SUB(v_now, INTERVAL 7 HOUR), DATE_SUB(v_now, INTERVAL 7 HOUR), DATE_SUB(v_now, INTERVAL 7 HOUR)),
+아직 초반인데, 저처럼 배경 묘사 때문에 읽고 계신 분도 있나요?', NULL, FALSE, 'PUBLISHED', DATE_SUB(v_now, INTERVAL 7 HOUR), DATE_SUB(v_now, INTERVAL 7 HOUR), DATE_SUB(v_now, INTERVAL 7 HOUR)),
     (81004, v_reading_board, NULL, 81007, 'QUESTION', '출퇴근길에는 얼마나 읽으세요?', '출근길이 편도 30분인데 휴대폰만 보다가 내릴 때가 많아요.
 한 권 완독을 목표로 잡으니 부담돼서 이번 주부터 시간을 정해서 읽어보려고 합니다.
-시간과 분량 중에 어떤 기준이 습관을 들이기 좋았나요?', NULL, 'PUBLISHED', DATE_SUB(v_now, INTERVAL 6 HOUR), DATE_SUB(v_now, INTERVAL 6 HOUR), DATE_SUB(v_now, INTERVAL 6 HOUR)),
+시간과 분량 중에 어떤 기준이 습관을 들이기 좋았나요?', NULL, FALSE, 'PUBLISHED', DATE_SUB(v_now, INTERVAL 6 HOUR), DATE_SUB(v_now, INTERVAL 6 HOUR), DATE_SUB(v_now, INTERVAL 6 HOUR)),
     (81005, v_reading_board, NULL, 81009, 'QUESTION', '메모는 종이에 하세요, 앱에 하세요?', '종이에 쓰면 기억은 잘 나는데 나중에 찾기가 어렵고, 앱은 모아두기만 하게 됩니다.
-읽다가 멈추는 시간이 길어지지 않게 짧게 남기고 싶은데 다들 어떻게 하고 계신가요?', NULL, 'PUBLISHED', DATE_SUB(v_now, INTERVAL 5 HOUR), DATE_SUB(v_now, INTERVAL 5 HOUR), DATE_SUB(v_now, INTERVAL 5 HOUR)),
+읽다가 멈추는 시간이 길어지지 않게 짧게 남기고 싶은데 다들 어떻게 하고 계신가요?', NULL, FALSE, 'PUBLISHED', DATE_SUB(v_now, INTERVAL 5 HOUR), DATE_SUB(v_now, INTERVAL 5 HOUR), DATE_SUB(v_now, INTERVAL 5 HOUR)),
     (81006, v_promotion_board, 81014, 81001, 'PROMOTION', '퇴근하고 던전을 돌보는 이야기입니다.', '퇴근 후엔 또 다른 일이 시작됩니다. 첫 작품을 연재 중인 북이입니다.
 
 퇴근길에 던전 관리 계약을 맡은 회사원의 이야기입니다. 몬스터와 싸우는 대신 시설을 고치고 입주자 민원을 받습니다.
-가볍게 읽을 수 있는 생활 판타지를 쓰고 있습니다. 읽어주셔서 감사합니다.', NULL, 'PUBLISHED', DATE_SUB(v_now, INTERVAL 4 HOUR), DATE_SUB(v_now, INTERVAL 4 HOUR), DATE_SUB(v_now, INTERVAL 4 HOUR)),
+가볍게 읽을 수 있는 생활 판타지를 쓰고 있습니다. 읽어주셔서 감사합니다.', NULL, FALSE, 'PUBLISHED', DATE_SUB(v_now, INTERVAL 4 HOUR), DATE_SUB(v_now, INTERVAL 4 HOUR), DATE_SUB(v_now, INTERVAL 4 HOUR)),
     (81007, v_writing_board, NULL, 81012, 'STORY', '퇴고할 때 소리 내어 읽어봤습니다', '문장이 자꾸 길어져서 오늘은 한 회차를 소리 내어 읽어봤습니다.
-숨이 차는 부분에서 문장을 나누니 설명도 덜 겹치더라고요. 대화문을 고칠 때 특히 도움이 됐습니다.', NULL, 'PUBLISHED', DATE_SUB(v_now, INTERVAL 3 HOUR), DATE_SUB(v_now, INTERVAL 3 HOUR), DATE_SUB(v_now, INTERVAL 3 HOUR)),
+숨이 차는 부분에서 문장을 나누니 설명도 덜 겹치더라고요. 대화문을 고칠 때 특히 도움이 됐습니다.', NULL, FALSE, 'PUBLISHED', DATE_SUB(v_now, INTERVAL 3 HOUR), DATE_SUB(v_now, INTERVAL 3 HOUR), DATE_SUB(v_now, INTERVAL 3 HOUR)),
     (81008, 81001, 81001, 81010, 'THEORY', '두 번째 직인은 전임자와 관련 있을까요?', '5화에서 발견한 문양이 첫 인계장에 남은 흔적과 같아 보여요.
 단순한 통행 권한이 아니라 기록을 넘기는 표시일 수도 있겠다는 생각이 들었습니다.
-아직 뒤 회차는 안 읽었으니 5화까지 내용으로만 이야기하고 싶어요.', 81001005, 'PUBLISHED', DATE_SUB(v_now, INTERVAL 2 HOUR), DATE_SUB(v_now, INTERVAL 2 HOUR), DATE_SUB(v_now, INTERVAL 2 HOUR));
+아직 뒤 회차는 안 읽었으니 5화까지 내용으로만 이야기하고 싶어요.', 81001005, TRUE, 'PUBLISHED', DATE_SUB(v_now, INTERVAL 2 HOUR), DATE_SUB(v_now, INTERVAL 2 HOUR), DATE_SUB(v_now, INTERVAL 2 HOUR));
 
-INSERT INTO post_comment (id, post_id, book_id, member_id, body, spoiler_chapter_id, created_at, updated_at) VALUES
-    (81001, 81001, 81002, 81001, '저는 질문만 메모해두고 자기 전에 다시 적고 있어요. 읽는 중간에 오래 멈추지 않아도 돼서 좋습니다.', NULL, DATE_SUB(v_now, INTERVAL 1 HOUR), DATE_SUB(v_now, INTERVAL 1 HOUR)),
-    (81002, 81001, 81002, 81008, '오늘 잘한 일을 하나 적는 질문이 제일 어려웠는데 계속 해보니 조금씩 떠오르네요.', NULL, DATE_SUB(v_now, INTERVAL 1 HOUR), DATE_SUB(v_now, INTERVAL 1 HOUR)),
-    (81003, 81002, 81004, 81011, '저도 목성 기사부터 봤어요. 주말에는 관측 캘린더를 보고 밖에 나가보려고 합니다.', NULL, DATE_SUB(v_now, INTERVAL 1 HOUR), DATE_SUB(v_now, INTERVAL 1 HOUR)),
-    (81004, 81002, 81004, 81004, '토성 고리 기사가 재미있었어요. 사진만 볼 때는 몰랐던 부분이 많더라고요.', NULL, DATE_SUB(v_now, INTERVAL 1 HOUR), DATE_SUB(v_now, INTERVAL 1 HOUR)),
-    (81005, 81003, 81001, 81001, '저도 배경 묘사 때문에 읽기 시작했어요. 천천히 읽을 때 더 잘 느껴지더라고요.', NULL, DATE_SUB(v_now, INTERVAL 1 HOUR), DATE_SUB(v_now, INTERVAL 1 HOUR)),
-    (81006, 81003, 81001, 81003, '기록실에서 차 마시는 장면 좋아합니다. 조용한 일상으로 돌아오는 순간이 있어서 더 몰입돼요.', NULL, DATE_SUB(v_now, INTERVAL 1 HOUR), DATE_SUB(v_now, INTERVAL 1 HOUR)),
-    (81007, 81003, 81001, 81014, '퇴근하고 불 끄고 읽었다가 복도 나가기 무서웠어요. 분위기가 정말 잘 살아 있습니다.', NULL, DATE_SUB(v_now, INTERVAL 1 HOUR), DATE_SUB(v_now, INTERVAL 1 HOUR)),
-    (81008, 81004, NULL, 81008, '저는 한 정거장만 읽기로 시작했어요. 조금씩 늘리는 게 편하더라고요.', NULL, DATE_SUB(v_now, INTERVAL 1 HOUR), DATE_SUB(v_now, INTERVAL 1 HOUR)),
-    (81009, 81004, NULL, 81015, '분량보다 10분으로 잡으니 마음이 편했습니다. 재미있는 날은 더 읽고요.', NULL, DATE_SUB(v_now, INTERVAL 1 HOUR), DATE_SUB(v_now, INTERVAL 1 HOUR)),
-    (81010, 81004, NULL, 81001, '저는 점심시간에 20쪽 정도 읽고 있어요. 못 읽은 날을 만회하려고 하지 않는 게 도움이 됐습니다.', NULL, DATE_SUB(v_now, INTERVAL 1 HOUR), DATE_SUB(v_now, INTERVAL 1 HOUR)),
-    (81011, 81005, NULL, 81002, '짧은 문장만 앱에 남기고 주말에 종이 노트로 옮깁니다. 두 번 쓰면서 필요 없는 메모도 정리돼요.', NULL, DATE_SUB(v_now, INTERVAL 1 HOUR), DATE_SUB(v_now, INTERVAL 1 HOUR)),
-    (81012, 81005, NULL, 81016, '저는 책갈피만 해두고 끝까지 읽은 다음에 한꺼번에 정리해요. 흐름이 덜 끊겨서 좋습니다.', NULL, DATE_SUB(v_now, INTERVAL 1 HOUR), DATE_SUB(v_now, INTERVAL 1 HOUR)),
-    (81013, 81007, NULL, 81003, '대화문을 읽어보면 같은 말투가 반복되는 게 잘 들리더라고요. 저도 자주 쓰는 방법입니다.', NULL, DATE_SUB(v_now, INTERVAL 1 HOUR), DATE_SUB(v_now, INTERVAL 1 HOUR)),
-    (81014, 81008, 81001, 81006, '저도 그 문양을 다시 확인했어요. 인계장에 찍힌 위치가 다른 것도 이유가 있을 것 같습니다.', 81001005, DATE_SUB(v_now, INTERVAL 1 HOUR), DATE_SUB(v_now, INTERVAL 1 HOUR));
+INSERT INTO post_comment (id, post_id, book_id, member_id, body, spoiler_chapter_id, has_spoiler, created_at, updated_at) VALUES
+    (81001, 81001, 81002, 81001, '저는 질문만 메모해두고 자기 전에 다시 적고 있어요. 읽는 중간에 오래 멈추지 않아도 돼서 좋습니다.', NULL, FALSE, DATE_SUB(v_now, INTERVAL 1 HOUR), DATE_SUB(v_now, INTERVAL 1 HOUR)),
+    (81002, 81001, 81002, 81008, '오늘 잘한 일을 하나 적는 질문이 제일 어려웠는데 계속 해보니 조금씩 떠오르네요.', NULL, FALSE, DATE_SUB(v_now, INTERVAL 1 HOUR), DATE_SUB(v_now, INTERVAL 1 HOUR)),
+    (81003, 81002, 81004, 81011, '저도 목성 기사부터 봤어요. 주말에는 관측 캘린더를 보고 밖에 나가보려고 합니다.', NULL, FALSE, DATE_SUB(v_now, INTERVAL 1 HOUR), DATE_SUB(v_now, INTERVAL 1 HOUR)),
+    (81004, 81002, 81004, 81004, '토성 고리 기사가 재미있었어요. 사진만 볼 때는 몰랐던 부분이 많더라고요.', NULL, FALSE, DATE_SUB(v_now, INTERVAL 1 HOUR), DATE_SUB(v_now, INTERVAL 1 HOUR)),
+    (81005, 81003, 81001, 81001, '저도 배경 묘사 때문에 읽기 시작했어요. 천천히 읽을 때 더 잘 느껴지더라고요.', NULL, FALSE, DATE_SUB(v_now, INTERVAL 1 HOUR), DATE_SUB(v_now, INTERVAL 1 HOUR)),
+    (81006, 81003, 81001, 81003, '기록실에서 차 마시는 장면 좋아합니다. 조용한 일상으로 돌아오는 순간이 있어서 더 몰입돼요.', NULL, FALSE, DATE_SUB(v_now, INTERVAL 1 HOUR), DATE_SUB(v_now, INTERVAL 1 HOUR)),
+    (81007, 81003, 81001, 81014, '퇴근하고 불 끄고 읽었다가 복도 나가기 무서웠어요. 분위기가 정말 잘 살아 있습니다.', NULL, FALSE, DATE_SUB(v_now, INTERVAL 1 HOUR), DATE_SUB(v_now, INTERVAL 1 HOUR)),
+    (81008, 81004, NULL, 81008, '저는 한 정거장만 읽기로 시작했어요. 조금씩 늘리는 게 편하더라고요.', NULL, FALSE, DATE_SUB(v_now, INTERVAL 1 HOUR), DATE_SUB(v_now, INTERVAL 1 HOUR)),
+    (81009, 81004, NULL, 81015, '분량보다 10분으로 잡으니 마음이 편했습니다. 재미있는 날은 더 읽고요.', NULL, FALSE, DATE_SUB(v_now, INTERVAL 1 HOUR), DATE_SUB(v_now, INTERVAL 1 HOUR)),
+    (81010, 81004, NULL, 81001, '저는 점심시간에 20쪽 정도 읽고 있어요. 못 읽은 날을 만회하려고 하지 않는 게 도움이 됐습니다.', NULL, FALSE, DATE_SUB(v_now, INTERVAL 1 HOUR), DATE_SUB(v_now, INTERVAL 1 HOUR)),
+    (81011, 81005, NULL, 81002, '짧은 문장만 앱에 남기고 주말에 종이 노트로 옮깁니다. 두 번 쓰면서 필요 없는 메모도 정리돼요.', NULL, FALSE, DATE_SUB(v_now, INTERVAL 1 HOUR), DATE_SUB(v_now, INTERVAL 1 HOUR)),
+    (81012, 81005, NULL, 81016, '저는 책갈피만 해두고 끝까지 읽은 다음에 한꺼번에 정리해요. 흐름이 덜 끊겨서 좋습니다.', NULL, FALSE, DATE_SUB(v_now, INTERVAL 1 HOUR), DATE_SUB(v_now, INTERVAL 1 HOUR)),
+    (81013, 81007, NULL, 81003, '대화문을 읽어보면 같은 말투가 반복되는 게 잘 들리더라고요. 저도 자주 쓰는 방법입니다.', NULL, FALSE, DATE_SUB(v_now, INTERVAL 1 HOUR), DATE_SUB(v_now, INTERVAL 1 HOUR)),
+    (81014, 81008, 81001, 81006, '저도 그 문양을 다시 확인했어요. 인계장에 찍힌 위치가 다른 것도 이유가 있을 것 같습니다.', 81001005, TRUE, DATE_SUB(v_now, INTERVAL 1 HOUR), DATE_SUB(v_now, INTERVAL 1 HOUR));
 
 INSERT INTO post_image (id, post_id, image_url, width, height, sort_order, is_representative) VALUES
     (81001, 81006, CONCAT(@mobtwig_asset_origin, '/media/covers/웹소설/퇴근 후 던전 관리인.png'), 1024, 1536, 1, 1);

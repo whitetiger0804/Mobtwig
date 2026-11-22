@@ -156,11 +156,11 @@ class RecentWorksApiTest {
         assertEquals(0L, rows(-9401));
     }
 
-    @Test void rejectsUnknownHiddenOrMalformedSlug() throws Exception {
+    @Test void returnsNotFoundForUnknownHiddenOrUnmatchedSlug() throws Exception {
         var a = login("a");
         assertError(post("recent-missing", a, true), 404, "NOT_FOUND");
         assertError(post("recent-hidden", a, true), 404, "NOT_FOUND");
-        assertError(post("Bad_Slug", a, true), 400, "INVALID_SLUG");
+        assertError(post("Bad_Slug", a, true), 404, "NOT_FOUND");
         assertEquals(0L, rows(-9401));
     }
 

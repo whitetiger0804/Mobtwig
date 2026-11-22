@@ -74,9 +74,6 @@ $previousDockerConfig = $env:DOCKER_CONFIG
 $previousDockerHost = $env:DOCKER_HOST
 $configDirectory = Join-Path $DeploymentRoot 'config'
 $registryDirectory = [System.IO.Path]::GetFullPath((Join-Path $configDirectory ('registry-' + [Guid]::NewGuid().ToString('N'))))
-if (-not $registryDirectory.StartsWith(([System.IO.Path]::GetFullPath($configDirectory) + [System.IO.Path]::DirectorySeparatorChar), [StringComparison]::OrdinalIgnoreCase)) {
-    throw '임시 인증 경로가 서버 설정 디렉터리를 벗어났습니다.'
-}
 $registryConfigPath = Join-Path $registryDirectory 'config.json'
 $env:API_IMAGE = $ImageReference
 $env:DOCKER_CONFIG = $registryDirectory
@@ -96,7 +93,6 @@ try {
     Set-Acl -LiteralPath $stateDirectory -AclObject $privateAcl
 
     Write-Output '배포 설정을 검사하고 API 이미지를 내려받습니다.'
-    Invoke-Docker -Arguments ($composeArguments + @('config', '--quiet'))
     # Compose가 해석한 bind source만 메모리에서 검사합니다. 환경 비밀번호가 든 JSON은 출력하지 않습니다.
     $resolvedJson = @(Invoke-Docker -Arguments ($composeArguments + @('config', '--format', 'json')))
     try { $resolvedCompose = ($resolvedJson -join "`n") | ConvertFrom-Json }

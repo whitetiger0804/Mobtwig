@@ -43,7 +43,6 @@ function global:docker {
     $kind = switch -Regex ($command) {
         '^login ghcr\.io --username deploy-test-actor --password-stdin$' { 'login'; break }
         '^compose config --format json$' { 'config-json'; break }
-        '^compose config --quiet$' { 'config'; break }
         '^compose pull api$' { 'pull'; break }
         '^compose ps --all --quiet mysql$' { 'mysql-ps'; break }
         '^compose ps --all --quiet api$' { 'api-ps'; break }

@@ -43,9 +43,9 @@ public class PurchaseRepository {
     }
 
     Optional<Chapter> chapter(long book, long chapter, boolean lock) {
-        return jdbc.query("SELECT id,title,published_at FROM chapter WHERE book_id=? AND id=?" + (lock ? " FOR SHARE" : ""), (rs, row) -> {
+        return jdbc.query("SELECT title,published_at FROM chapter WHERE book_id=? AND id=?" + (lock ? " FOR SHARE" : ""), (rs, row) -> {
             var at = rs.getTimestamp("published_at");
-            return new Chapter(rs.getLong("id"), rs.getString("title"), at == null ? null : at.toInstant());
+            return new Chapter(rs.getString("title"), at == null ? null : at.toInstant());
         }, book, chapter).stream().findFirst();
     }
 
@@ -134,7 +134,7 @@ public class PurchaseRepository {
     }
 
     record Work(long id, String slug, String title, String image, String type, String status) { }
-    record Chapter(long id, String title, @Nullable Instant publishedAt) { }
+    record Chapter(String title, @Nullable Instant publishedAt) { }
     record Product(long id, long book, @Nullable Long chapter, int price) { }
     record Offer(Product product, @Nullable String chapterTitle, boolean owned) { }
     record Stored(long id, long product, String slug, String type, String title, String image,

@@ -87,11 +87,12 @@ public class HomeService {
             }
             ArrayNode items = mapper.createArrayNode();
             for (Book book : publishedWorks(contentType, limit, sort)) {
+                String workId = WorkMetadata.slug(book.getSlug());
                 ObjectNode item = mapper.valueToTree(new HomeResponse.WorkItem(
-                        WorkMetadata.slug(book.getSlug()), WorkMetadata.requiredText(book.getTitle(), "제목"),
+                        workId, WorkMetadata.requiredText(book.getTitle(), "제목"),
                         WorkMetadata.imageUrl(book.getCoverImageUrl())));
                 if ("featuredWork".equals(type)) {
-                    decorateFeatured(item, book, source);
+                    decorateFeatured(item, book, source, workId);
                 }
                 items.add(item);
             }
@@ -124,8 +125,9 @@ public class HomeService {
      * @param item 응답에 포함할 작품 카드입니다.
      * @param book DB에서 선택한 공개 작품입니다.
      * @param source 추천 카드의 표시 설정입니다.
+     * @param workId 검증된 작품 식별자입니다.
      */
-    private void decorateFeatured(ObjectNode item, Book book, JsonNode source) {
+    private void decorateFeatured(ObjectNode item, Book book, JsonNode source, String workId) {
         item.put("label", WorkMetadata.requiredText(source.path("label").asString(), "추천 문구"));
         if (source.path("includeSubtitle").asBoolean(false)) {
             item.put("subtitle", WorkMetadata.authors(book.getAuthors()) + " · "
@@ -134,7 +136,7 @@ public class HomeService {
         if (source.has("actionLabel")) {
             ObjectNode action = item.putObject("action");
             action.put("label", WorkMetadata.requiredText(source.path("actionLabel").asString(), "이동 문구"));
-            action.putObject("route").put("screen", "detail").put("workId", WorkMetadata.slug(book.getSlug()));
+            action.putObject("route").put("screen", "detail").put("workId", workId);
         }
     }
 }

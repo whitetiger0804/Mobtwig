@@ -1,6 +1,8 @@
 package com.mobtwig.reader;
 
 import java.time.Instant;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Objects;
 import com.mobtwig.purchase.PurchaseService;
 
@@ -37,22 +39,23 @@ public class ReadingProgressService {
         Saved saved = repository.saved(member, work.id()).orElse(null);
         String library = repository.libraryStatus(member, work.id());
         Chapter first = work.visible().stream().findFirst().orElse(null);
-        if (saved == null) return response(work, "new", null, start(work, first), library);
+        var texts = new HashMap<String, PlainTextSource.Text>();
+        if (saved == null) return response(work, "new", null, start(work, first, texts), library, texts);
         Chapter chapter = work.visible().stream().filter(c -> c.id() == saved.chapter()).findFirst().orElse(null);
         if (chapter != null) {
             try {
-                var checked = coordinates.verifyPosition(work, chapter, saved.offset(), saved.version(), saved.hash(), saved.bound(), false);
-                return response(work, "saved", saved, checked, library);
+                var checked = coordinates.verifyPosition(work, chapter, saved.offset(), saved.version(), saved.hash(), saved.bound(), false, texts);
+                return response(work, "saved", saved, checked, library, texts);
             } catch (ResponseStatusException unavailable) {
                 // 구버전·불일치·일시적 본문 부재에서는 기존 저장값을 유지합니다.
             }
         }
-        var fallback = start(work, chapter);
+        var fallback = start(work, chapter, texts);
         if (fallback == null) {
             fallback = work.visible().stream().filter(candidate -> !Objects.equals(candidate, chapter)).limit(64)
-                    .map(candidate -> start(work, candidate)).filter(Objects::nonNull).findFirst().orElse(null);
+                    .map(candidate -> start(work, candidate, texts)).filter(Objects::nonNull).findFirst().orElse(null);
         }
-        return response(work, "stale", saved, fallback, library);
+        return response(work, "stale", saved, fallback, library, texts);
     }
 
     @Transactional
@@ -69,7 +72,8 @@ public class ReadingProgressService {
         Saved previous = repository.saved(member, work.id()).orElse(null);
         Long currentRevision = previous == null ? null : previous.revision();
         if (!Objects.equals(currentRevision, input.expectedRevision())) throw ReadingProgressFailure.conflict();
-        var checked = coordinates.verifyPosition(work, chapter, input.offset(), input.contentVersion(), input.contentHash(), false, true);
+        var texts = new HashMap<String, PlainTextSource.Text>();
+        var checked = coordinates.verifyPosition(work, chapter, input.offset(), input.contentVersion(), input.contentHash(), false, true, texts);
 
         var previousMax = previous == null ? null : maxChapter(work, previous);
         long max = previousMax != null && previousMax.number() > chapter.number() ? previousMax.id() : chapter.id();
@@ -78,22 +82,21 @@ public class ReadingProgressService {
         String library = completed(work, checked) ? "COMPLETED" : "READING";
         repository.store(member, work.id(), next, previous != null);
         repository.storeLibrary(member, work.id(), library);
-        return response(work, "saved", repository.saved(member, work.id()).orElseThrow(), checked, library);
+        return response(work, "saved", repository.saved(member, work.id()).orElseThrow(), checked, library, texts);
     }
 
     private Work work(String slug, Instant now, boolean writing) {
-        if (slug == null || slug.length() > 120 || !slug.matches("[a-z0-9-]+")) throw ReadingProgressFailure.invalid();
         return repository.work(slug, now, writing).orElseThrow(ReadingProgressFailure::notFound);
     }
 
-    private Checked start(Work work, Chapter chapter) {
+    private Checked start(Work work, Chapter chapter, Map<String, PlainTextSource.Text> texts) {
         if (chapter == null) return null;
         try {
             if (work.magazine()) {
                 var pages = MagazineLayout.range(work, chapter);
                 return new Checked(chapter, pages.start(), pages.start(), pages.end(), null, null);
             }
-            var text = source.read(chapter.url());
+            var text = texts.computeIfAbsent(chapter.url(), source::read);
             versions.verify(chapter.id(), chapter.version(), text.version(), false);
             return new Checked(chapter, 0, 0, text.characterCount(), text.version(), text.body());
         } catch (ResponseStatusException unavailable) {
@@ -107,16 +110,17 @@ public class ReadingProgressService {
         return position.end() > 0 && position.offset() == position.end();
     }
 
-    private ReadingProgressResponse response(Work work, String state, Saved saved, Checked checked, String library) {
+    private ReadingProgressResponse response(Work work, String state, Saved saved, Checked checked, String library,
+                                             Map<String, PlainTextSource.Text> texts) {
         var max = saved == null ? null : maxChapter(work, saved);
         String publicMax = max == null || !max.visible() ? null : Long.toString(max.id());
         boolean newChapters = "COMPLETED".equals(library) && max != null && work.visible().stream().anyMatch(c -> c.number() > max.number());
         var position = checked == null ? null : new ReadingProgressResponse.Position(Long.toString(checked.chapter().id()),
                 checked.offset(), work.magazine() ? "page" : "utf16", checked.chapter().version(), checked.hash());
-        boolean valid = "saved".equals(state) && checked != null;
+        boolean valid = "saved".equals(state);
         return new ReadingProgressResponse(work.slug(), work.kind(), state, position,
                 saved == null ? null : Long.toString(saved.revision()), saved == null ? null : saved.lastReadAt().toString(),
-                valid ? chapterPercent(work, checked) : null, valid ? workPercent(work, checked) : null, publicMax, library, newChapters);
+                valid ? chapterPercent(work, checked) : null, valid ? workPercent(work, checked, texts) : null, publicMax, library, newChapters);
     }
 
     private Chapter maxChapter(Work work, Saved saved) {
@@ -130,7 +134,7 @@ public class ReadingProgressService {
                 : percent(position.offset(), position.end());
     }
 
-    private Double workPercent(Work work, Checked position) {
+    private Double workPercent(Work work, Checked position, Map<String, PlainTextSource.Text> texts) {
         if (work.magazine()) return work.pageCount() == null ? null : percent(position.offset(), work.pageCount());
         var visible = work.visible();
         if (visible.size() > 64) return null;
@@ -142,7 +146,7 @@ public class ReadingProgressService {
                 if (chapter.id() == position.chapter().id()) {
                     length = position.end();
                 } else {
-                    var text = source.read(chapter.url());
+                    var text = texts.computeIfAbsent(chapter.url(), source::read);
                     versions.verify(chapter.id(), chapter.version(), text.version(), false);
                     length = text.characterCount();
                 }

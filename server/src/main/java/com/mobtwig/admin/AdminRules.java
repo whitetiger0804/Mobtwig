@@ -12,31 +12,33 @@ final class AdminRules {
     private AdminRules() { }
 
     static String text(@Nullable String value, String label, int max) {
-        if (value == null || WorkMetadata.optionalText(value) == null) {
+        String text = optional(value, label, max);
+        if (text == null) {
             throw bad(label + "을(를) 입력하십시오.");
         }
-        if (value.length() > max || value.getBytes(StandardCharsets.UTF_8).length > 65535) {
-            throw bad(label + "의 길이가 허용 범위를 넘었습니다.");
-        }
-        return value;
+        return text;
     }
 
     static @Nullable String optional(@Nullable String value, String label, int max) {
-        if (value == null || WorkMetadata.optionalText(value) == null) {
+        String text = WorkMetadata.optionalText(value);
+        if (text == null) {
             return null;
         }
-        return text(value, label, max);
+        if (text.length() > max || text.getBytes(StandardCharsets.UTF_8).length > 65535) {
+            throw bad(label + "의 길이가 허용 범위를 넘었습니다.");
+        }
+        return text;
     }
 
-    static String url(String value, String label) {
-        text(value, label, 500);
+    static String url(@Nullable String value, String label) {
+        String url = text(value, label, 500);
         try {
-            WorkMetadata.imageUrl(value);
+            WorkMetadata.imageUrl(url);
         }
         catch (IllegalArgumentException | IllegalStateException exception) {
             throw bad(label + "은(는) HTTP(S) 주소 또는 서버 기준의 / 경로여야 합니다.");
         }
-        return value;
+        return url;
     }
 
     static ResponseStatusException bad(String message) {

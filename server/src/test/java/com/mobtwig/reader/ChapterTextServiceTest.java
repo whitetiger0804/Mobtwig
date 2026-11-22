@@ -22,7 +22,7 @@ class ChapterTextServiceTest {
         when(books.findBySlugAndPublishStatus("hidden", "PUBLISHED")).thenReturn(Optional.empty());
         assertEquals(404, assertThrows(ResponseStatusException.class, () -> service.read("hidden", "1")).getStatusCode().value());
         verifyNoInteractions(chapters, source);
-        assertEquals(400, assertThrows(ResponseStatusException.class, () -> service.read("bad/slug", "1")).getStatusCode().value());
+        assertEquals(404, assertThrows(ResponseStatusException.class, () -> service.read("bad/slug", "1")).getStatusCode().value());
         Book book = book();
         when(books.findBySlugAndPublishStatus("public", "PUBLISHED")).thenReturn(Optional.of(book));
         var only = List.of(chapter(20L, 1));
@@ -43,13 +43,15 @@ class ChapterTextServiceTest {
         assertEquals(4, middle.contentVersion()); assertEquals(3, middle.characterCount());
         assertNull(service.read("public", "90").previous());
         assertNull(service.read("public", "44").next());
+        when(books.findBySlugAndPublishStatus("PUBLIC", "PUBLISHED")).thenReturn(Optional.of(publicBook));
+        assertEquals("public", service.read("PUBLIC", "3").workId());
         verify(books, never()).incrementViewCount(any());
         verify(chapters, never()).save(any());
     }
 
     private Book book() {
         Book b = mock(Book.class); when(b.getId()).thenReturn(9L); when(b.getTitle()).thenReturn("작품");
-        when(b.getContentType()).thenReturn("WEBNOVEL"); return b;
+        when(b.getContentType()).thenReturn("WEBNOVEL"); when(b.getSlug()).thenReturn("public"); return b;
     }
     private Chapter chapter(long id, int number) {
         Chapter c = mock(Chapter.class); when(c.getId()).thenReturn(id); when(c.getChapterNo()).thenReturn(number);

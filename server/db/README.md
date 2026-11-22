@@ -73,7 +73,7 @@ SELECT @@character_set_database, @@collation_database, @@session.time_zone;
 SELECT 1;
 ```
 
-버전 `8.4.11`, 프로젝트 DB, `utf8mb4`, `utf8mb4_0900_ai_ci`, `+00:00`과 쿼리 성공을 확인합니다. DB가 준비되면 백엔드를 실행해 Flyway를 적용합니다. SQL 마이그레이션 작성 기준은 [마이그레이션 안내](../src/main/resources/db/migration/README.md)를 따릅니다. 현재 개념적 ERD만으로 미확정 테이블을 임의 생성하지 않았습니다.
+버전 `8.4.11`, 프로젝트 DB, `utf8mb4`, `utf8mb4_0900_ai_ci`, `+00:00`과 쿼리 성공을 확인합니다. DB가 준비되면 백엔드를 실행해 Flyway를 적용합니다. SQL 마이그레이션 작성 기준은 [마이그레이션 안내](../src/main/resources/db/migration/README.md)를 따릅니다. 현재 테이블은 `src/main/resources/db/migration/`의 버전별 SQL로 생성·변경합니다. 적용된 마이그레이션을 수정하지 않고 새 버전을 추가합니다.
 
 ## Python 보조 도구 환경
 

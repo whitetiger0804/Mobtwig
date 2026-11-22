@@ -1,6 +1,7 @@
 package com.mobtwig.library;
 
 import java.util.List;
+import com.mobtwig.auth.MemberSessions;
 import com.mobtwig.library.WorkFollowRepository.Kind;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -10,9 +11,11 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class WorkFollowService {
     private final WorkFollowRepository repository;
+    private final MemberSessions members;
 
-    WorkFollowService(WorkFollowRepository repository) {
+    WorkFollowService(WorkFollowRepository repository, MemberSessions members) {
         this.repository = repository;
+        this.members = members;
     }
 
     @Transactional(readOnly = true)
@@ -22,6 +25,7 @@ public class WorkFollowService {
 
     @Transactional
     public State change(long member, String slug, Kind kind, boolean present) {
+        members.lockActiveMember(member);
         var work = work(slug, true);
         if (kind == Kind.SUBSCRIPTION && !work.webnovel()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "웹소설만 구독할 수 있습니다.");
@@ -37,9 +41,6 @@ public class WorkFollowService {
     }
 
     private WorkFollowRepository.Work work(String slug, boolean lock) {
-        if (!slug.matches("[a-z0-9-]{1,120}")) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "작품 식별자를 확인해 주세요.");
-        }
         return repository.publishedWork(slug, lock)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "공개 작품을 찾을 수 없습니다."));
     }

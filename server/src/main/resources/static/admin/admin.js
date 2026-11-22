@@ -76,7 +76,7 @@ function onSubmit(id, action) {
   const form = byId(id);
   form.addEventListener('submit', (event) => {
     event.preventDefault();
-    if (!form.reportValidity() || busy) return;
+    if (!form.reportValidity()) return;
     const data = new FormData(form);
     perform(() => action(data, form));
   });

@@ -64,8 +64,7 @@ public class BookmarkController {
     @ExceptionHandler(ResponseStatusException.class)
     ResponseEntity<Map<String, String>> error(ResponseStatusException failure) {
         if (failure.getStatusCode().value() == 401) return ResponseEntity.status(401).cacheControl(CacheControl.noStore()).build();
-        String message = failure.getReason() == null ? "책갈피 요청을 처리하지 못했습니다." : failure.getReason();
-        return ResponseEntity.status(failure.getStatusCode()).cacheControl(CacheControl.noStore()).body(Map.of("message", message));
+        return ResponseEntity.status(failure.getStatusCode()).cacheControl(CacheControl.noStore()).body(Map.of("message", failure.getReason()));
     }
 
     @ExceptionHandler(HttpMessageNotReadableException.class)

@@ -31,8 +31,7 @@ public class ChapterTextService {
 
     @Transactional
     public ChapterTextResponse read(String slug, String chapterId) {
-        if (slug == null || slug.length() > 120 || !slug.matches("[a-z0-9-]+")
-                || chapterId == null || chapterId.length() > 80 || !chapterId.matches("[A-Za-z0-9_-]+")) {
+        if (chapterId == null || chapterId.length() > 80 || !chapterId.matches("[A-Za-z0-9_-]+")) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "식별자가 올바르지 않습니다.");
         }
         var book = books.findBySlugAndPublishStatus(slug, "PUBLISHED").orElseThrow(ChapterTextService::notFound);
@@ -44,7 +43,7 @@ public class ChapterTextService {
         var chapter = published.get(index);
         var text = source.read(chapter.getContentUrl());
         versions.pin(chapter.getId(), chapter.getContentVersion(), text.version());
-        return new ChapterTextResponse(slug, book.getTitle(), WorkMetadata.kind(book.getContentType()),
+        return new ChapterTextResponse(book.getSlug(), book.getTitle(), WorkMetadata.kind(book.getContentType()),
                 refs.get(index), refs, index, index == 0 ? null : refs.get(index - 1),
                 index + 1 == refs.size() ? null : refs.get(index + 1),
                 text.body(), text.characterCount(), chapter.getContentVersion(), text.version());

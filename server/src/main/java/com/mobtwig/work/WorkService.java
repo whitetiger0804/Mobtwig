@@ -45,17 +45,11 @@ public class WorkService {
      * 통계 기록의 DB 오류는 로그에 남기며 완성된 상세 응답을 유지합니다.
      * @param slug 작품의 URL 식별자입니다.
      * @return 클라이언트 계약에 맞는 상세 정보입니다.
-     * @throws ResponseStatusException 식별자가 잘못되었거나 공개 작품이 없으면 발생합니다.
+     * @throws ResponseStatusException 공개 작품이 없으면 발생합니다.
      * @throws IllegalStateException 조회 결과나 공개 자료의 필수 메타데이터가 없으면 발생합니다.
      */
     public WorkDetailResponse getPublishedDetail(String slug) {
-        if (!slug.matches("[a-z0-9-]+")) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "작품 식별자가 올바르지 않습니다.");
-        }
         ReadResult result = readTransaction.execute(status -> readDetail(slug));
-        if (result == null) {
-            throw new IllegalStateException("작품 조회 트랜잭션의 결과가 없습니다.");
-        }
         try {
             viewCountService.recordView(result.bookId());
         }
@@ -81,12 +75,12 @@ public class WorkService {
                 .toList();
         WorkDetailResponse response = new WorkDetailResponse(
                 WorkMetadata.slug(book.getSlug()), WorkMetadata.kind(book.getContentType()),
-                WorkMetadata.requiredText(book.getTitle(), "제목"), WorkMetadata.requiredText(author, "저자"),
+                WorkMetadata.requiredText(book.getTitle(), "제목"), author,
                 WorkMetadata.imageUrl(book.getCoverImageUrl()),
                 WorkMetadata.requiredText(book.getDescription(), "소개"),
                 WorkMetadata.requiredText(book.getPublisher(), "출판사"),
                 WorkMetadata.publishedDate(book.getPublishedDate()),
-                WorkMetadata.requiredText(category, "장르·카테고리"),
+                category,
                 WorkMetadata.requiredText(book.getFileFormat(), "파일 형식"), contents, book.getPageCount(),
                 WorkMetadata.optionalText(book.getVolumeLabel()), WorkMetadata.optionalText(book.getPublishCycle()),
                 new WorkDetailResponse.Statistics(book.getViewCount(), book.getRecommendCount(), book.getAverageRating()));

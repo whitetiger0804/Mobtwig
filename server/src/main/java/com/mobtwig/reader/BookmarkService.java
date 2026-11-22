@@ -3,6 +3,7 @@ package com.mobtwig.reader;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import com.mobtwig.purchase.PurchaseFailure;
 import com.mobtwig.purchase.PurchaseService;
@@ -32,30 +33,30 @@ public class BookmarkService {
 
     @Transactional(readOnly = true)
     public Page read(long member, String slug, int page) {
-        if (slug != null) validateSlug(slug);
         var rows = bookmarks.list(member, slug, (page - 1L) * PAGE_SIZE, PAGE_SIZE + 1);
         var snapshots = new HashMap<String, Optional<Work>>();
+        var texts = new HashMap<String, PlainTextSource.Text>();
         Instant now = Instant.now();
         var items = rows.stream().limit(PAGE_SIZE).map(saved -> {
             var work = snapshots.computeIfAbsent(saved.slug(), key -> works.work(key, now, false)).orElse(null);
-            return describe(member, saved, work);
+            return describe(member, saved, work, texts);
         }).toList();
         return new Page(items, page, rows.size() > PAGE_SIZE);
     }
 
     @Transactional
     public Item save(long member, Input input) {
-        validateSlug(input.workId());
         lockMember(member);
         Work work = works.work(input.workId(), Instant.now(), true).orElseThrow(ReadingProgressFailure::notFound);
         Chapter chapter = visible(work, input.chapterId()).orElseThrow(ReadingProgressFailure::notFound);
         purchases.requireRead(member, work.id(), chapter.id());
-        var position = coordinates.verifyPosition(work, chapter, input.offset(), input.contentVersion(), input.contentHash(), false, true);
+        var texts = new HashMap<String, PlainTextSource.Text>();
+        var position = coordinates.verifyPosition(work, chapter, input.offset(), input.contentVersion(), input.contentHash(), false, true, texts);
         if (position.body() != null && !paragraphBoundary(position.body(), input.offset())) throw ReadingProgressFailure.invalid();
         var existing = bookmarks.byPosition(member, chapter.id(), input.offset());
-        if (existing.isPresent()) return describe(member, existing.get(), work);
+        if (existing.isPresent()) return describe(member, existing.get(), work, texts);
         String excerpt = position.body() == null ? null : snippet(position.body(), position.offset());
-        return describe(member, bookmarks.insert(member, work.id(), position, excerpt), work);
+        return describe(member, bookmarks.insert(member, work.id(), position, excerpt), work, texts);
     }
 
     @Transactional
@@ -66,7 +67,7 @@ public class BookmarkService {
         }
     }
 
-    private Item describe(long member, Saved saved, Work work) {
+    private Item describe(long member, Saved saved, Work work, Map<String, PlainTextSource.Text> texts) {
         var chapter = visible(work, saved.chapter()).orElse(null);
         String id = Long.toString(saved.id());
         String createdAt = saved.createdAt().toString();
@@ -74,7 +75,7 @@ public class BookmarkService {
         String unit = work.magazine() ? "page" : "utf16";
         try {
             purchases.requireRead(member, work.id(), chapter.id());
-            var checked = coordinates.verifyPosition(work, chapter, saved.offset(), saved.version(), saved.hash(), saved.bound(), false);
+            var checked = coordinates.verifyPosition(work, chapter, saved.offset(), saved.version(), saved.hash(), saved.bound(), false, texts);
             var position = new ReadingProgressResponse.Position(Long.toString(chapter.id()), saved.offset(), unit, saved.version(), checked.hash());
             return new Item(id, "available", work.slug(), work.title(), work.kind(), chapter.title(), position,
                     work.magazine() ? null : saved.snippet(), createdAt);
@@ -93,10 +94,6 @@ public class BookmarkService {
 
     private void lockMember(long member) {
         if (!works.lockActiveMember(member)) throw new ResponseStatusException(HttpStatus.UNAUTHORIZED);
-    }
-
-    private static void validateSlug(String slug) {
-        if (slug == null || !slug.matches("[a-z0-9-]{1,120}")) throw ReadingProgressFailure.invalid();
     }
 
     private static boolean paragraphBoundary(String body, int offset) {

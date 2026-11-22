@@ -42,10 +42,9 @@ public class MagazineController {
     ResponseEntity<Map<String, @NonNull String>> error(ResponseStatusException failure) {
         if (failure instanceof PurchaseFailure purchase) {
             return ResponseEntity.status(purchase.getStatusCode()).cacheControl(CacheControl.noStore())
-                    .body(Map.of("code", purchase.code(), "message", java.util.Objects.requireNonNull(purchase.getReason())));
+                    .body(Map.of("code", purchase.code(), "message", purchase.getReason()));
         }
-        String message = failure.getReason();
         return ResponseEntity.status(failure.getStatusCode()).cacheControl(CacheControl.noStore())
-                .body(Map.of("message", message == null ? "매거진을 제공할 수 없습니다." : message));
+                .body(Map.of("message", failure.getReason()));
     }
 }

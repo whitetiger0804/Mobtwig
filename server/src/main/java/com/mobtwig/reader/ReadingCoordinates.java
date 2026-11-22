@@ -1,5 +1,6 @@
 package com.mobtwig.reader;
 
+import java.util.Map;
 import com.mobtwig.reader.ReadingProgressRepository.Chapter;
 import com.mobtwig.reader.ReadingProgressRepository.Work;
 import org.springframework.stereotype.Component;
@@ -15,17 +16,19 @@ class ReadingCoordinates {
         this.versions = versions;
     }
 
-    Checked verify(Work work, Chapter chapter, int offset, int version, String hash) {
+    Checked verify(Work work, Chapter chapter, int offset, int version, String hash, Map<String, PlainTextSource.Text> texts) {
         if (!work.magazine() && hash == null) throw ReadingProgressFailure.invalid();
-        return compare(work, chapter, offset, version, hash, false, false);
+        return compare(work, chapter, offset, version, hash, false, false, texts);
     }
 
-    Checked verifyPosition(Work work, Chapter chapter, int offset, int version, String hash, boolean bound, boolean writing) {
+    Checked verifyPosition(Work work, Chapter chapter, int offset, int version, String hash, boolean bound, boolean writing,
+                           Map<String, PlainTextSource.Text> texts) {
         if (!work.magazine() && hash == null && !bound && !writing) throw ReadingProgressFailure.invalid();
-        return compare(work, chapter, offset, version, hash, true, writing);
+        return compare(work, chapter, offset, version, hash, true, writing, texts);
     }
 
-    private Checked compare(Work work, Chapter chapter, int offset, int version, String hash, boolean position, boolean writing) {
+    private Checked compare(Work work, Chapter chapter, int offset, int version, String hash, boolean position, boolean writing,
+                            Map<String, PlainTextSource.Text> texts) {
         if (chapter.version() != version) throw ReadingProgressFailure.contentChanged();
         if (work.magazine()) {
             if (hash != null) throw ReadingProgressFailure.invalid();
@@ -33,10 +36,10 @@ class ReadingCoordinates {
             if (!pages.contains(offset)) throw ReadingProgressFailure.invalid();
             return new Checked(chapter, offset, pages.start(), pages.end(), null, null);
         }
-        var text = source.read(chapter.url());
+        var text = texts.computeIfAbsent(chapter.url(), source::read);
         if (hash != null && !hash.equals(text.version())) throw ReadingProgressFailure.contentChanged();
         if (position) versions.verify(chapter.id(), version, text.version(), hash == null);
-        if (offset < 0 || offset > text.characterCount() || splitsPair(text.body(), offset)) {
+        if (offset > text.characterCount() || splitsPair(text.body(), offset)) {
             throw ReadingProgressFailure.invalid();
         }
         if (position && writing && hash != null) versions.pin(chapter.id(), version, text.version());

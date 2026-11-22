@@ -31,7 +31,6 @@ public class RecentWorksController {
     ResponseEntity<Map<String, String>> error(ResponseStatusException failure) {
         if (failure.getStatusCode().value() == 401) return ResponseEntity.status(401).cacheControl(CacheControl.noStore()).build();
         String code = failure instanceof RecentWorkFailure expected ? expected.code : "UNAVAILABLE";
-        String message = failure.getReason() == null ? "최근 본 작품을 처리하지 못했습니다." : failure.getReason();
-        return ResponseEntity.status(failure.getStatusCode()).cacheControl(CacheControl.noStore()).body(Map.of("code", code, "message", message));
+        return ResponseEntity.status(failure.getStatusCode()).cacheControl(CacheControl.noStore()).body(Map.of("code", code, "message", failure.getReason()));
     }
 }

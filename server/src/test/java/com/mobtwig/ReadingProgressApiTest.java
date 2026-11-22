@@ -18,6 +18,7 @@ import com.atlassian.oai.validator.OpenApiInteractionValidator;
 import com.atlassian.oai.validator.model.Request;
 import com.atlassian.oai.validator.model.SimpleResponse;
 import com.mobtwig.reader.ReadingProgressRepository;
+import com.mobtwig.reader.PlainTextSource;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -32,6 +33,9 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 
 /** 전용 MySQL에서 실제 회원 세션·CSRF·revision·원자성을 검증합니다. */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
@@ -49,6 +53,7 @@ class ReadingProgressApiTest {
     @Autowired PasswordEncoder passwords;
     @Autowired ObjectMapper mapper;
     @MockitoSpyBean ReadingProgressRepository repository;
+    @MockitoSpyBean PlainTextSource source;
     final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
     final List<String> sessions = new ArrayList<>();
 
@@ -498,7 +503,8 @@ class ReadingProgressApiTest {
         assertTrue(saved.get("snippet").isNull());
         assertEquals(saved, ok(bookmarkWrite(endpoint, a, input, true)));
         assertEquals(0, ok(get(endpoint + "?workId=" + MAG_TWO, a)).get("items").size());
-        assertEquals(400, get(endpoint + "?chapterId=-9621", a).statusCode());
+        assertEquals(saved, ok(get(endpoint + "?chapterId=-9621", a)).get("items").get(0));
+        assertEquals(0, ok(get(endpoint + "?chapterId=-9621", login("b"))).get("items").size());
     }
 
     private Map<String, Object> highlightInput(String slug, String chapter, int start, int end, String hash) {
@@ -536,6 +542,151 @@ class ReadingProgressApiTest {
         jdbc.update("UPDATE bookmark SET content_hash=NULL WHERE book_id=-9601");
         assertEquals("stale", ok(get(path(TEXT), member)).get("state").asString());
         assertEquals("stale", ok(get(bookmarks, member)).get("items").get(0).get("state").asString());
+    }
+
+    /** 같은 좌표 저장에서도 기존 버전의 상태를 보존하면서 본문 재읽기를 없앱니다. */
+    @Test void bookmarkSaveReadsBodyOnceAndKeepsExistingVersion() throws Exception {
+        var member = login("a");
+        String endpoint = "/api/members/bookmarks";
+        var place = new LinkedHashMap<String, Object>(Map.of("workId", TEXT, "chapterId", "-9610", "offset", 0,
+                "contentVersion", 1, "contentHash", hash(TEXT, -9610)));
+        clearInvocations(source);
+        var saved = ok(bookmarkWrite(endpoint, member, place, true));
+        verify(source, times(1)).read("/content/first.txt");
+        clearInvocations(source);
+        assertEquals(saved, ok(bookmarkWrite(endpoint, member, place, true)));
+        verify(source, times(1)).read("/content/first.txt");
+        Files.writeString(CONTENT.resolve("first.txt"), "바뀐 본문");
+        jdbc.update("UPDATE chapter SET content_version=2 WHERE id=-9610");
+        place.put("contentVersion", 2);
+        place.put("contentHash", hash(TEXT, -9610));
+        clearInvocations(source);
+        var stale = ok(bookmarkWrite(endpoint, member, place, true));
+        verify(source, times(1)).read("/content/first.txt");
+        assertEquals(saved.get("id"), stale.get("id"));
+        assertEquals("stale", stale.get("state").asString());
+        assertEquals(1, stale.get("position").get("contentVersion").asInt());
+        assertTrue(stale.get("snippet").isNull());
+    }
+
+    /** 한 회차의 책갈피 30개는 본문을 공유하되 각 기록을 따로 판정합니다. */
+    @Test void bookmarkListReadsBodyOnceAndValidatesEveryRecord() throws Exception {
+        Files.writeString(CONTENT.resolve("first.txt"), "가😀나\n\n".repeat(30));
+        var member = login("a");
+        String hash = hash(TEXT, -9610), endpoint = "/api/members/bookmarks?workId=" + TEXT;
+        for (int i = 0; i < 30; i++)
+            jdbc.update("""
+                    INSERT INTO bookmark(member_id,book_id,chapter_id,chapter_offset,content_version,content_hash,snippet,created_at)
+                    VALUES(-9601,-9601,-9610,?,1,?,?,'2000-01-01 00:00:00')
+                    """, i * 6, hash, "발췌 " + i);
+        clearInvocations(source);
+        var items = ok(get(endpoint, member)).get("items");
+        assertEquals(30, items.size());
+        for (int i = 0; i < 30; i++) {
+            var item = items.get(i);
+            assertEquals("available", item.get("state").asString());
+            assertEquals((29 - i) * 6, item.get("position").get("offset").asInt());
+            assertEquals("발췌 " + (29 - i), item.get("snippet").asString());
+        }
+        verify(source, times(1)).read("/content/first.txt");
+        jdbc.update("UPDATE bookmark SET content_version=2 WHERE chapter_id=-9610 AND chapter_offset=0");
+        jdbc.update("UPDATE bookmark SET content_hash=? WHERE chapter_id=-9610 AND chapter_offset=6", "0".repeat(64));
+        jdbc.update("UPDATE bookmark SET chapter_offset=2 WHERE chapter_id=-9610 AND chapter_offset=12");
+        clearInvocations(source);
+        for (var item : ok(get(endpoint, member)).get("items")) {
+            int offset = item.get("position").get("offset").asInt();
+            boolean stale = List.of(0, 6, 2).contains(offset);
+            assertEquals(stale ? "stale" : "available", item.get("state").asString());
+            assertEquals(stale, item.get("snippet").isNull());
+        }
+        verify(source, times(1)).read("/content/first.txt");
+        Files.writeString(CONTENT.resolve("first.txt"), "다른 요청의 새 본문");
+        clearInvocations(source);
+        for (var item : ok(get(endpoint, member)).get("items")) {
+            assertEquals("stale", item.get("state").asString());
+            assertTrue(item.get("snippet").isNull());
+        }
+        verify(source, times(1)).read("/content/first.txt");
+    }
+
+    /** 하이라이트도 본문만 공유하고 각 버전·해시·범위와 다음 요청의 변경을 확인합니다. */
+    @Test void highlightListReadsBodyOnceAndValidatesEveryRange() throws Exception {
+        Files.writeString(CONTENT.resolve("first.txt"), "가😀나\n\n".repeat(30));
+        var member = login("a");
+        String hash = hash(TEXT, -9610), endpoint = "/api/members/highlights?workId=" + TEXT;
+        for (int i = 0; i < 30; i++)
+            jdbc.update("""
+                    INSERT INTO highlight(member_id,book_id,chapter_id,start_offset,end_offset,content_version,content_hash,color,snippet,created_at)
+                    VALUES(-9601,-9601,-9610,?,?,1,?,'YELLOW','저장된 발췌','2000-01-01 00:00:00')
+                    """, i * 6, i * 6 + 4, hash);
+        clearInvocations(source);
+        var items = ok(get(endpoint, member)).get("items");
+        assertEquals(30, items.size());
+        for (int i = 0; i < 30; i++) {
+            var item = items.get(i);
+            assertEquals("available", item.get("state").asString());
+            assertEquals((29 - i) * 6, item.get("range").get("startOffset").asInt());
+            assertEquals("가😀나", item.get("snippet").asString());
+        }
+        verify(source, times(1)).read("/content/first.txt");
+        jdbc.update("UPDATE highlight SET content_version=2 WHERE chapter_id=-9610 AND start_offset=0");
+        jdbc.update("UPDATE highlight SET content_hash=? WHERE chapter_id=-9610 AND start_offset=6", "0".repeat(64));
+        jdbc.update("UPDATE highlight SET end_offset=14 WHERE chapter_id=-9610 AND start_offset=12");
+        clearInvocations(source);
+        for (var item : ok(get(endpoint, member)).get("items")) {
+            int start = item.get("range").get("startOffset").asInt();
+            boolean stale = List.of(0, 6, 12).contains(start);
+            assertEquals(stale ? "stale" : "available", item.get("state").asString());
+            assertEquals(stale, item.get("snippet").isNull());
+        }
+        verify(source, times(1)).read("/content/first.txt");
+        Files.writeString(CONTENT.resolve("first.txt"), "다른 요청의 새 본문");
+        clearInvocations(source);
+        for (var item : ok(get(endpoint, member)).get("items")) {
+            assertEquals("stale", item.get("state").asString());
+            assertTrue(item.get("snippet").isNull());
+        }
+        verify(source, times(1)).read("/content/first.txt");
+    }
+
+    /** 오래된 저장 좌표의 시작 위치를 찾을 때 이미 읽은 본문을 다시 읽지 않습니다. */
+    @Test void staleProgressReusesLoadedTextWhenChoosingStart() throws Exception {
+        var member = login("a");
+        String hash = hash(TEXT, -9610);
+        ok(post(TEXT, member, input(-9610, 3, 1, hash, null), true));
+        jdbc.update("UPDATE reading_progress SET content_hash=?,version_bound=FALSE WHERE book_id=-9601", "0".repeat(64));
+        clearInvocations(source);
+        var stale = ok(get(path(TEXT), member));
+        assertEquals("stale", stale.get("state").asString());
+        assertEquals(0, stale.get("position").get("offset").asInt());
+        assertEquals(hash, stale.get("position").get("contentHash").asString());
+        verify(source, times(1)).read("/content/first.txt");
+        Files.writeString(CONTENT.resolve("first.txt"), "바뀐 본문");
+        clearInvocations(source);
+        stale = ok(get(path(TEXT), member));
+        assertEquals("stale", stale.get("state").asString());
+        assertEquals("-9609", stale.get("position").get("chapterId").asString());
+        verify(source, times(1)).read("/content/first.txt");
+        verify(source, times(1)).read("/content/second.txt");
+    }
+
+    /** 같은 파일을 쓰는 회차의 길이는 공유하되 버전 고정은 회차별로 확인합니다. */
+    @Test void progressReusesSharedSourceAndChecksEveryChapterVersion() throws Exception {
+        var member = login("a");
+        String hash = hash(TEXT, -9610);
+        jdbc.update("UPDATE chapter SET content_url='/content/first.txt' WHERE id=-9609");
+        clearInvocations(source);
+        var saved = ok(post(TEXT, member, input(-9610, 3, 1, hash, null), true));
+        assertEquals(75.0, saved.get("chapterPercent").asDouble());
+        assertEquals(37.5, saved.get("workPercent").asDouble());
+        verify(source, times(1)).read("/content/first.txt");
+        jdbc.update("INSERT INTO chapter_text_version(chapter_id,content_version,content_hash) VALUES(-9609,1,?)", "0".repeat(64));
+        clearInvocations(source);
+        var reread = ok(get(path(TEXT), member));
+        assertEquals("saved", reread.get("state").asString());
+        assertEquals(75.0, reread.get("chapterPercent").asDouble());
+        assertTrue(reread.get("workPercent").isNull());
+        verify(source, times(1)).read("/content/first.txt");
     }
 
     private HttpResponse<String> bookmarkWrite(String path, Session session, Map<String, Object> input, boolean csrf) throws Exception {

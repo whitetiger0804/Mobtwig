@@ -26,6 +26,8 @@ mobtwig:
     signup-demo-enabled: ${SIGNUP_DEMO_ENABLED:false}
   reader:
     content-root: ${CONTENT_ROOT:./content}
+  community:
+    image-root: ${COMMUNITY_IMAGE_ROOT:./community-images}
   admin:
     bootstrap-enabled: ${ADMIN_BOOTSTRAP_ENABLED:false}
   sdui:

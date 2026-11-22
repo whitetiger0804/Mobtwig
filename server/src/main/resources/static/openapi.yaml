@@ -3,13 +3,13 @@ info:
   title: Mobtwig HTTP API
   version: 0.0.1-SNAPSHOT
   description: |
-    현재 구현한 홈 SDUI·작품 검색·상세·회원 인증·관리자 등록 API의 계약입니다.
+    현재 구현한 홈 SDUI·작품 검색·상세·리뷰·댓글·커뮤니티·회원 인증·관리자 등록 API의 계약입니다.
     이 명세를 포함한 커밋이 배포된 서버에서 사용합니다.
     공개 조회에는 로그인이 필요하지 않습니다. 관리자 API는 SESSION 쿠키와 활성 ADMIN 권한을 사용합니다.
     회원 인증 API는 별도의 MEMBER_SESSION 쿠키를 사용합니다.
-    POST 요청은 같은 인증 영역·세션의 csrf 경로에서 받은 X-CSRF-TOKEN 헤더가 필요합니다.
+    POST·PUT·DELETE 요청은 같은 인증 영역·세션의 csrf 경로에서 받은 X-CSRF-TOKEN 헤더가 필요합니다.
     로그인은 application/x-www-form-urlencoded이며 성공 시 본문 없는 204를 반환합니다.
-    이 서버의 Swagger UI는 회원·관리자 POST 전에 해당 영역의 CSRF 토큰을 자동으로 조회합니다.
+    이 서버의 Swagger UI는 회원·관리자 변경 요청 전에 해당 영역의 CSRF 토큰을 자동으로 조회합니다.
     로그인 요청을 실행한 뒤 관리자 API를 호출하고, 사용을 마치면 로그아웃 요청을 실행하십시오.
     Authorize 창에 SESSION 쿠키를 직접 입력하지 않습니다. 브라우저가 로그인 응답의 쿠키를 관리합니다.
     Try it out으로 등록한 자료는 접속한 서버의 실제 DB에 저장합니다.
@@ -23,6 +23,10 @@ tags:
     description: 관리자와 분리한 회원 쿠키 및 CSRF를 사용합니다.
   - name: 구매
     description: 상품 구매 기록과 소장 권한을 관리합니다.
+  - name: 리뷰
+    description: 공개 리뷰·평점과 댓글, 본인 작성물 관리, 공감·신고 접수를 제공합니다. 관리자 심사·자동 숨김·이미지 첨부·추가 정렬은 포함하지 않습니다.
+  - name: 커뮤니티
+    description: 작품별·주제별·홍보 게시판, 게시글·댓글, 이미지·이모티콘·초안과 게시글 공감·신고를 제공합니다.
   - name: 관리자 인증
     description: 세션과 CSRF 토큰으로 로그인 상태를 관리합니다.
   - name: 관리자 등록
@@ -93,7 +97,10 @@ paths:
         query를 정확히 한 번 지정합니다. 앞뒤 공백을 제거한 검색어는 1자 이상 200자 이하이어야 합니다.
         제목·저자 이름·출판사 중 하나에 검색어가 포함되면 반환합니다. %, _, !는 문자 그대로 검색합니다.
         kind는 생략하면 all이며 지정할 때는 한 번만 보냅니다. 빈 값·중복·지원하지 않는 값은 400입니다.
-        결과는 출간일·DB ID 내림차순의 전체 일치 목록이며 공동 저자 때문에 작품이 중복되지 않습니다.
+        genre는 선택적인 장르 이름입니다. 앞뒤 공백을 제거하고 검색어·종류와 AND로 결합하며 반복 지정하면 첫 번째 값을 사용합니다.
+        장르 생략은 모든 장르를 포함합니다. 이름이 일치하는 장르 연결이 없으면 빈 배열이며 카테고리 이름으로 대체하지 않습니다.
+        빈 값이나 긴 값도 검색하며 일치하는 장르가 없으면 빈 배열입니다. 장르 이름의 %, _, !는 와일드카드가 아닙니다.
+        결과는 출간일·DB ID 내림차순의 전체 일치 목록이며 공동 저자나 복수 장르 때문에 작품이 중복되지 않습니다.
         조회수·최근 본 기록·읽기 위치를 변경하지 않습니다. 공개 자료의 필수 정보 오류는 500입니다.
       parameters:
         - name: query
@@ -109,6 +116,11 @@ paths:
             type: string
             enum: [all, book, magazine, novel]
             default: all
+        - name: genre
+          in: query
+          required: false
+          description: 이름이 일치하는 장르를 가진 작품으로 제한하며 생략하면 모든 장르를 포함합니다.
+          schema: {type: string}
       responses:
         '200':
           description: 검색 결과이며 일치하는 공개 작품이 없으면 빈 배열입니다.
@@ -250,7 +262,7 @@ paths:
         - name: slug
           in: path
           required: true
-          schema: {type: string, pattern: '^[a-z0-9-]+$', maxLength: 120}
+          schema: {type: string}
         - name: chapterId
           in: path
           required: true
@@ -302,8 +314,7 @@ paths:
         - name: slug
           in: path
           required: true
-          schema:
-            $ref: '#/components/schemas/Slug'
+          schema: {type: string}
           example: sample-book
       responses:
         '200':
@@ -340,8 +351,8 @@ paths:
       description: 비공개 또는 현재 미소장 유료 기록은 hidden으로 반환하며 ID·저장 시각 외의 내용과 메타데이터는 null입니다.
       security: [{MemberSessionCookie: []}]
       parameters:
-        - {name: workId, in: query, schema: {type: string, pattern: '^[a-z0-9-]{1,120}$'}}
-        - {name: chapterId, in: query, description: workId와 함께 지정합니다., schema: {type: string, pattern: '^-?[1-9][0-9]{0,18}$'}}
+        - {name: workId, in: query, schema: {type: string}}
+        - {name: chapterId, in: query, description: 단독으로도 지정할 수 있습니다., schema: {type: string, pattern: '^-?[1-9][0-9]{0,18}$'}}
         - {name: page, in: query, schema: {type: integer, format: int32, minimum: 1, default: 1}}
       responses:
         '200':
@@ -374,7 +385,7 @@ paths:
               additionalProperties: false
               required: [workId, chapterId, startOffset, endOffset, contentVersion, contentHash, color]
               properties:
-                workId: {type: string, pattern: '^[a-z0-9-]{1,120}$'}
+                workId: {type: string}
                 chapterId: {type: string, pattern: '^-?[1-9][0-9]{0,18}$'}
                 startOffset: {type: integer, format: int32, minimum: 0}
                 endOffset: {type: integer, format: int32, minimum: 0}
@@ -415,7 +426,7 @@ paths:
       description: 비공개 또는 현재 미소장 유료 기록은 hidden으로 반환하며 본인 삭제에 필요한 ID·저장 시각만 보존합니다.
       security: [{MemberSessionCookie: []}]
       parameters:
-        - {name: workId, in: query, schema: {type: string, pattern: '^[a-z0-9-]{1,120}$'}}
+        - {name: workId, in: query, schema: {type: string}}
         - {name: page, in: query, schema: {type: integer, format: int32, minimum: 1, default: 1}}
       responses:
         '200':
@@ -447,7 +458,7 @@ paths:
               additionalProperties: false
               required: [workId, chapterId, offset, contentVersion]
               properties:
-                workId: {type: string, pattern: '^[a-z0-9-]{1,120}$'}
+                workId: {type: string}
                 chapterId: {type: string, pattern: '^-?[1-9][0-9]{0,18}$'}
                 offset: {type: integer, format: int32, minimum: 0}
                 contentVersion: {type: integer, format: int32, minimum: 1}
@@ -484,7 +495,7 @@ paths:
       - name: slug
         in: path
         required: true
-        schema: {type: string, pattern: '^[a-z0-9-]+$', maxLength: 120}
+        schema: {type: string}
     get:
       tags: [회원 인증]
       operationId: getReadingProgress
@@ -527,18 +538,19 @@ paths:
         '503': {$ref: '#/components/responses/ReadingProgressError'}
   /works/{slug}/reviews:
     get:
-      tags: [공개 조회]
+      tags: [리뷰]
       operationId: listWorkReviews
       summary: 공개 작품의 최신 리뷰와 전체 활성 리뷰의 평점 요약을 조회합니다.
-      description: 작성 시각과 리뷰 ID 내림차순입니다. 리뷰가 없으면 평균 null, 건수·별점 분포 0, 빈 목록과 hasNext false를 반환합니다. 조회수를 변경하지 않습니다.
+      description: |
+        활성 리뷰와 댓글이 남은 삭제 리뷰 자리표시를 작성 시각·리뷰 ID 내림차순으로 반환합니다.
+        totalItems와 hasNext는 자리표시를 포함한 표시 항목 기준이며 reviewCount·평균·분포는 활성 리뷰만 집계합니다.
+        활성 리뷰가 없으면 averageRating은 null입니다. 댓글이 남아 있으면 items가 비어 있지 않을 수 있습니다.
+        공개 경로의 mine·liked·reported는 항상 false이고 myReview는 null입니다. 인증 쿠키를 보내도 동일합니다.
+        조회수·읽기 위치를 변경하지 않으며 요약과 목록은 같은 스냅샷에서 조회합니다.
       parameters:
-        - $ref: '#/components/parameters/MagazineSlug'
-        - name: page
-          in: query
-          schema: {type: integer, minimum: 1, maximum: 2147483647, default: 1}
-        - name: size
-          in: query
-          schema: {type: integer, minimum: 1, maximum: 50, default: 20}
+        - $ref: '#/components/parameters/ReviewWorkSlug'
+        - $ref: '#/components/parameters/ReviewPageIndex'
+        - $ref: '#/components/parameters/ReviewPageSize'
       responses:
         '200':
           description: 작품 전체의 평점 요약과 요청 페이지의 리뷰입니다.
@@ -547,31 +559,52 @@ paths:
           content:
             application/json:
               schema: {$ref: '#/components/schemas/WorkReviewPage'}
+              example:
+                averageRating: 4.5
+                reviewCount: 2
+                ratingDistribution: {'1': 0, '2': 0, '3': 0, '4': 1, '5': 1}
+                items:
+                  - {id: '101', rating: 5, body: 다시 읽고 싶은 작품입니다., nickname: 독자 하나, createdAt: '2026-11-21T01:00:00Z', commentCount: 1, likeCount: 2, mine: false, liked: false, reported: false, deleted: false}
+                  - {id: '100', rating: 4, body: null, nickname: 탈퇴한 회원, createdAt: '2026-11-20T01:00:00Z', commentCount: 0, likeCount: 0, mine: false, liked: false, reported: false, deleted: false}
+                hasNext: false
+                totalItems: 2
+                myReview: null
         '400': {$ref: '#/components/responses/WorkReviewError'}
         '404': {$ref: '#/components/responses/WorkReviewError'}
   /api/members/works/{slug}/reviews:
+    get:
+      tags: [리뷰]
+      operationId: listMemberWorkReviews
+      summary: 리뷰 페이지와 페이지 밖의 본인 활성 리뷰를 함께 조회합니다.
+      description: |
+        공개 목록과 같은 표시·집계·정렬 규칙을 적용하며 현재 회원의 mine·liked·reported를 포함합니다.
+        myReview는 페이지와 관계없이 회원 본인의 활성 리뷰이며 없으면 null입니다.
+        삭제 자리표시의 rating·body·nickname은 null이고 mine·liked·reported는 모두 false입니다.
+        GET에는 CSRF가 필요하지 않으며 조회수·읽기 위치를 변경하지 않습니다.
+      security: [{MemberSessionCookie: []}]
+      parameters:
+        - $ref: '#/components/parameters/ReviewWorkSlug'
+        - $ref: '#/components/parameters/ReviewPageIndex'
+        - $ref: '#/components/parameters/ReviewPageSize'
+      responses:
+        '200': {$ref: '#/components/responses/WorkReviewPage'}
+        '400': {$ref: '#/components/responses/WorkReviewError'}
+        '401': {description: 활성 회원 세션이 필요합니다. 본문은 없습니다.}
+        '404': {$ref: '#/components/responses/WorkReviewError'}
     post:
-      tags: [회원 인증]
+      tags: [리뷰]
       operationId: createWorkReview
       summary: 공개 작품에 로그인한 회원 본인의 리뷰를 등록합니다.
-      description: 작품별 활성 리뷰는 회원당 하나입니다. 본문이 생략되거나 null·공백이면 별점만 저장합니다. 등록과 작품 통계 갱신은 한 트랜잭션에서 처리합니다.
+      description: 작품별 활성 리뷰는 회원당 하나입니다. 본문이 생략되거나 null·공백이면 별점만 저장합니다. 작품 행을 먼저 잠그고 등록과 평균·건수 재집계를 함께 커밋합니다. 조회수·읽기 위치를 변경하지 않습니다.
       security: [{MemberSessionCookie: [], MemberCsrfToken: []}]
       parameters:
-        - $ref: '#/components/parameters/MagazineSlug'
+        - $ref: '#/components/parameters/ReviewWorkSlug'
       requestBody:
         required: true
         content:
           application/json:
-            schema:
-              type: object
-              additionalProperties: false
-              required: [rating]
-              properties:
-                rating: {type: integer, minimum: 1, maximum: 5}
-                body:
-                  type: string
-                  nullable: true
-                  description: 양끝 유니코드 공백을 제거한 뒤 최대 1,000자입니다.
+            schema: {$ref: '#/components/schemas/WorkReviewInput'}
+            example: {rating: 5, body: 다시 읽고 싶은 작품입니다.}
       responses:
         '201':
           description: 등록된 리뷰입니다.
@@ -581,10 +614,229 @@ paths:
             application/json:
               schema: {$ref: '#/components/schemas/WorkReview'}
         '400': {$ref: '#/components/responses/WorkReviewError'}
-        '401': {description: 활성 회원 세션이 필요합니다.}
-        '403': {description: 해당 회원 세션의 CSRF 토큰이 필요합니다.}
+        '401': {description: 활성 회원 세션이 필요합니다. 본문은 없습니다.}
+        '403': {description: 해당 회원 세션의 CSRF 토큰이 필요합니다. 본문은 없습니다.}
         '404': {$ref: '#/components/responses/WorkReviewError'}
         '409': {$ref: '#/components/responses/WorkReviewError'}
+  /api/members/reviews/{reviewId}:
+    parameters:
+      - $ref: '#/components/parameters/ReviewId'
+    put:
+      tags: [리뷰]
+      operationId: updateOwnReview
+      summary: 본인의 활성 리뷰를 수정합니다.
+      description: rating은 필수입니다. body 생략·null·공백은 별점만 남기는 수정입니다. 작성 시각과 ID는 유지하며 작품 잠금 안에서 평점 캐시를 재집계합니다. 없는 리뷰·타인 리뷰·삭제 리뷰·비공개 작품은 404입니다.
+      security: [{MemberSessionCookie: [], MemberCsrfToken: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/WorkReviewInput'}
+            example: {rating: 4, body: 수정한 리뷰입니다.}
+      responses:
+        '200': {$ref: '#/components/responses/WorkReview'}
+        '400': {$ref: '#/components/responses/WorkReviewError'}
+        '401': {description: 활성 회원 세션이 필요합니다. 본문은 없습니다.}
+        '403': {description: 회원 CSRF 검증에 실패했습니다. 본문은 없습니다.}
+        '404': {$ref: '#/components/responses/WorkReviewError'}
+    delete:
+      tags: [리뷰]
+      operationId: deleteOwnReview
+      summary: 본인의 활성 리뷰를 삭제 처리합니다.
+      description: |
+        deleted_at을 설정하고 활성 평점 요약을 재집계합니다. 마지막 평점 삭제 후 DB average_rating은 0.00이며 조회 응답 averageRating은 null입니다.
+        남은 댓글은 유지하고 삭제 후 재작성은 새 리뷰 ID를 발급합니다. 없는 리뷰·타인 리뷰·삭제 리뷰·비공개 작품은 404입니다.
+      security: [{MemberSessionCookie: [], MemberCsrfToken: []}]
+      responses:
+        '204': {description: 리뷰를 삭제 처리했습니다. 본문은 없습니다., headers: {Cache-Control: {schema: {type: string, enum: [no-store]}}}}
+        '400': {$ref: '#/components/responses/WorkReviewError'}
+        '401': {description: 활성 회원 세션이 필요합니다. 본문은 없습니다.}
+        '403': {description: 회원 CSRF 검증에 실패했습니다. 본문은 없습니다.}
+        '404': {$ref: '#/components/responses/WorkReviewError'}
+  /reviews/{reviewId}/comments:
+    get:
+      tags: [리뷰]
+      operationId: getPublicReviewThread
+      summary: 리뷰 원문 카드와 댓글 목록을 공개 조회합니다.
+      description: |
+        review와 작성 시각·댓글 ID 오름차순의 items를 반환합니다. 공개 경로의 회원별 플래그는 모두 false입니다.
+        부모가 삭제되었어도 원문 없는 자리표시와 기존 댓글을 반환하며 알려진 스레드는 댓글이 0개여도 조회할 수 있습니다.
+        없는 부모·비공개 작품은 404입니다. 조회수·읽기 위치를 변경하지 않으며 카드와 댓글은 같은 스냅샷입니다.
+      parameters:
+        - $ref: '#/components/parameters/ReviewId'
+      responses:
+        '200': {$ref: '#/components/responses/ReviewThread'}
+        '400': {$ref: '#/components/responses/WorkReviewError'}
+        '404': {$ref: '#/components/responses/WorkReviewError'}
+  /api/members/reviews/{reviewId}/comments:
+    parameters:
+      - $ref: '#/components/parameters/ReviewId'
+    get:
+      tags: [리뷰]
+      operationId: getMemberReviewThread
+      summary: 리뷰 카드·댓글과 현재 회원의 공감·신고 상태를 조회합니다.
+      description: 공개 스레드와 같은 정렬·삭제 규칙을 적용하며 현재 회원의 mine·liked·reported를 반환합니다. 삭제 부모의 세 플래그는 false입니다. GET에는 CSRF가 필요하지 않습니다.
+      security: [{MemberSessionCookie: []}]
+      responses:
+        '200': {$ref: '#/components/responses/ReviewThread'}
+        '400': {$ref: '#/components/responses/WorkReviewError'}
+        '401': {description: 활성 회원 세션이 필요합니다. 본문은 없습니다.}
+        '404': {$ref: '#/components/responses/WorkReviewError'}
+    post:
+      tags: [리뷰]
+      operationId: createReviewComment
+      summary: 공개된 활성 리뷰에 댓글을 작성합니다.
+      description: 삭제 부모에는 신규 댓글을 작성할 수 없습니다. 없는 부모·삭제 부모·비공개 작품은 404입니다. 댓글 수는 별도 캐시 없이 남은 댓글을 집계합니다.
+      security: [{MemberSessionCookie: [], MemberCsrfToken: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ReviewCommentInput'}
+            example: {body: 리뷰에 공감합니다.}
+      responses:
+        '201': {$ref: '#/components/responses/ReviewComment'}
+        '400': {$ref: '#/components/responses/WorkReviewError'}
+        '401': {description: 활성 회원 세션이 필요합니다. 본문은 없습니다.}
+        '403': {description: 회원 CSRF 검증에 실패했습니다. 본문은 없습니다.}
+        '404': {$ref: '#/components/responses/WorkReviewError'}
+  /api/members/review-comments/{commentId}:
+    parameters:
+      - $ref: '#/components/parameters/ReviewCommentId'
+    put:
+      tags: [리뷰]
+      operationId: updateOwnReviewComment
+      summary: 본인 댓글을 수정합니다.
+      description: 부모 리뷰가 삭제되었어도 남은 본인 댓글은 수정할 수 있습니다. 없는 댓글·타인 댓글·비공개 작품은 404입니다. 작성 시각과 ID는 유지합니다.
+      security: [{MemberSessionCookie: [], MemberCsrfToken: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ReviewCommentInput'}
+            example: {body: 수정한 댓글입니다.}
+      responses:
+        '200': {$ref: '#/components/responses/ReviewComment'}
+        '400': {$ref: '#/components/responses/WorkReviewError'}
+        '401': {description: 활성 회원 세션이 필요합니다. 본문은 없습니다.}
+        '403': {description: 회원 CSRF 검증에 실패했습니다. 본문은 없습니다.}
+        '404': {$ref: '#/components/responses/WorkReviewError'}
+    delete:
+      tags: [리뷰]
+      operationId: deleteOwnReviewComment
+      summary: 본인 댓글을 실제 삭제합니다.
+      description: 삭제 부모의 남은 본인 댓글도 삭제할 수 있습니다. 해당 댓글의 공감·신고는 FK CASCADE로 함께 정리합니다. 없는 댓글·타인 댓글·비공개 작품은 404입니다.
+      security: [{MemberSessionCookie: [], MemberCsrfToken: []}]
+      responses:
+        '204': {description: 댓글을 삭제했습니다. 본문은 없습니다., headers: {Cache-Control: {schema: {type: string, enum: [no-store]}}}}
+        '400': {$ref: '#/components/responses/WorkReviewError'}
+        '401': {description: 활성 회원 세션이 필요합니다. 본문은 없습니다.}
+        '403': {description: 회원 CSRF 검증에 실패했습니다. 본문은 없습니다.}
+        '404': {$ref: '#/components/responses/WorkReviewError'}
+  /api/members/reviews/{reviewId}/like:
+    parameters:
+      - $ref: '#/components/parameters/ReviewId'
+    put:
+      tags: [리뷰]
+      operationId: likeReview
+      summary: 다른 회원의 활성 리뷰에 공감합니다.
+      description: 본문 없이 요청합니다. 이미 공감했어도 200이며 중복 행을 만들지 않습니다. 본인 리뷰는 400, 없는 대상·삭제 리뷰·비공개 작품은 404입니다.
+      security: [{MemberSessionCookie: [], MemberCsrfToken: []}]
+      responses:
+        '200': {$ref: '#/components/responses/ReviewLikeState'}
+        '400': {$ref: '#/components/responses/WorkReviewError'}
+        '401': {description: 활성 회원 세션이 필요합니다. 본문은 없습니다.}
+        '403': {description: 회원 CSRF 검증에 실패했습니다. 본문은 없습니다.}
+        '404': {$ref: '#/components/responses/WorkReviewError'}
+    delete:
+      tags: [리뷰]
+      operationId: unlikeReview
+      summary: 다른 회원 리뷰의 본인 공감을 해제합니다.
+      description: 본문 없이 요청합니다. 공감이 없어도 200과 liked false를 반환합니다. 본인 리뷰는 400, 없는 대상·삭제 리뷰·비공개 작품은 404입니다.
+      security: [{MemberSessionCookie: [], MemberCsrfToken: []}]
+      responses:
+        '200': {$ref: '#/components/responses/ReviewLikeState'}
+        '400': {$ref: '#/components/responses/WorkReviewError'}
+        '401': {description: 활성 회원 세션이 필요합니다. 본문은 없습니다.}
+        '403': {description: 회원 CSRF 검증에 실패했습니다. 본문은 없습니다.}
+        '404': {$ref: '#/components/responses/WorkReviewError'}
+  /api/members/review-comments/{commentId}/like:
+    parameters:
+      - $ref: '#/components/parameters/ReviewCommentId'
+    put:
+      tags: [리뷰]
+      operationId: likeReviewComment
+      summary: 다른 회원의 댓글에 공감합니다.
+      description: 본문 없이 요청하며 반복 등록도 200입니다. 삭제 부모의 남은 댓글도 허용합니다. 본인 댓글은 400, 없는 댓글·비공개 작품은 404입니다.
+      security: [{MemberSessionCookie: [], MemberCsrfToken: []}]
+      responses:
+        '200': {$ref: '#/components/responses/ReviewLikeState'}
+        '400': {$ref: '#/components/responses/WorkReviewError'}
+        '401': {description: 활성 회원 세션이 필요합니다. 본문은 없습니다.}
+        '403': {description: 회원 CSRF 검증에 실패했습니다. 본문은 없습니다.}
+        '404': {$ref: '#/components/responses/WorkReviewError'}
+    delete:
+      tags: [리뷰]
+      operationId: unlikeReviewComment
+      summary: 다른 회원 댓글의 본인 공감을 해제합니다.
+      description: 본문 없이 요청하며 공감이 없어도 200입니다. 삭제 부모의 남은 댓글도 허용합니다. 본인 댓글은 400, 없는 댓글·비공개 작품은 404입니다.
+      security: [{MemberSessionCookie: [], MemberCsrfToken: []}]
+      responses:
+        '200': {$ref: '#/components/responses/ReviewLikeState'}
+        '400': {$ref: '#/components/responses/WorkReviewError'}
+        '401': {description: 활성 회원 세션이 필요합니다. 본문은 없습니다.}
+        '403': {description: 회원 CSRF 검증에 실패했습니다. 본문은 없습니다.}
+        '404': {$ref: '#/components/responses/WorkReviewError'}
+  /api/members/reviews/{reviewId}/reports:
+    post:
+      tags: [리뷰]
+      operationId: reportReview
+      summary: 다른 회원의 활성 리뷰를 신고합니다.
+      description: |
+        최초 접수는 201, 같은 회원·리뷰의 중복 신고는 기존 ID와 reported true를 200으로 반환합니다.
+        최초 사유·상세를 보존하며 신고 원문·다른 회원의 신고 여부·신고 수를 반환하지 않습니다.
+        본인 리뷰는 400, 없는 대상·삭제 리뷰·비공개 작품은 404입니다. 접수만 하며 관리자 심사나 자동 숨김은 수행하지 않습니다.
+      security: [{MemberSessionCookie: [], MemberCsrfToken: []}]
+      parameters:
+        - $ref: '#/components/parameters/ReviewId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ReviewReportInput'}
+            example: {reason: SPAM, detail: 반복 광고입니다.}
+      responses:
+        '201': {$ref: '#/components/responses/ReviewReport'}
+        '200': {$ref: '#/components/responses/ReviewReport'}
+        '400': {$ref: '#/components/responses/WorkReviewError'}
+        '401': {description: 활성 회원 세션이 필요합니다. 본문은 없습니다.}
+        '403': {description: 회원 CSRF 검증에 실패했습니다. 본문은 없습니다.}
+        '404': {$ref: '#/components/responses/WorkReviewError'}
+  /api/members/review-comments/{commentId}/reports:
+    post:
+      tags: [리뷰]
+      operationId: reportReviewComment
+      summary: 다른 회원의 댓글을 신고합니다.
+      description: |
+        삭제 부모의 남은 댓글도 신고할 수 있습니다. 최초 접수는 201, 중복은 기존 ID와 reported true를 200으로 반환하며 최초 사유·상세를 보존합니다.
+        신고 원문·다른 회원의 신고 여부·신고 수는 노출하지 않습니다. 본인 댓글은 400, 없는 댓글·비공개 작품은 404입니다.
+        신고 접수만 제공하며 관리자 심사·자동 숨김은 수행하지 않습니다.
+      security: [{MemberSessionCookie: [], MemberCsrfToken: []}]
+      parameters:
+        - $ref: '#/components/parameters/ReviewCommentId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ReviewReportInput'}
+            example: {reason: SPOILER}
+      responses:
+        '201': {$ref: '#/components/responses/ReviewReport'}
+        '200': {$ref: '#/components/responses/ReviewReport'}
+        '400': {$ref: '#/components/responses/WorkReviewError'}
+        '401': {description: 활성 회원 세션이 필요합니다. 본문은 없습니다.}
+        '403': {description: 회원 CSRF 검증에 실패했습니다. 본문은 없습니다.}
+        '404': {$ref: '#/components/responses/WorkReviewError'}
   /works/{slug}/purchase-products:
     get:
       tags: [구매]
@@ -801,7 +1053,7 @@ paths:
         '503': {$ref: '#/components/responses/MagazinePageError'}
   /api/members/works/{slug}/state:
     parameters:
-      - {name: slug, in: path, required: true, schema: {type: string, pattern: '^[a-z0-9-]{1,120}$'}}
+      - {name: slug, in: path, required: true, schema: {type: string}}
     get:
       operationId: getWorkFollowState
       summary: 작품의 찜·구독 상태를 조회합니다.
@@ -817,7 +1069,7 @@ paths:
         '404': {$ref: '#/components/responses/WorkFollowError'}
   /api/members/works/{slug}/favorite:
     parameters:
-      - {name: slug, in: path, required: true, schema: {type: string, pattern: '^[a-z0-9-]{1,120}$'}}
+      - {name: slug, in: path, required: true, schema: {type: string}}
     put:
       operationId: addWorkFavorite
       summary: 작품을 찜합니다.
@@ -848,7 +1100,7 @@ paths:
         '404': {$ref: '#/components/responses/WorkFollowError'}
   /api/members/works/{slug}/subscription:
     parameters:
-      - {name: slug, in: path, required: true, schema: {type: string, pattern: '^[a-z0-9-]{1,120}$'}}
+      - {name: slug, in: path, required: true, schema: {type: string}}
     put:
       operationId: subscribeToWork
       summary: 웹소설을 구독합니다.
@@ -977,7 +1229,7 @@ paths:
       - name: slug
         in: path
         required: true
-        schema: {type: string, pattern: '^[a-z0-9-]+$', maxLength: 120}
+        schema: {type: string}
     post:
       tags: [회원 인증]
       operationId: recordRecentWork
@@ -986,7 +1238,6 @@ paths:
       security: [{MemberSessionCookie: [], MemberCsrfToken: []}]
       responses:
         '204': {description: 기록했으며 본문은 없습니다.}
-        '400': {$ref: '#/components/responses/RecentWorkError'}
         '401': {description: 활성 회원 세션 필요}
         '403': {description: 회원 CSRF 검증 실패}
         '404': {$ref: '#/components/responses/RecentWorkError'}
@@ -1408,7 +1659,7 @@ paths:
       tags: [관리자 등록]
       operationId: setWorkStatus
       summary: 작품을 공개하거나 숨깁니다.
-      description: PUBLISHED 전환 시 저장된 필수 메타데이터·저자·분류·회차를 다시 검사하며 WORK 게시판을 중복 생성하지 않습니다.
+      description: PUBLISHED 전환 시 저장된 필수 메타데이터·저자·분류·회차를 다시 검사합니다. 게시판은 자동 생성하지 않으며 기존 게시판을 삭제하지도 않습니다.
       security:
         - SessionCookie: []
           CsrfTokenHeader: []
@@ -1454,6 +1705,725 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Health'
+  /community/boards:
+    get:
+      tags:
+        - 커뮤니티
+      operationId: listCommunityBoards
+      summary: 종류별 게시판과 이모티콘을 조회합니다.
+      description: 작품 게시판은 공개 작품만 포함하고 이름·ID 순서입니다. query로 게시판 이름을 부분 검색하며 빈 값이면 전체입니다.
+      parameters:
+        - $ref: "#/components/parameters/CommunityBoardType"
+        - $ref: "#/components/parameters/CommunityBoardQuery"
+      responses:
+        "200":
+          $ref: "#/components/responses/CommunityBoards"
+        "400":
+          $ref: "#/components/responses/CommunityError"
+        "404":
+          $ref: "#/components/responses/CommunityError"
+  /community/works:
+    get:
+      tags: [커뮤니티]
+      operationId: listCommunityWorks
+      summary: 게시판 유무와 함께 공개 작품을 검색합니다.
+      description: 제목·저자·출판사를 부분 검색하며 query가 비어 있으면 전체 공개 작품입니다. 제목·ID 순서로 페이지 조회하며 게시판이 없는 작품의 boardId는 null입니다.
+      parameters:
+        - $ref: '#/components/parameters/CommunityBoardQuery'
+        - $ref: '#/components/parameters/CommunityPage'
+        - $ref: '#/components/parameters/CommunitySize'
+      responses:
+        '200': {$ref: '#/components/responses/CommunityWorkPage'}
+        '400': {$ref: '#/components/responses/CommunityError'}
+  /community/works/{slug}/chapters:
+    get:
+      tags:
+        - 커뮤니티
+      operationId: listCommunityChapters
+      summary: 스포일러 선택용 공개 회차를 조회합니다.
+      description: 공개 작품에서 공개 시각이 지난 회차만 회차 번호·ID 순서로 반환합니다. 작품 조회수는 변경하지 않습니다.
+      parameters:
+        - $ref: "#/components/parameters/CommunityWorkSlug"
+      responses:
+        "200":
+          $ref: "#/components/responses/CommunityChapters"
+        "400":
+          $ref: "#/components/responses/CommunityError"
+        "404":
+          $ref: "#/components/responses/CommunityError"
+  /community/posts:
+    get:
+      tags:
+        - 커뮤니티
+      operationId: listCommunityPosts
+      summary: 공개 게시글 목록을 조회합니다.
+      description: 기본은 PUBLISHED 글만 반환하며 연결 작품이 비공개이면 제외합니다. 타인의 스포일러 원문을 가리고 공개 경로의 mine·liked·reported는 false입니다. GET에는 CSRF가 필요하지 않습니다.
+      parameters:
+        - $ref: "#/components/parameters/CommunityBoardId"
+        - $ref: "#/components/parameters/CommunityPostType"
+        - $ref: "#/components/parameters/CommunityHead"
+        - $ref: "#/components/parameters/CommunityQuery"
+        - $ref: "#/components/parameters/CommunityMine"
+        - $ref: "#/components/parameters/CommunityPage"
+        - $ref: "#/components/parameters/CommunitySize"
+      responses:
+        "200":
+          $ref: "#/components/responses/CommunityPostPage"
+        "400":
+          $ref: "#/components/responses/CommunityError"
+        "401":
+          $ref: "#/components/responses/CommunityError"
+        "404":
+          $ref: "#/components/responses/CommunityError"
+  /community/posts/{postId}:
+    get:
+      tags:
+        - 커뮤니티
+      operationId: getCommunityPost
+      summary: 게시글 상세를 조회합니다.
+      description: 타인의 스포일러는 reveal=true 이전에 가립니다. 본인 글은 자동으로 열립니다. 공개 경로는 PUBLISHED만, 회원 경로는 본인의 HIDDEN도 조회합니다. DRAFT·DELETED는 조회하지 않습니다.
+      parameters:
+        - $ref: "#/components/parameters/CommunityPostId"
+        - $ref: "#/components/parameters/CommunityReveal"
+      responses:
+        "200":
+          $ref: "#/components/responses/CommunityPost"
+        "400":
+          $ref: "#/components/responses/CommunityError"
+        "404":
+          $ref: "#/components/responses/CommunityError"
+  /community/posts/{postId}/comments:
+    get:
+      tags:
+        - 커뮤니티
+      operationId: listCommunityComments
+      summary: 게시글 댓글과 선택한 스포일러를 조회합니다.
+      description: 부모 글 스포일러가 잠겨 있으면 403입니다. revealPost=true는 부모만 확인하고 revealIds에 지정한 댓글만 엽니다. reveal=true는 부모와 모든 댓글의 확인입니다. 본인 댓글은 자동으로 열리며 확인 상태는
+        DB에 저장하지 않습니다.
+      parameters:
+        - $ref: "#/components/parameters/CommunityPostId"
+        - $ref: "#/components/parameters/CommunityPage"
+        - $ref: "#/components/parameters/CommunitySize"
+        - $ref: "#/components/parameters/CommunityRevealPost"
+        - $ref: "#/components/parameters/CommunityRevealIds"
+        - $ref: "#/components/parameters/CommunityReveal"
+      responses:
+        "200":
+          $ref: "#/components/responses/CommunityCommentPage"
+        "400":
+          $ref: "#/components/responses/CommunityError"
+        "403":
+          description: 회원 변경 요청의 CSRF 실패는 본문이 없습니다. 댓글 조회에서 부모 스포일러를 확인하지 않으면 message JSON을 반환합니다.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommunityError"
+        "404":
+          $ref: "#/components/responses/CommunityError"
+  /community/images/{owner}/{name}:
+    get:
+      tags:
+        - 커뮤니티
+      operationId: getCommunityImage
+      summary: 게시글 첨부 PNG를 읽습니다.
+      description: 공개 작품의 PUBLISHED 글에 연결된 이미지만 공개합니다. 스포일러 이미지에는 reveal=true가 필요합니다. 회원 소유자는 본인 초안·미첨부 이미지도 회원 경로에서 읽을 수 있습니다. 소유자 외에는 공개 글과 같은 제한을 적용합니다.
+      parameters:
+        - $ref: "#/components/parameters/CommunityImageOwner"
+        - $ref: "#/components/parameters/CommunityImageName"
+        - $ref: "#/components/parameters/CommunityReveal"
+      responses:
+        "200":
+          $ref: "#/components/responses/CommunityImage"
+        "400":
+          $ref: "#/components/responses/CommunityError"
+        "404":
+          $ref: "#/components/responses/CommunityError"
+        "500":
+          $ref: "#/components/responses/CommunityError"
+  /api/members/community/boards:
+    get:
+      tags:
+        - 커뮤니티
+      operationId: listMemberCommunityBoards
+      summary: 종류별 게시판과 이모티콘을 조회합니다.
+      description: 작품 게시판은 공개 작품만 포함하고 이름·ID 순서입니다. query로 게시판 이름을 부분 검색하며 빈 값이면 전체입니다.
+      security:
+        - MemberSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/CommunityBoardType"
+        - $ref: "#/components/parameters/CommunityBoardQuery"
+      responses:
+        "200":
+          $ref: "#/components/responses/CommunityBoards"
+        "400":
+          $ref: "#/components/responses/CommunityError"
+        "401":
+          description: 활성 회원 세션이 필요합니다. 인증 필터에서 거절하면 본문이 없습니다.
+        "404":
+          $ref: "#/components/responses/CommunityError"
+    post:
+      tags: [커뮤니티]
+      operationId: createCommunityBoard
+      summary: 회원이 작품별 또는 주제별 게시판을 만듭니다.
+      description: 공개 작품만 선택할 수 있으며 작품 등록은 하지 않습니다. 신규는 201, 같은 작품 또는 같은 주제명의 기존 게시판은 200으로 반환합니다. 주제명은 양끝 Unicode 공백을 제거하고 1~100자이며 DB collation 기준으로 중복을 제한합니다. 홍보 게시판은 생성할 수 없습니다.
+      security: [{MemberSessionCookie: [], MemberCsrfToken: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CommunityBoardInput'}
+      responses:
+        '201': {$ref: '#/components/responses/CommunityBoard'}
+        '200': {$ref: '#/components/responses/CommunityBoard'}
+        '400': {$ref: '#/components/responses/CommunityError'}
+        '401': {description: 활성 회원 세션이 필요합니다. 본문은 없습니다.}
+        '403': {description: 회원 CSRF 검증에 실패했습니다. 본문은 없습니다.}
+        '404': {$ref: '#/components/responses/CommunityError'}
+  /api/members/community/works:
+    get:
+      tags: [커뮤니티]
+      operationId: listMemberCommunityWorks
+      summary: 게시판 유무와 함께 공개 작품을 검색합니다.
+      description: 공개 경로와 같은 작품 목록이며 query가 비어 있으면 전체 공개 작품입니다.
+      security: [{MemberSessionCookie: []}]
+      parameters:
+        - $ref: '#/components/parameters/CommunityBoardQuery'
+        - $ref: '#/components/parameters/CommunityPage'
+        - $ref: '#/components/parameters/CommunitySize'
+      responses:
+        '200': {$ref: '#/components/responses/CommunityWorkPage'}
+        '400': {$ref: '#/components/responses/CommunityError'}
+        '401': {description: 활성 회원 세션이 필요합니다. 본문은 없습니다.}
+  /api/members/community/works/{slug}/chapters:
+    get:
+      tags:
+        - 커뮤니티
+      operationId: listMemberCommunityChapters
+      summary: 스포일러 선택용 공개 회차를 조회합니다.
+      description: 공개 작품에서 공개 시각이 지난 회차만 회차 번호·ID 순서로 반환합니다. 작품 조회수는 변경하지 않습니다.
+      security:
+        - MemberSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/CommunityWorkSlug"
+      responses:
+        "200":
+          $ref: "#/components/responses/CommunityChapters"
+        "400":
+          $ref: "#/components/responses/CommunityError"
+        "401":
+          description: 활성 회원 세션이 필요합니다. 인증 필터에서 거절하면 본문이 없습니다.
+        "404":
+          $ref: "#/components/responses/CommunityError"
+  /api/members/community/posts:
+    get:
+      tags:
+        - 커뮤니티
+      operationId: listMemberCommunityPosts
+      summary: 게시글과 본인 상태를 조회합니다.
+      description: 기본은 PUBLISHED 글만 반환하며 연결 작품이 비공개이면 제외합니다. 타인의 스포일러 원문을 가리고 공개 경로의 mine·liked·reported는 false입니다. GET에는 CSRF가 필요하지 않습니다.
+      security:
+        - MemberSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/CommunityBoardId"
+        - $ref: "#/components/parameters/CommunityPostType"
+        - $ref: "#/components/parameters/CommunityHead"
+        - $ref: "#/components/parameters/CommunityQuery"
+        - $ref: "#/components/parameters/CommunityMine"
+        - $ref: "#/components/parameters/CommunityPage"
+        - $ref: "#/components/parameters/CommunitySize"
+      responses:
+        "200":
+          $ref: "#/components/responses/CommunityPostPage"
+        "400":
+          $ref: "#/components/responses/CommunityError"
+        "401":
+          description: 활성 회원 세션이 필요합니다. 인증 필터에서 거절하면 본문이 없습니다.
+        "404":
+          $ref: "#/components/responses/CommunityError"
+    post:
+      tags:
+        - 커뮤니티
+      operationId: createCommunityPost
+      summary: 본인의 게시글을 공개합니다.
+      description: 항상 새 글을 만들며 기존 서버 초안은 변경하지 않습니다. 홍보는 모든 활성 회원이 공개 작품을 연결하여 작성하며 별도 작가 역할을 요구하지 않습니다.
+      security:
+        - MemberSessionCookie: []
+          MemberCsrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CommunityPublishInput"
+      responses:
+        "201":
+          $ref: "#/components/responses/CommunityPost"
+        "400":
+          $ref: "#/components/responses/CommunityError"
+        "401":
+          description: 활성 회원 세션이 필요합니다. 인증 필터에서 거절하면 본문이 없습니다.
+        "403":
+          description: 회원 변경 요청의 CSRF 실패는 본문이 없습니다. 댓글 조회에서 부모 스포일러를 확인하지 않으면 message JSON을 반환합니다.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommunityError"
+        "404":
+          $ref: "#/components/responses/CommunityError"
+        "500":
+          $ref: "#/components/responses/CommunityError"
+  /api/members/community/posts/{postId}:
+    get:
+      tags:
+        - 커뮤니티
+      operationId: getMemberCommunityPost
+      summary: 게시글 상세를 조회합니다.
+      description: 타인의 스포일러는 reveal=true 이전에 가립니다. 본인 글은 자동으로 열립니다. 공개 경로는 PUBLISHED만, 회원 경로는 본인의 HIDDEN도 조회합니다. DRAFT·DELETED는 조회하지 않습니다.
+      security:
+        - MemberSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/CommunityPostId"
+        - $ref: "#/components/parameters/CommunityReveal"
+      responses:
+        "200":
+          $ref: "#/components/responses/CommunityPost"
+        "400":
+          $ref: "#/components/responses/CommunityError"
+        "401":
+          description: 활성 회원 세션이 필요합니다. 인증 필터에서 거절하면 본문이 없습니다.
+        "404":
+          $ref: "#/components/responses/CommunityError"
+    put:
+      tags:
+        - 커뮤니티
+      operationId: updateCommunityPost
+      summary: 본인이 게시한 글을 수정합니다.
+      description: 본인 PUBLISHED·HIDDEN만 수정합니다. 게시판·연결 작품·게시 시각·현재 공개 상태를 유지하고 updatedAt을 갱신합니다. 타인 글은 404입니다.
+      security:
+        - MemberSessionCookie: []
+          MemberCsrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/CommunityPostId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CommunityPublishInput"
+      responses:
+        "200":
+          $ref: "#/components/responses/CommunityPost"
+        "400":
+          $ref: "#/components/responses/CommunityError"
+        "401":
+          description: 활성 회원 세션이 필요합니다. 인증 필터에서 거절하면 본문이 없습니다.
+        "403":
+          description: 회원 변경 요청의 CSRF 실패는 본문이 없습니다. 댓글 조회에서 부모 스포일러를 확인하지 않으면 message JSON을 반환합니다.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommunityError"
+        "404":
+          $ref: "#/components/responses/CommunityError"
+        "500":
+          $ref: "#/components/responses/CommunityError"
+    delete:
+      tags:
+        - 커뮤니티
+      operationId: deleteCommunityPost
+      summary: 본인 게시글을 삭제합니다.
+      description: 게시한 글은 DELETED로 바꾸며 댓글·공감·신고는 보존합니다. 초안은 실제 삭제합니다. 타인 글·이미 삭제된 글은 404이며 삭제 글의 댓글도 조회할 수 없습니다.
+      security:
+        - MemberSessionCookie: []
+          MemberCsrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/CommunityPostId"
+      responses:
+        "204":
+          $ref: "#/components/responses/CommunityNoContent"
+        "400":
+          $ref: "#/components/responses/CommunityError"
+        "401":
+          description: 활성 회원 세션이 필요합니다. 인증 필터에서 거절하면 본문이 없습니다.
+        "403":
+          description: 회원 변경 요청의 CSRF 실패는 본문이 없습니다. 댓글 조회에서 부모 스포일러를 확인하지 않으면 message JSON을 반환합니다.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommunityError"
+        "404":
+          $ref: "#/components/responses/CommunityError"
+  /api/members/community/posts/{postId}/comments:
+    get:
+      tags:
+        - 커뮤니티
+      operationId: listMemberCommunityComments
+      summary: 게시글 댓글과 선택한 스포일러를 조회합니다.
+      description: 부모 글 스포일러가 잠겨 있으면 403입니다. revealPost=true는 부모만 확인하고 revealIds에 지정한 댓글만 엽니다. reveal=true는 부모와 모든 댓글의 확인입니다. 본인 댓글은 자동으로 열리며 확인 상태는
+        DB에 저장하지 않습니다.
+      security:
+        - MemberSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/CommunityPostId"
+        - $ref: "#/components/parameters/CommunityPage"
+        - $ref: "#/components/parameters/CommunitySize"
+        - $ref: "#/components/parameters/CommunityRevealPost"
+        - $ref: "#/components/parameters/CommunityRevealIds"
+        - $ref: "#/components/parameters/CommunityReveal"
+      responses:
+        "200":
+          $ref: "#/components/responses/CommunityCommentPage"
+        "400":
+          $ref: "#/components/responses/CommunityError"
+        "401":
+          description: 활성 회원 세션이 필요합니다. 인증 필터에서 거절하면 본문이 없습니다.
+        "403":
+          description: 회원 변경 요청의 CSRF 실패는 본문이 없습니다. 댓글 조회에서 부모 스포일러를 확인하지 않으면 message JSON을 반환합니다.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommunityError"
+        "404":
+          $ref: "#/components/responses/CommunityError"
+    post:
+      tags:
+        - 커뮤니티
+      operationId: createCommunityComment
+      summary: 게시글에 본인 댓글을 추가합니다.
+      description: 회원별 개수 제한이 없습니다. 본문 또는 이모티콘이 필요합니다. 일반 이미지·댓글 공감·댓글 신고 API는 포함하지 않습니다.
+      security:
+        - MemberSessionCookie: []
+          MemberCsrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/CommunityPostId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CommunityCommentInput"
+      responses:
+        "201":
+          $ref: "#/components/responses/CommunityComment"
+        "400":
+          $ref: "#/components/responses/CommunityError"
+        "401":
+          description: 활성 회원 세션이 필요합니다. 인증 필터에서 거절하면 본문이 없습니다.
+        "403":
+          description: 회원 변경 요청의 CSRF 실패는 본문이 없습니다. 댓글 조회에서 부모 스포일러를 확인하지 않으면 message JSON을 반환합니다.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommunityError"
+        "404":
+          $ref: "#/components/responses/CommunityError"
+  /api/members/community/images/{owner}/{name}:
+    get:
+      tags:
+        - 커뮤니티
+      operationId: getMemberCommunityImage
+      summary: 게시글 첨부 PNG를 읽습니다.
+      description: 공개 작품의 PUBLISHED 글에 연결된 이미지만 공개합니다. 스포일러 이미지에는 reveal=true가 필요합니다. 회원 소유자는 본인 초안·미첨부 이미지도 회원 경로에서 읽을 수 있습니다. 소유자 외에는 공개 글과 같은 제한을 적용합니다.
+      security:
+        - MemberSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/CommunityImageOwner"
+        - $ref: "#/components/parameters/CommunityImageName"
+        - $ref: "#/components/parameters/CommunityReveal"
+      responses:
+        "200":
+          $ref: "#/components/responses/CommunityImage"
+        "400":
+          $ref: "#/components/responses/CommunityError"
+        "401":
+          description: 활성 회원 세션이 필요합니다. 인증 필터에서 거절하면 본문이 없습니다.
+        "404":
+          $ref: "#/components/responses/CommunityError"
+        "500":
+          $ref: "#/components/responses/CommunityError"
+  /api/members/community/comments/{commentId}:
+    put:
+      tags:
+        - 커뮤니티
+      operationId: updateCommunityComment
+      summary: 본인 댓글을 수정합니다.
+      description: 부모 글이 공개된 상태에서만 수정합니다. 부모와 댓글 생성 시각은 유지합니다. 타인 댓글은 404입니다.
+      security:
+        - MemberSessionCookie: []
+          MemberCsrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/CommunityCommentId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CommunityCommentInput"
+      responses:
+        "200":
+          $ref: "#/components/responses/CommunityComment"
+        "400":
+          $ref: "#/components/responses/CommunityError"
+        "401":
+          description: 활성 회원 세션이 필요합니다. 인증 필터에서 거절하면 본문이 없습니다.
+        "403":
+          description: 회원 변경 요청의 CSRF 실패는 본문이 없습니다. 댓글 조회에서 부모 스포일러를 확인하지 않으면 message JSON을 반환합니다.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommunityError"
+        "404":
+          $ref: "#/components/responses/CommunityError"
+    delete:
+      tags:
+        - 커뮤니티
+      operationId: deleteCommunityComment
+      summary: 본인 댓글과 연결 이모티콘을 삭제합니다.
+      description: 부모 글이 공개된 상태에서 본인 댓글만 실제 삭제합니다. 타인 댓글은 404입니다.
+      security:
+        - MemberSessionCookie: []
+          MemberCsrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/CommunityCommentId"
+      responses:
+        "204":
+          $ref: "#/components/responses/CommunityNoContent"
+        "400":
+          $ref: "#/components/responses/CommunityError"
+        "401":
+          description: 활성 회원 세션이 필요합니다. 인증 필터에서 거절하면 본문이 없습니다.
+        "403":
+          description: 회원 변경 요청의 CSRF 실패는 본문이 없습니다. 댓글 조회에서 부모 스포일러를 확인하지 않으면 message JSON을 반환합니다.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommunityError"
+        "404":
+          $ref: "#/components/responses/CommunityError"
+  /api/members/community/draft:
+    get:
+      tags:
+        - 커뮤니티
+      operationId: getCommunityDraft
+      summary: 현재 계정의 비공개 초안을 조회합니다.
+      description: 회원별 초안 하나이며 없으면 204입니다.
+      security:
+        - MemberSessionCookie: []
+      responses:
+        "200":
+          $ref: "#/components/responses/CommunityPost"
+        "204":
+          $ref: "#/components/responses/CommunityNoContent"
+        "400":
+          $ref: "#/components/responses/CommunityError"
+        "401":
+          description: 활성 회원 세션이 필요합니다. 인증 필터에서 거절하면 본문이 없습니다.
+        "404":
+          $ref: "#/components/responses/CommunityError"
+    put:
+      tags:
+        - 커뮤니티
+      operationId: saveCommunityDraft
+      summary: 회원별 초안 하나를 저장합니다.
+      description: 회원 행을 잠가 동시 저장도 하나의 초안을 유지합니다. 제목·본문은 비어 있을 수 있고 게시판·작품·스포일러·첨부 규칙은 게시와 같습니다.
+      security:
+        - MemberSessionCookie: []
+          MemberCsrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CommunityPostInput"
+      responses:
+        "200":
+          $ref: "#/components/responses/CommunityPost"
+        "400":
+          $ref: "#/components/responses/CommunityError"
+        "401":
+          description: 활성 회원 세션이 필요합니다. 인증 필터에서 거절하면 본문이 없습니다.
+        "403":
+          description: 회원 변경 요청의 CSRF 실패는 본문이 없습니다. 댓글 조회에서 부모 스포일러를 확인하지 않으면 message JSON을 반환합니다.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommunityError"
+        "404":
+          $ref: "#/components/responses/CommunityError"
+        "500":
+          $ref: "#/components/responses/CommunityError"
+    delete:
+      tags:
+        - 커뮤니티
+      operationId: deleteCommunityDraft
+      summary: 현재 계정의 초안을 삭제합니다.
+      description: 초안과 연결 첨부 행을 실제 삭제합니다. 초안이 없어도 204입니다.
+      security:
+        - MemberSessionCookie: []
+          MemberCsrfToken: []
+      responses:
+        "204":
+          $ref: "#/components/responses/CommunityNoContent"
+        "400":
+          $ref: "#/components/responses/CommunityError"
+        "401":
+          description: 활성 회원 세션이 필요합니다. 인증 필터에서 거절하면 본문이 없습니다.
+        "403":
+          description: 회원 변경 요청의 CSRF 실패는 본문이 없습니다. 댓글 조회에서 부모 스포일러를 확인하지 않으면 message JSON을 반환합니다.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommunityError"
+        "404":
+          $ref: "#/components/responses/CommunityError"
+  /api/members/community/images:
+    post:
+      tags:
+        - 커뮤니티
+      operationId: uploadCommunityImage
+      summary: 게시글에 첨부할 본인 이미지를 업로드합니다.
+      description: 정적 공개 폴더 밖의 회원별 디렉터리에 PNG로 저장합니다. 반환 url·width·height를 글·초안 images로 보냅니다. 타인 이미지·임의 파일 경로는 첨부할 수 없습니다.
+      security:
+        - MemberSessionCookie: []
+          MemberCsrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CommunityImageUploadInput"
+      responses:
+        "201":
+          $ref: "#/components/responses/CommunityImageInput"
+        "400":
+          $ref: "#/components/responses/CommunityError"
+        "401":
+          description: 활성 회원 세션이 필요합니다. 인증 필터에서 거절하면 본문이 없습니다.
+        "403":
+          description: 회원 변경 요청의 CSRF 실패는 본문이 없습니다. 댓글 조회에서 부모 스포일러를 확인하지 않으면 message JSON을 반환합니다.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommunityError"
+        "404":
+          $ref: "#/components/responses/CommunityError"
+        "500":
+          $ref: "#/components/responses/CommunityError"
+  /api/members/community/posts/{postId}/like:
+    put:
+      tags:
+        - 커뮤니티
+      operationId: likeCommunityPost
+      summary: 다른 회원 게시글에 공감을 남깁니다.
+      description: 반복 공감은 중복 저장하지 않으며 본인 글은 400입니다.
+      security:
+        - MemberSessionCookie: []
+          MemberCsrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/CommunityPostId"
+      responses:
+        "200":
+          $ref: "#/components/responses/CommunityLikeState"
+        "400":
+          $ref: "#/components/responses/CommunityError"
+        "401":
+          description: 활성 회원 세션이 필요합니다. 인증 필터에서 거절하면 본문이 없습니다.
+        "403":
+          description: 회원 변경 요청의 CSRF 실패는 본문이 없습니다. 댓글 조회에서 부모 스포일러를 확인하지 않으면 message JSON을 반환합니다.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommunityError"
+        "404":
+          $ref: "#/components/responses/CommunityError"
+    delete:
+      tags:
+        - 커뮤니티
+      operationId: unlikeCommunityPost
+      summary: 다른 회원 게시글의 본인 공감을 취소합니다.
+      description: 공감이 없어도 해제 상태를 반환하며 본인 글은 400입니다.
+      security:
+        - MemberSessionCookie: []
+          MemberCsrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/CommunityPostId"
+      responses:
+        "200":
+          $ref: "#/components/responses/CommunityLikeState"
+        "400":
+          $ref: "#/components/responses/CommunityError"
+        "401":
+          description: 활성 회원 세션이 필요합니다. 인증 필터에서 거절하면 본문이 없습니다.
+        "403":
+          description: 회원 변경 요청의 CSRF 실패는 본문이 없습니다. 댓글 조회에서 부모 스포일러를 확인하지 않으면 message JSON을 반환합니다.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommunityError"
+        "404":
+          $ref: "#/components/responses/CommunityError"
+  /api/members/community/posts/{postId}/reports:
+    post:
+      tags:
+        - 커뮤니티
+      operationId: reportCommunityPost
+      summary: 다른 회원 게시글을 신고합니다.
+      description: 회원별 글당 최초 신고는 201, 재요청은 기존 ID로 200입니다. 최초 사유·상세를 보존하고 신고 원문을 반환하지 않습니다. 본인 글은 400입니다. 자동 숨김·심사 API는 포함하지 않습니다.
+      security:
+        - MemberSessionCookie: []
+          MemberCsrfToken: []
+      parameters:
+        - $ref: "#/components/parameters/CommunityPostId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CommunityReportInput"
+      responses:
+        "200":
+          $ref: "#/components/responses/CommunityReport"
+        "201":
+          $ref: "#/components/responses/CommunityReport"
+        "400":
+          $ref: "#/components/responses/CommunityError"
+        "401":
+          description: 활성 회원 세션이 필요합니다. 인증 필터에서 거절하면 본문이 없습니다.
+        "403":
+          description: 회원 변경 요청의 CSRF 실패는 본문이 없습니다. 댓글 조회에서 부모 스포일러를 확인하지 않으면 message JSON을 반환합니다.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommunityError"
+        "404":
+          $ref: "#/components/responses/CommunityError"
+  /stickers/{name}:
+    get:
+      tags:
+        - 커뮤니티
+      operationId: getCommunityStickerAsset
+      summary: 고정 이모티콘 SVG를 읽습니다.
+      description: 게시판 응답 stickers.imageUrl로 조회하는 정적 자원입니다. 등록·변경 API는 없습니다.
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+            enum:
+              - emote-wave.svg
+              - emote-cheer.svg
+              - emote-think.svg
+              - emote-thanks.svg
+      responses:
+        "200":
+          description: 고정 이모티콘 SVG입니다.
+          content:
+            image/svg+xml:
+              schema:
+                type: string
+        "404":
+          description: 없는 정적 자원입니다.
 components:
   securitySchemes:
     MemberSessionCookie:
@@ -1480,11 +2450,42 @@ components:
       name: X-CSRF-TOKEN
       description: GET /api/admin/csrf의 token입니다. Swagger UI는 관리자 POST에 자동으로 넣으며 직접 작성한 클라이언트에서는 같은 세션으로 조회·전송합니다.
   parameters:
+    ReviewWorkSlug:
+      name: slug
+      in: path
+      required: true
+      description: 공개 작품의 slug입니다. 조회되는 공개 작품이 없으면 404입니다.
+      schema: {type: string}
+      example: sample-book
+    ReviewId:
+      name: reviewId
+      in: path
+      required: true
+      description: 리뷰 ID의 십진 문자열입니다. 0·선행 0·signed BIGINT 범위 밖은 400입니다.
+      schema: {$ref: '#/components/schemas/ReviewIdentifier'}
+      example: '101'
+    ReviewCommentId:
+      name: commentId
+      in: path
+      required: true
+      description: 리뷰 댓글 ID의 십진 문자열입니다. 0·선행 0·signed BIGINT 범위 밖은 400입니다.
+      schema: {$ref: '#/components/schemas/ReviewIdentifier'}
+      example: '201'
+    ReviewPageIndex:
+      name: page
+      in: query
+      description: 1부터 시작하며 생략하면 1입니다. 중복·빈 값·정수가 아닌 값은 400입니다.
+      schema: {type: integer, format: int32, minimum: 1, maximum: 2147483647, default: 1}
+    ReviewPageSize:
+      name: size
+      in: query
+      description: 페이지당 표시 항목 수입니다. 생략하면 20이며 중복·빈 값·범위 밖은 400입니다.
+      schema: {type: integer, format: int32, minimum: 1, maximum: 50, default: 20}
     MagazineSlug:
       name: slug
       in: path
       required: true
-      schema: {type: string, pattern: '^[a-z0-9-]+$', maxLength: 120}
+      schema: {type: string}
     WorkId:
       name: id
       in: path
@@ -1492,6 +2493,155 @@ components:
       description: catalog.works[].id 또는 작품 등록 응답의 숫자 ID입니다. slug와 다릅니다.
       schema: {type: integer, format: int64}
       example: 1
+    CommunityPostId:
+      name: postId
+      in: path
+      required: true
+      schema:
+        $ref: "#/components/schemas/CommunityIdentifier"
+    CommunityCommentId:
+      name: commentId
+      in: path
+      required: true
+      schema:
+        $ref: "#/components/schemas/CommunityIdentifier"
+    CommunityWorkSlug:
+      name: slug
+      in: path
+      required: true
+      schema:
+        type: string
+    CommunityPage:
+      name: page
+      in: query
+      required: false
+      schema:
+        type: integer
+        format: int32
+        minimum: 1
+        maximum: 2147483647
+        default: 1
+      description: 1부터 시작합니다. 같은 쿼리 이름을 반복하면 400입니다.
+    CommunitySize:
+      name: size
+      in: query
+      required: false
+      schema:
+        type: integer
+        format: int32
+        minimum: 1
+        maximum: 50
+        default: 20
+      description: 페이지 크기는 1~50입니다.
+    CommunityBoardType:
+      name: type
+      in: query
+      required: false
+      schema:
+        type: string
+        enum:
+          - work
+          - topic
+          - promotion
+        default: work
+      description: 조회할 게시판 종류입니다.
+    CommunityPostType:
+      name: type
+      in: query
+      required: false
+      schema:
+        type: string
+        enum:
+          - work
+          - topic
+          - promotion
+      description: 지정한 종류의 게시글만 조회합니다.
+    CommunityBoardId:
+      name: boardId
+      in: query
+      required: false
+      schema:
+        $ref: "#/components/schemas/CommunityIdentifier"
+      description: 특정 공개 게시판으로 제한하며 없거나 공개 범위 밖이면 빈 목록을 반환합니다.
+    CommunityHead:
+      name: head
+      in: query
+      required: false
+      schema:
+        type: string
+        enum:
+          - IMPRESSION
+          - QUESTION
+          - THEORY
+          - FREE
+          - STORY
+          - PROMOTION
+      description: 지정한 말머리로 제한합니다.
+    CommunityBoardQuery:
+      name: query
+      in: query
+      required: false
+      schema: {type: string, maxLength: 100, default: ''}
+      description: 양끝 Unicode 공백 제거 후 부분 검색합니다. 빈 값이면 전체이며 게시판은 이름, 작품은 제목·저자·출판사를 검색합니다. 같은 쿼리 이름을 반복하면 400입니다.
+    CommunityQuery:
+      name: query
+      in: query
+      required: false
+      schema:
+        type: string
+        maxLength: 100
+        default: ""
+      description: 양끝 공백 제거 후 제목·본문 부분 검색입니다. 본인이 아닌 스포일러 글은 검색에서 제외합니다.
+    CommunityMine:
+      name: mine
+      in: query
+      required: false
+      schema:
+        type: boolean
+        default: false
+      description: 회원 경로의 true는 본인 PUBLISHED·HIDDEN 글만 조회합니다. 공개 경로에서 true이면 401입니다.
+    CommunityReveal:
+      name: reveal
+      in: query
+      required: false
+      schema:
+        type: boolean
+        default: false
+      description: 게시글·이미지 스포일러 열람 확인입니다. 댓글 목록에서 true는 부모와 모든 댓글의 확인입니다. DB·독서 진도는 변경하지 않습니다.
+    CommunityRevealPost:
+      name: revealPost
+      in: query
+      required: false
+      schema:
+        type: boolean
+        default: false
+      description: 댓글 목록의 부모 글만 확인하며 각 댓글의 스포일러는 별도로 가립니다.
+    CommunityRevealIds:
+      name: revealIds
+      in: query
+      required: false
+      description: 확인한 댓글 ID를 쉼표로 최대 50개 지정합니다. 중복은 같은 ID로 처리하며 다른 댓글은 가립니다.
+      style: form
+      explode: false
+      schema:
+        type: array
+        maxItems: 50
+        items:
+          $ref: "#/components/schemas/CommunityIdentifier"
+    CommunityImageOwner:
+      name: owner
+      in: path
+      required: true
+      schema:
+        $ref: "#/components/schemas/CommunityIdentifier"
+      description: 서버가 반환한 업로드 소유자 식별자입니다.
+    CommunityImageName:
+      name: name
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.png$
   responses:
     WorkFollowError:
       description: 잘못된 요청이거나 공개 작품을 찾을 수 없습니다.
@@ -1559,7 +2709,7 @@ components:
             type: object
             required: [code, message]
             properties:
-              code: {type: string, enum: [INVALID_SLUG, NOT_FOUND, UNAVAILABLE]}
+              code: {type: string, enum: [NOT_FOUND, UNAVAILABLE]}
               message: {type: string}
     SignupFieldError:
       description: 입력 또는 문서 버전과 중복 여부를 확인하십시오.
@@ -1584,14 +2734,68 @@ components:
               id: {type: integer, format: int64}
           example: {id: 1}
     WorkReviewError:
-      description: 오류 안내입니다.
+      description: 입력·본인 반응·공개 범위·작성 권한·중복 활성 리뷰 오류 안내입니다.
+      headers:
+        Cache-Control: {schema: {type: string, enum: [no-store]}}
       content:
         application/json:
           schema:
             type: object
+            additionalProperties: false
             required: [message]
             properties:
               message: {type: string}
+          example: {message: 리뷰 요청 값이 올바르지 않습니다.}
+    WorkReviewPage:
+      description: 활성 평점 요약과 삭제 자리표시를 포함한 페이지입니다. 회원 경로는 본인 상태와 myReview를 포함합니다.
+      headers:
+        Cache-Control: {schema: {type: string, enum: [no-store]}}
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/WorkReviewPage'}
+    WorkReview:
+      description: 현재 회원 본인의 활성 리뷰입니다.
+      headers:
+        Cache-Control: {schema: {type: string, enum: [no-store]}}
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/WorkReview'}
+          example: {id: '101', rating: 4, body: 수정한 리뷰입니다., nickname: 독자 하나, createdAt: '2026-11-21T01:00:00Z', commentCount: 1, likeCount: 2, mine: true, liked: false, reported: false, deleted: false}
+    ReviewComment:
+      description: 작성 또는 수정한 본인 댓글입니다.
+      headers:
+        Cache-Control: {schema: {type: string, enum: [no-store]}}
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ReviewComment'}
+          example: {id: '201', body: 리뷰에 공감합니다., nickname: 독자 둘, createdAt: '2026-11-21T02:00:00Z', likeCount: 0, mine: true, liked: false, reported: false}
+    ReviewThread:
+      description: 부모 리뷰 카드와 작성 시각·댓글 ID 오름차순의 전체 댓글입니다. 삭제 부모도 원문 없는 자리표시로 반환합니다.
+      headers:
+        Cache-Control: {schema: {type: string, enum: [no-store]}}
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ReviewThread'}
+          example:
+            review: {id: '101', rating: null, body: null, nickname: null, createdAt: '2026-11-21T01:00:00Z', commentCount: 1, likeCount: 2, mine: false, liked: false, reported: false, deleted: true}
+            items:
+              - {id: '201', body: 남아 있는 댓글입니다., nickname: 탈퇴한 회원, createdAt: '2026-11-21T02:00:00Z', likeCount: 0, mine: false, liked: false, reported: false}
+    ReviewLikeState:
+      description: 변경 후 실제 공감 수와 본인 공감 상태입니다. 등록·해제·반복 요청 모두 200입니다.
+      headers:
+        Cache-Control: {schema: {type: string, enum: [no-store]}}
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ReviewLikeState'}
+          example: {likeCount: 1, liked: true}
+    ReviewReport:
+      description: 최초 신고 접수는 201, 중복은 동일한 ID로 200입니다. 최초 사유·상세를 보존하며 신고 원문은 반환하지 않습니다.
+      headers:
+        Cache-Control: {schema: {type: string, enum: [no-store]}}
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ReviewReport'}
+          example: {id: '301', reported: true}
     BadRequest:
       description: 필수값·자료형·길이·형식 또는 업무 조건이 올바르지 않습니다.
       content:
@@ -1624,6 +2828,163 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/HttpError'
+    CommunityBoard:
+      description: 생성한 게시판 또는 이미 존재하는 같은 게시판입니다.
+      headers:
+        Cache-Control:
+          schema: {type: string, enum: [no-store]}
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/CommunityBoard'}
+    CommunityWorkPage:
+      description: 공개 작품과 게시판 식별자입니다. 게시판이 없으면 boardId는 null입니다.
+      headers:
+        Cache-Control:
+          schema: {type: string, enum: [no-store]}
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/CommunityWorkPage'}
+    CommunityBoards:
+      description: 공개 게시판과 고정 이모티콘입니다.
+      headers:
+        Cache-Control:
+          schema:
+            type: string
+            enum:
+              - no-store
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/CommunityBoards"
+    CommunityChapters:
+      description: 공개 회차 목록이며 본문은 없습니다.
+      headers:
+        Cache-Control:
+          schema:
+            type: string
+            enum:
+              - no-store
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/CommunityChapters"
+    CommunityPostPage:
+      description: 게시 시각·ID 내림차순 게시글 목록입니다.
+      headers:
+        Cache-Control:
+          schema:
+            type: string
+            enum:
+              - no-store
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/CommunityPostPage"
+    CommunityPost:
+      description: 조회·작성·수정한 글입니다.
+      headers:
+        Cache-Control:
+          schema:
+            type: string
+            enum:
+              - no-store
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/CommunityPost"
+    CommunityCommentPage:
+      description: 작성 시각·ID 오름차순 댓글 목록입니다.
+      headers:
+        Cache-Control:
+          schema:
+            type: string
+            enum:
+              - no-store
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/CommunityCommentPage"
+    CommunityComment:
+      description: 작성·수정한 본인 댓글입니다.
+      headers:
+        Cache-Control:
+          schema:
+            type: string
+            enum:
+              - no-store
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/CommunityComment"
+    CommunityLikeState:
+      description: 공감 상태와 실제 개수입니다.
+      headers:
+        Cache-Control:
+          schema:
+            type: string
+            enum:
+              - no-store
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/CommunityLikeState"
+    CommunityReport:
+      description: 최초 사유를 보존한 신고 식별자이며 신고 원문은 반환하지 않습니다.
+      headers:
+        Cache-Control:
+          schema:
+            type: string
+            enum:
+              - no-store
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/CommunityReport"
+    CommunityImageInput:
+      description: 회원 이미지 URL과 실제 치수입니다.
+      headers:
+        Cache-Control:
+          schema:
+            type: string
+            enum:
+              - no-store
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/CommunityImageInput"
+    CommunityError:
+      description: 요청 형식·업무 규칙·공개 범위·저장소 오류의 message입니다.
+      headers:
+        Cache-Control:
+          schema:
+            type: string
+            enum:
+              - no-store
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/CommunityError"
+    CommunityNoContent:
+      description: 처리가 완료되었으며 본문은 없습니다.
+      headers:
+        Cache-Control:
+          schema:
+            type: string
+            enum:
+              - no-store
+    CommunityImage:
+      description: 권한과 스포일러 확인을 통과한 PNG입니다.
+      headers:
+        Cache-Control:
+          schema:
+            type: string
+            enum:
+              - no-store
+      content:
+        image/png:
+          schema:
+            type: string
+            format: binary
   schemas:
     WorkFollowState:
       type: object
@@ -2280,23 +3641,57 @@ components:
             publishedAt: '2026-01-01T00:00:00Z'
             characterCount: 1500
             contentUrl: /content/sample-book/1.html
+    ReviewIdentifier:
+      type: string
+      pattern: '^-?[1-9][0-9]{0,18}$'
+      maxLength: 20
+      description: 0과 선행 0이 없는 signed BIGINT 십진 문자열입니다. -9223372036854775808 이상 9223372036854775807 이하이며 JSON 숫자로 보내지 않습니다.
+    WorkReviewInput:
+      type: object
+      additionalProperties: false
+      required: [rating]
+      properties:
+        rating: {type: integer, minimum: 1, maximum: 5, description: JSON 정수만 허용하며 1.0 같은 소수 표기와 문자열은 400입니다.}
+        body:
+          type: string
+          nullable: true
+          description: 생략·null·공백만 있는 값은 별점만 저장합니다. 양끝 유니코드 공백 제거 후 최대 1000 코드 포인트이며 내부 공백·줄바꿈은 유지합니다.
+    ReviewCommentInput:
+      type: object
+      additionalProperties: false
+      required: [body]
+      properties:
+        body: {type: string, minLength: 1, description: 양끝 유니코드 공백 제거 후 1~500 코드 포인트입니다. 공백뿐인 값·null·타입 오류·추가 필드는 400이며 내부 공백·줄바꿈은 유지합니다.}
+    ReviewReportInput:
+      type: object
+      additionalProperties: false
+      required: [reason]
+      properties:
+        reason: {type: string, enum: [SPAM, ABUSE, INAPPROPRIATE, SPOILER, OTHER]}
+        detail: {type: string, nullable: true, description: 선택 상세입니다. 양끝 유니코드 공백 제거 후 최대 500 코드 포인트이며 생략·null·공백은 null로 저장합니다. 중복 신고에서도 입력 형식은 검증하며 최초 상세를 바꾸지 않습니다.}
     WorkReview:
       type: object
       additionalProperties: false
-      required: [id, rating, body, nickname, createdAt]
+      required: [id, rating, body, nickname, createdAt, commentCount, likeCount, mine, liked, reported, deleted]
       properties:
-        id: {type: string, minLength: 1}
-        rating: {type: integer, minimum: 1, maximum: 5}
+        id: {$ref: '#/components/schemas/ReviewIdentifier'}
+        rating: {type: integer, minimum: 1, maximum: 5, nullable: true, description: 삭제 자리표시는 null입니다.}
         body: {type: string, maxLength: 1000, nullable: true}
-        nickname: {type: string, minLength: 1}
+        nickname: {type: string, minLength: 1, nullable: true, description: 탈퇴 회원은 탈퇴한 회원이며 삭제 자리표시는 null입니다.}
         createdAt: {type: string, format: date-time, description: UTC 작성 시각}
+        commentCount: {type: integer, format: int64, minimum: 0, description: 현재 남아 있는 댓글 수입니다.}
+        likeCount: {type: integer, format: int64, minimum: 0}
+        mine: {type: boolean, description: 현재 회원 본인의 활성 리뷰인지 나타냅니다. 공개 조회·삭제 자리표시는 false입니다.}
+        liked: {type: boolean, description: 현재 회원의 공감 상태입니다. 공개 조회·삭제 자리표시는 false입니다.}
+        reported: {type: boolean, description: 현재 회원의 신고 여부만 나타냅니다. 공개 조회·삭제 자리표시는 false입니다.}
+        deleted: {type: boolean, description: true이면 rating·body·nickname은 null이고 회원별 세 플래그는 false입니다. ID·작성 시각·카운트는 보존합니다.}
     WorkReviewPage:
       type: object
       additionalProperties: false
-      required: [averageRating, reviewCount, ratingDistribution, items, hasNext]
+      required: [averageRating, reviewCount, ratingDistribution, items, hasNext, totalItems, myReview]
       properties:
-        averageRating: {type: number, nullable: true, minimum: 1, maximum: 5, description: 소수 둘째 자리까지 반올림한 평균}
-        reviewCount: {type: integer, format: int64, minimum: 0}
+        averageRating: {type: number, nullable: true, minimum: 1, maximum: 5, description: 활성 리뷰만 집계한 소수 둘째 자리 반올림 평균입니다. 활성 리뷰가 없으면 null이며 DB 캐시는 0.00입니다.}
+        reviewCount: {type: integer, format: int64, minimum: 0, description: 본문 없는 별점만의 리뷰를 포함한 활성 리뷰 수입니다.}
         ratingDistribution:
           type: object
           additionalProperties: false
@@ -2308,7 +3703,60 @@ components:
             '4': {type: integer, format: int64, minimum: 0}
             '5': {type: integer, format: int64, minimum: 0}
         items: {type: array, maxItems: 50, items: {$ref: '#/components/schemas/WorkReview'}}
-        hasNext: {type: boolean}
+        hasNext: {type: boolean, description: totalItems를 기준으로 다음 표시 페이지가 있는지 나타냅니다.}
+        totalItems: {type: integer, format: int64, minimum: 0, description: 활성 리뷰와 댓글이 남은 삭제 자리표시의 합계입니다. reviewCount와 다를 수 있습니다.}
+        myReview:
+          type: object
+          nullable: true
+          additionalProperties: false
+          description: 회원 경로의 본인 활성 리뷰이며 페이지와 무관합니다. 본인 리뷰가 없거나 공개 경로이면 null입니다.
+          required: [id, rating, body, nickname, createdAt, commentCount, likeCount, mine, liked, reported, deleted]
+          properties:
+            id: {$ref: '#/components/schemas/ReviewIdentifier'}
+            rating: {type: integer, minimum: 1, maximum: 5}
+            body: {type: string, maxLength: 1000, nullable: true}
+            nickname: {type: string, minLength: 1}
+            createdAt: {type: string, format: date-time}
+            commentCount: {type: integer, format: int64, minimum: 0}
+            likeCount: {type: integer, format: int64, minimum: 0}
+            mine: {type: boolean, enum: [true]}
+            liked: {type: boolean}
+            reported: {type: boolean}
+            deleted: {type: boolean, enum: [false]}
+    ReviewComment:
+      type: object
+      additionalProperties: false
+      required: [id, body, nickname, createdAt, likeCount, mine, liked, reported]
+      properties:
+        id: {$ref: '#/components/schemas/ReviewIdentifier'}
+        body: {type: string, minLength: 1, maxLength: 500}
+        nickname: {type: string, minLength: 1, description: 탈퇴 회원은 탈퇴한 회원으로 표시합니다.}
+        createdAt: {type: string, format: date-time, description: UTC 작성 시각이며 수정해도 유지합니다.}
+        likeCount: {type: integer, format: int64, minimum: 0}
+        mine: {type: boolean, description: 현재 회원의 본인 댓글 여부입니다. 공개 경로는 false입니다.}
+        liked: {type: boolean, description: 현재 회원의 공감 여부입니다. 공개 경로는 false입니다.}
+        reported: {type: boolean, description: 현재 회원의 신고 여부만 반환합니다. 공개 경로는 false입니다.}
+    ReviewThread:
+      type: object
+      additionalProperties: false
+      required: [review, items]
+      properties:
+        review: {$ref: '#/components/schemas/WorkReview'}
+        items: {type: array, description: 작성 시각·댓글 ID 오름차순의 전체 댓글입니다., items: {$ref: '#/components/schemas/ReviewComment'}}
+    ReviewLikeState:
+      type: object
+      additionalProperties: false
+      required: [likeCount, liked]
+      properties:
+        likeCount: {type: integer, format: int64, minimum: 0}
+        liked: {type: boolean}
+    ReviewReport:
+      type: object
+      additionalProperties: false
+      required: [id, reported]
+      properties:
+        id: {$ref: '#/components/schemas/ReviewIdentifier'}
+        reported: {type: boolean, enum: [true]}
     AdminError:
       type: object
       required: [message]
@@ -2333,3 +3781,724 @@ components:
       required: [status]
       properties:
         status: {type: string, enum: [UP, DOWN, OUT_OF_SERVICE, UNKNOWN]}
+    CommunityIdentifier:
+      type: string
+      pattern: ^-?[1-9][0-9]{0,18}$
+      maxLength: 20
+      description: 0·선행 0이 없는 signed BIGINT 문자열입니다. -9223372036854775808~9223372036854775807이며 JSON 숫자는 허용하지 않습니다.
+    CommunityWork:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - title
+        - author
+        - imageUrl
+        - kind
+      properties:
+        id:
+          type: string
+          pattern: ^[a-z0-9-]{1,100}$
+          maxLength: 100
+        title:
+          type: string
+          maxLength: 200
+        author:
+          type: string
+          maxLength: 1000
+          description: 저자가 없으면 빈 문자열입니다.
+        imageUrl:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: HTTP(S) URL 또는 서버 기준 상대 경로입니다. 상대 경로는 API 기준 주소에 붙여 사용합니다.
+          nullable: true
+        kind:
+          type: string
+          enum:
+            - book
+            - magazine
+            - novel
+      nullable: true
+    CommunityChapter:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - number
+        - title
+      properties:
+        id:
+          $ref: "#/components/schemas/CommunityIdentifier"
+        number:
+          type: integer
+          format: int32
+          minimum: 1
+        title:
+          type: string
+          maxLength: 200
+    CommunitySticker:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - code
+        - name
+        - imageUrl
+      properties:
+        id:
+          $ref: "#/components/schemas/CommunityIdentifier"
+        code:
+          type: string
+          maxLength: 30
+        name:
+          type: string
+          maxLength: 30
+        imageUrl:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: HTTP(S) URL 또는 서버 기준 상대 경로입니다. 상대 경로는 API 기준 주소에 붙여 사용합니다.
+    CommunityImage:
+      type: object
+      additionalProperties: false
+      required:
+        - url
+        - width
+        - height
+        - representative
+      description: 첫 이미지가 대표입니다. 기존 첨부 치수는 새 업로드의 1024px 제한과 별개입니다.
+      properties:
+        url:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: HTTP(S) URL 또는 서버 기준 상대 경로입니다. 상대 경로는 API 기준 주소에 붙여 사용합니다.
+        width:
+          type: integer
+          format: int32
+          minimum: 1
+        height:
+          type: integer
+          format: int32
+          minimum: 1
+        representative:
+          type: boolean
+    CommunityImageInput:
+      type: object
+      additionalProperties: false
+      required:
+        - url
+        - width
+        - height
+      description: 본인 업로드 URL·치수 또는 본인 글의 기존 외부 이미지와 동일한 값입니다. 임의 외부 이미지를 새로 첨부할 수 없습니다.
+      properties:
+        url:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: HTTP(S) URL 또는 서버 기준 상대 경로입니다. 상대 경로는 API 기준 주소에 붙여 사용합니다.
+        width:
+          type: integer
+          format: int32
+          minimum: 1
+        height:
+          type: integer
+          format: int32
+          minimum: 1
+    CommunityBoardInput:
+      oneOf:
+        - type: object
+          additionalProperties: false
+          required: [type, workId]
+          properties:
+            type: {type: string, enum: [work]}
+            workId: {type: string, pattern: '^[a-z0-9-]{1,100}$', maxLength: 100}
+        - type: object
+          additionalProperties: false
+          required: [type, name]
+          properties:
+            type: {type: string, enum: [topic]}
+            name: {type: string, minLength: 1, maxLength: 100}
+    CommunityWorkBoard:
+      type: object
+      additionalProperties: false
+      required: [work, boardId]
+      properties:
+        work: {$ref: '#/components/schemas/CommunityWork'}
+        boardId:
+          type: string
+          nullable: true
+          pattern: '^-?[1-9][0-9]{0,18}$'
+          maxLength: 20
+    CommunityWorkPage:
+      type: object
+      additionalProperties: false
+      required: [items, page, size, totalItems, hasNext]
+      properties:
+        items:
+          type: array
+          maxItems: 50
+          items: {$ref: '#/components/schemas/CommunityWorkBoard'}
+        page: {type: integer, format: int32, minimum: 1, maximum: 2147483647}
+        size: {type: integer, format: int32, minimum: 1, maximum: 50}
+        totalItems: {type: integer, format: int64, minimum: 0}
+        hasNext: {type: boolean}
+    CommunityLatestPost:
+      type: object
+      nullable: true
+      additionalProperties: false
+      required: [id, head, title, nickname, likeCount, commentCount, hasSpoiler, locked]
+      description: 게시판별 최신 공개글 한 건입니다. 없으면 null입니다. 회원 경로도 공개 미리보기와 같으며 hasSpoiler=true이면 locked=true와 title=null을 반환합니다.
+      properties:
+        id: {$ref: '#/components/schemas/CommunityIdentifier'}
+        head: {type: string, enum: [IMPRESSION, QUESTION, THEORY, FREE, STORY, PROMOTION]}
+        title: {type: string, nullable: true, maxLength: 100}
+        nickname: {type: string, maxLength: 30}
+        likeCount: {type: integer, format: int64, minimum: 0}
+        commentCount: {type: integer, format: int64, minimum: 0}
+        hasSpoiler: {type: boolean}
+        locked: {type: boolean}
+    CommunityBoard:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - type
+        - name
+        - work
+        - heads
+        - latestPost
+      description: work만 작품 요약을 가지며 다른 게시판의 work는 null입니다. 말머리는 work=IMPRESSION/QUESTION/THEORY/FREE, topic=STORY/QUESTION, promotion=PROMOTION입니다.
+      properties:
+        id:
+          $ref: "#/components/schemas/CommunityIdentifier"
+        type:
+          type: string
+          enum:
+            - work
+            - topic
+            - promotion
+        name:
+          type: string
+          maxLength: 200
+        work:
+          $ref: "#/components/schemas/CommunityWork"
+        latestPost:
+          $ref: '#/components/schemas/CommunityLatestPost'
+        heads:
+          type: array
+          items:
+            type: string
+            enum:
+              - IMPRESSION
+              - QUESTION
+              - THEORY
+              - FREE
+              - STORY
+              - PROMOTION
+    CommunityBoards:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+        - stickers
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/CommunityBoard"
+        stickers:
+          type: array
+          items:
+            $ref: "#/components/schemas/CommunitySticker"
+    CommunityChapters:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/CommunityChapter"
+    CommunityPostInput:
+      type: object
+      additionalProperties: false
+      required:
+        - boardId
+        - workId
+        - head
+        - title
+        - body
+        - spoilerChapterId
+        - images
+        - stickerIds
+      description: 새 클라이언트는 hasSpoiler를 포함하여 모든 필드를 전송합니다. 구입력에서 hasSpoiler를 생략한 경우에만 spoilerChapterId 지정 여부로 해석합니다. 추가 필드는 허용하지 않습니다. 길이는 Unicode 코드 포인트 기준이며 같은 이모티콘은 반복할 수 있으나 이미지 URL의 중복은 허용하지 않습니다.
+      properties:
+        boardId:
+          $ref: "#/components/schemas/CommunityIdentifier"
+        workId:
+          type: string
+          pattern: ^[a-z0-9-]{1,100}$
+          maxLength: 100
+          nullable: true
+          description: WORK는 게시판 작품 또는 null, PROMOTION은 공개 작품 필수, TOPIC은 선택입니다.
+        head:
+          type: string
+          enum:
+            - IMPRESSION
+            - QUESTION
+            - THEORY
+            - FREE
+            - STORY
+            - PROMOTION
+        title:
+          type: string
+          maxLength: 100
+          description: 양끝 공백 제거 후 제목입니다. 초안은 빈 문자열을 허용합니다.
+        body:
+          type: string
+          maxLength: 25000
+          description: 양끝 공백 제거 후 표시 텍스트는 10,000 코드 포인트 이하이고 이미지 표식을 포함한 저장값은 25,000 이하입니다. 등록된 첨부 URL과 일치하는 ![이미지](<URL>) 표식만 첨부 개수만큼 최대 3개 제외합니다. 관리 이미지의 회원 접두사·reveal 차이와 목적지 퍼센트 인코딩을 인식하며 미등록·초과·잘못된 표식은 텍스트로 계산합니다. 내부 줄바꿈은 유지하며 초안은 빈 문자열을 허용합니다.
+        spoilerChapterId:
+          type: string
+          pattern: ^-?[1-9][0-9]{0,18}$
+          maxLength: 20
+          description: 기존 회차 범위 호환용입니다. 새 작성 화면은 null을 보내며 지정할 때는 연결 작품의 공개 회차여야 하고 hasSpoiler=false와 함께 지정할 수 없습니다.
+          nullable: true
+        hasSpoiler:
+          type: boolean
+          description: 회차 지정 없이 스포일러를 표시합니다. 구입력에서 생략하면 spoilerChapterId 지정 여부를 사용합니다.
+        images:
+          type: array
+          maxItems: 3
+          items:
+            $ref: "#/components/schemas/CommunityImageInput"
+        stickerIds:
+          type: array
+          maxItems: 8
+          items:
+            $ref: "#/components/schemas/CommunityIdentifier"
+    CommunityCommentInput:
+      type: object
+      additionalProperties: false
+      required:
+        - body
+        - spoilerChapterId
+        - stickerIds
+      description: 일반 이미지는 첨부하지 않습니다. hasSpoiler로 회차 없이 스포일러를 표시합니다. 기존 spoilerChapterId는 부모 글에 연결된 작품의 공개 회차이며 hasSpoiler=false와 함께 지정할 수 없습니다. 구입력에서 hasSpoiler 생략 시 회차 지정 여부를 사용합니다.
+      properties:
+        body:
+          type: string
+          maxLength: 2000
+          nullable: true
+          description: null·빈 문자열·공백만 있으면 이모티콘을 하나 이상 지정해야 합니다.
+        hasSpoiler:
+          type: boolean
+          description: 회차 없이 스포일러를 표시하며 생략한 구입력만 회차 지정 여부로 해석합니다.
+        spoilerChapterId:
+          type: string
+          pattern: ^-?[1-9][0-9]{0,18}$
+          maxLength: 20
+          description: 0·선행 0이 없는 signed BIGINT 문자열입니다. -9223372036854775808~9223372036854775807이며 JSON 숫자는 허용하지 않습니다.
+          nullable: true
+        stickerIds:
+          type: array
+          maxItems: 4
+          items:
+            $ref: "#/components/schemas/CommunityIdentifier"
+    CommunityLikeState:
+      type: object
+      additionalProperties: false
+      required:
+        - liked
+        - likeCount
+      properties:
+        liked:
+          type: boolean
+        likeCount:
+          type: integer
+          format: int64
+          minimum: 0
+    CommunityReportInput:
+      type: object
+      additionalProperties: false
+      required:
+        - reason
+        - detail
+      properties:
+        reason:
+          type: string
+          enum:
+            - SPAM
+            - ABUSE
+            - INAPPROPRIATE
+            - SPOILER
+            - OTHER
+        detail:
+          type: string
+          maxLength: 500
+          nullable: true
+          description: 양끝 공백 제거 후 선택 상세입니다. 빈 문자열·공백은 null입니다.
+    CommunityReport:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - reported
+      properties:
+        id:
+          $ref: "#/components/schemas/CommunityIdentifier"
+        reported:
+          type: boolean
+          enum:
+            - true
+    CommunityImageUploadInput:
+      type: object
+      additionalProperties: false
+      required:
+        - base64
+        - mimeType
+      description: 클라이언트는 선택한 PNG·JPEG·WebP를 JPEG 또는 PNG로 변환합니다. 서버는 실제 형식·치수를 검사하고 메타데이터를 제거한 PNG로 다시 인코딩합니다. 결과 PNG도 2MiB 이하여야 합니다.
+      properties:
+        base64:
+          type: string
+          format: byte
+          minLength: 4
+          maxLength: 2796204
+          description: "data: 접두사 없는 Base64입니다. 디코딩 후 2MiB 이하이며 실제 JPEG·PNG이고 가로·세로 각각 1~1024px여야 합니다."
+        mimeType:
+          type: string
+          enum:
+            - image/jpeg
+            - image/png
+    CommunityError:
+      type: object
+      additionalProperties: false
+      required:
+        - message
+      properties:
+        message:
+          type: string
+    CommunityPublishInput:
+      type: object
+      additionalProperties: false
+      required:
+        - boardId
+        - workId
+        - head
+        - title
+        - body
+        - spoilerChapterId
+        - images
+        - stickerIds
+      description: 게시·수정에는 양끝 공백 제거 후 비어 있지 않은 제목·본문이 필요합니다. 게시한 글의 게시판과 연결 작품은 바꿀 수 없습니다. 새 클라이언트는 hasSpoiler를 포함한 모든 필드를 전송하며 구입력에서 hasSpoiler 생략 시에만 회차 지정 여부를 사용합니다. 추가 필드는 허용하지 않습니다.
+      properties:
+        boardId:
+          $ref: "#/components/schemas/CommunityIdentifier"
+        workId:
+          type: string
+          pattern: ^[a-z0-9-]{1,100}$
+          maxLength: 100
+          nullable: true
+          description: WORK는 게시판 작품 또는 null, PROMOTION은 공개 작품 필수, TOPIC은 선택입니다.
+        head:
+          type: string
+          enum:
+            - IMPRESSION
+            - QUESTION
+            - THEORY
+            - FREE
+            - STORY
+            - PROMOTION
+        title:
+          type: string
+          maxLength: 100
+          description: 양끝 Unicode 공백 제거 후 1~100 코드 포인트입니다.
+          minLength: 1
+        body:
+          type: string
+          maxLength: 25000
+          description: 양끝 Unicode 공백 제거 후 비어 있지 않은 저장값입니다. 표시 텍스트는 10,000 코드 포인트 이하, 이미지 표식을 포함한 저장값은 25,000 이하입니다. CommunityPostInput과 같은 등록 첨부 표식 제외 규칙을 적용하며 내부 줄바꿈은 유지합니다.
+          minLength: 1
+        spoilerChapterId:
+          type: string
+          pattern: ^-?[1-9][0-9]{0,18}$
+          maxLength: 20
+          description: 기존 회차 범위 호환용입니다. 새 작성 화면은 null을 보내며 지정할 때는 연결 작품의 공개 회차여야 하고 hasSpoiler=false와 함께 지정할 수 없습니다.
+          nullable: true
+        hasSpoiler:
+          type: boolean
+          description: 회차 지정 없이 스포일러를 표시합니다. 구입력에서 생략하면 spoilerChapterId 지정 여부를 사용합니다.
+        images:
+          type: array
+          maxItems: 3
+          items:
+            $ref: "#/components/schemas/CommunityImageInput"
+        stickerIds:
+          type: array
+          maxItems: 8
+          items:
+            $ref: "#/components/schemas/CommunityIdentifier"
+    CommunityPost:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - boardId
+        - boardType
+        - boardName
+        - work
+        - head
+        - title
+        - body
+        - nickname
+        - createdAt
+        - updatedAt
+        - publishedAt
+        - status
+        - spoiler
+        - hasSpoiler
+        - locked
+        - mine
+        - liked
+        - reported
+        - likeCount
+        - commentCount
+        - images
+        - stickers
+      description: locked=true이면 title·body=null, images·stickers=[]입니다. 본인 글은 자동으로 열립니다. 공개 경로의 mine·liked·reported는 false입니다. 초안만 publishedAt=null이며
+        DELETED는 반환하지 않습니다.
+      properties:
+        id:
+          $ref: "#/components/schemas/CommunityIdentifier"
+        boardId:
+          $ref: "#/components/schemas/CommunityIdentifier"
+        boardType:
+          type: string
+          enum:
+            - work
+            - topic
+            - promotion
+        boardName:
+          type: string
+          maxLength: 200
+        work:
+          $ref: "#/components/schemas/CommunityWork"
+        head:
+          type: string
+          enum:
+            - IMPRESSION
+            - QUESTION
+            - THEORY
+            - FREE
+            - STORY
+            - PROMOTION
+        title:
+          type: string
+          maxLength: 100
+          nullable: true
+        body:
+          type: string
+          maxLength: 25000
+          description: 표시 텍스트는 10,000 코드 포인트 이하이며 등록 첨부의 인라인 이미지 표식을 포함한 저장값입니다.
+          nullable: true
+        nickname:
+          type: string
+          maxLength: 30
+          description: 탈퇴 회원은 탈퇴한 회원으로 표시합니다.
+        createdAt:
+          type: string
+          format: date-time
+          description: UTC ISO 8601 시각입니다.
+        updatedAt:
+          type: string
+          format: date-time
+          description: UTC ISO 8601 시각입니다.
+        publishedAt:
+          type: string
+          format: date-time
+          description: UTC ISO 8601 시각입니다.
+          nullable: true
+        status:
+          type: string
+          enum:
+            - DRAFT
+            - PUBLISHED
+            - HIDDEN
+        spoiler:
+          type: object
+          additionalProperties: false
+          required:
+            - id
+            - number
+            - title
+          properties:
+            id:
+              $ref: "#/components/schemas/CommunityIdentifier"
+            number:
+              type: integer
+              format: int32
+              minimum: 1
+            title:
+              type: string
+              maxLength: 200
+          nullable: true
+          description: 기존 회차 범위 정보입니다. null이어도 hasSpoiler=true일 수 있습니다.
+        hasSpoiler:
+          type: boolean
+        locked:
+          type: boolean
+        mine:
+          type: boolean
+        liked:
+          type: boolean
+        reported:
+          type: boolean
+        likeCount:
+          type: integer
+          format: int64
+          minimum: 0
+        commentCount:
+          type: integer
+          format: int64
+          minimum: 0
+        images:
+          type: array
+          maxItems: 3
+          items:
+            $ref: "#/components/schemas/CommunityImage"
+        stickers:
+          type: array
+          maxItems: 8
+          items:
+            $ref: "#/components/schemas/CommunitySticker"
+    CommunityComment:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - postId
+        - body
+        - nickname
+        - createdAt
+        - updatedAt
+        - spoiler
+        - hasSpoiler
+        - locked
+        - mine
+        - stickers
+      description: locked=true이면 body=null, stickers=[]입니다. 본인 댓글은 자동으로 열립니다. 이모티콘만 있는 댓글도 body=null이며 locked=false입니다.
+      properties:
+        id:
+          $ref: "#/components/schemas/CommunityIdentifier"
+        postId:
+          $ref: "#/components/schemas/CommunityIdentifier"
+        body:
+          type: string
+          maxLength: 2000
+          nullable: true
+        nickname:
+          type: string
+          maxLength: 30
+        createdAt:
+          type: string
+          format: date-time
+          description: UTC ISO 8601 시각입니다.
+        updatedAt:
+          type: string
+          format: date-time
+          description: UTC ISO 8601 시각입니다.
+        spoiler:
+          type: object
+          additionalProperties: false
+          required:
+            - id
+            - number
+            - title
+          properties:
+            id:
+              $ref: "#/components/schemas/CommunityIdentifier"
+            number:
+              type: integer
+              format: int32
+              minimum: 1
+            title:
+              type: string
+              maxLength: 200
+          nullable: true
+          description: 기존 회차 범위 정보입니다. null이어도 hasSpoiler=true일 수 있습니다.
+        hasSpoiler:
+          type: boolean
+        locked:
+          type: boolean
+        mine:
+          type: boolean
+        stickers:
+          type: array
+          maxItems: 4
+          items:
+            $ref: "#/components/schemas/CommunitySticker"
+    CommunityPostPage:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+        - page
+        - size
+        - totalItems
+        - hasNext
+      properties:
+        items:
+          type: array
+          maxItems: 50
+          items:
+            $ref: "#/components/schemas/CommunityPost"
+        page:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 2147483647
+        size:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 50
+        totalItems:
+          type: integer
+          format: int64
+          minimum: 0
+        hasNext:
+          type: boolean
+    CommunityCommentPage:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+        - page
+        - size
+        - totalItems
+        - hasNext
+      properties:
+        items:
+          type: array
+          maxItems: 50
+          items:
+            $ref: "#/components/schemas/CommunityComment"
+        page:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 2147483647
+        size:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 50
+        totalItems:
+          type: integer
+          format: int64
+          minimum: 0
+        hasNext:
+          type: boolean

@@ -49,8 +49,10 @@ services:
       AUTH_ALLOWED_ORIGINS: ${AUTH_ALLOWED_ORIGINS:-}
       SIGNUP_DEMO_ENABLED: ${SIGNUP_DEMO_ENABLED:-false}
       CONTENT_ROOT: /app/content
+      COMMUNITY_IMAGE_ROOT: /app/community-images
       TZ: UTC
     volumes:
+      - community_images:/app/community-images
       - type: bind
         source: ../sdui
         target: /app/sdui
@@ -68,3 +70,4 @@ services:
 
 volumes:
   mysql_data:
+  community_images:

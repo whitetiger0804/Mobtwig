@@ -3,6 +3,7 @@ package com.mobtwig.work;
 import java.util.List;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -27,16 +28,18 @@ public class WorkSearchService {
      * 제목·저자·출판사의 일부가 일치하는 공개 작품을 최신순으로 조회합니다.
      * @param query 앞뒤 공백을 제거할 검색어입니다.
      * @param kind all, book, magazine, novel 중 하나입니다.
+     * @param genre 선택한 장르 이름이며 null이면 모든 장르를 포함합니다.
      * @return 중복 작품이 없는 검색 결과입니다.
-     * @throws ResponseStatusException 검색어 또는 종류가 올바르지 않으면 발생합니다.
+     * @throws ResponseStatusException 검색어·종류가 올바르지 않으면 발생합니다.
      * @throws IllegalStateException 공개 작품의 필수 정보가 잘못되면 발생합니다.
      */
     @Transactional(readOnly = true)
-    public List<@NonNull WorkSearchResponse> search(String query, String kind) {
+    public List<@NonNull WorkSearchResponse> search(String query, String kind, @Nullable String genre) {
         String normalized = EDGE_WHITESPACE.matcher(query).replaceAll("");
         if (normalized.isEmpty() || normalized.codePointCount(0, normalized.length()) > 200) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "검색어는 앞뒤 공백을 제거한 뒤 1자 이상 200자 이하이어야 합니다.");
         }
+        String selectedGenre = genre == null ? null : EDGE_WHITESPACE.matcher(genre).replaceAll("");
         String contentType = switch (kind) {
             case "all" -> null;
             case "book" -> "BOOK";
@@ -46,7 +49,7 @@ public class WorkSearchService {
         };
         String pattern = "%" + normalized.replace("!", "!!").replace("%", "!%")
                 .replace("_", "!_") + "%";
-        return books.searchPublished(pattern, contentType).stream().map(book -> new WorkSearchResponse(
+        return books.searchPublished(pattern, contentType, selectedGenre).stream().map(book -> new WorkSearchResponse(
                 WorkMetadata.slug(book.getSlug()), WorkMetadata.requiredText(book.getTitle(), "제목"),
                 WorkMetadata.imageUrl(book.getCoverImageUrl()), WorkMetadata.kind(book.getContentType())))
                 .toList();
