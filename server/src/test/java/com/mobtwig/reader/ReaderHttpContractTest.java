@@ -30,7 +30,7 @@ class ReaderHttpContractTest {
         Files.writeString(root.resolve("one.txt"), "\uFEFF  첫 🌱\r\n\r\n마지막 줄\r", StandardCharsets.UTF_8);
         var books = mock(BookRepository.class); var chapters = mock(ChapterRepository.class);
         var b = mock(Book.class); when(b.getId()).thenReturn(1L); when(b.getTitle()).thenReturn("실제 직렬화");
-        when(b.getContentType()).thenReturn("BOOK");
+        when(b.getContentType()).thenReturn("BOOK"); when(b.getSlug()).thenReturn("contract");
         when(books.findBySlugAndPublishStatus("contract", "PUBLISHED")).thenReturn(Optional.of(b));
         var list = List.of(chapter(91, 2), chapter(12, 8), chapter(77, 10));
         when(chapters.findByBookIdAndPublishedAtLessThanEqualOrderByChapterNoAsc(eq(1L), any(Instant.class))).thenReturn(list);

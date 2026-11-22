@@ -11,9 +11,6 @@ final class RecentWorkFailure extends ResponseStatusException {
         this.code = code;
     }
 
-    static RecentWorkFailure invalid() {
-        return new RecentWorkFailure(HttpStatus.BAD_REQUEST, "INVALID_SLUG", "작품 식별자를 확인해 주세요.");
-    }
     static RecentWorkFailure notFound() {
         return new RecentWorkFailure(HttpStatus.NOT_FOUND, "NOT_FOUND", "공개된 작품이 없습니다.");
     }

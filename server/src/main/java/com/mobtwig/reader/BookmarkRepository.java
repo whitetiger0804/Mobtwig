@@ -11,10 +11,10 @@ import org.springframework.stereotype.Repository;
 @Repository
 class BookmarkRepository {
     private static final String COLUMNS = """
-            SELECT m.id,m.book_id,b.slug,m.chapter_id,m.chapter_offset,m.content_version,m.content_hash,m.version_bound,m.snippet,m.created_at
+            SELECT m.id,b.slug,m.chapter_id,m.chapter_offset,m.content_version,m.content_hash,m.version_bound,m.snippet,m.created_at
             FROM bookmark m JOIN book b ON b.id=m.book_id
             """;
-    private static final RowMapper<Saved> SAVED = (rs, row) -> new Saved(rs.getLong("id"), rs.getLong("book_id"),
+    private static final RowMapper<Saved> SAVED = (rs, row) -> new Saved(rs.getLong("id"),
             rs.getString("slug"), rs.getLong("chapter_id"), rs.getInt("chapter_offset"), rs.getInt("content_version"),
             rs.getString("content_hash"), rs.getBoolean("version_bound"), rs.getString("snippet"), rs.getTimestamp("created_at").toInstant());
     private final JdbcTemplate jdbc;
@@ -46,5 +46,5 @@ class BookmarkRepository {
         return jdbc.update("DELETE FROM bookmark WHERE id=? AND member_id=?", id, member) == 1;
     }
 
-    record Saved(long id, long book, String slug, long chapter, int offset, int version, String hash, boolean bound, String snippet, Instant createdAt) { }
+    record Saved(long id, String slug, long chapter, int offset, int version, String hash, boolean bound, String snippet, Instant createdAt) { }
 }

@@ -41,9 +41,8 @@ public class MagazineService {
     }
 
     private Work work(String slug) {
-        if (slug == null || slug.length() > 120 || !slug.matches("[a-z0-9-]+")) throw invalid();
         var work = repository.work(slug, Instant.now(), false).filter(Work::magazine).orElseThrow(MagazineService::notFound);
-        if (work.pageCount() == null || work.pageCount() < 1) throw MagazineLayout.unavailable();
+        if (work.pageCount() == null) throw MagazineLayout.unavailable();
         return work;
     }
 

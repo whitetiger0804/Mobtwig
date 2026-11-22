@@ -27,7 +27,6 @@ public class RecentWorksService {
 
     @Transactional
     public void view(long member, String slug) {
-        if (slug == null || slug.length() > 120 || !slug.matches("[a-z0-9-]+")) throw RecentWorkFailure.invalid();
         // 읽기 위치 저장과 같은 순서로 회원 행을 먼저 잠급니다.
         if (!members.lockActiveMember(member)) throw new ResponseStatusException(HttpStatus.UNAUTHORIZED);
         long book = repository.publishedBook(slug).orElseThrow(RecentWorkFailure::notFound);

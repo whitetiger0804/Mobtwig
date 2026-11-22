@@ -63,7 +63,7 @@ public class HighlightController {
     ResponseEntity<Map<String, String>> error(ResponseStatusException failure) {
         if (failure.getStatusCode().value() == 401) return ResponseEntity.status(401).cacheControl(CacheControl.noStore()).build();
         return ResponseEntity.status(failure.getStatusCode()).cacheControl(CacheControl.noStore())
-                .body(Map.of("message", failure.getReason() == null ? "하이라이트 요청을 처리하지 못했습니다." : failure.getReason()));
+                .body(Map.of("message", failure.getReason()));
     }
 
     @ExceptionHandler(HttpMessageNotReadableException.class)

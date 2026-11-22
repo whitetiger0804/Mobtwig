@@ -3,6 +3,7 @@ package com.mobtwig.reader;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import com.mobtwig.purchase.PurchaseFailure;
 import com.mobtwig.purchase.PurchaseService;
@@ -32,24 +33,22 @@ public class HighlightService {
 
     @Transactional(readOnly = true)
     public Page list(long member, String slug, Long chapter, int page) {
-        if (slug != null) validateSlug(slug);
-        if (chapter != null && slug == null) throw ReadingProgressFailure.invalid();
         var rows = highlights.list(member, slug, chapter, (page - 1L) * 30);
         var published = new HashMap<String, Optional<Work>>();
+        var texts = new HashMap<String, PlainTextSource.Text>();
         Instant now = Instant.now();
         var items = rows.stream().limit(30).map(row -> describe(member, row,
-                published.computeIfAbsent(row.slug(), key -> works.work(key, now, false)).orElse(null))).toList();
+                published.computeIfAbsent(row.slug(), key -> works.work(key, now, false)).orElse(null), texts)).toList();
         return new Page(items, page, rows.size() > 30);
     }
 
     @Transactional
     public Item save(long member, Input input) {
-        validateSlug(input.workId());
         lock(member);
         var work = works.work(input.workId(), Instant.now(), true).orElseThrow(ReadingProgressFailure::notFound);
         var chapter = visible(work, input.chapterId()).orElseThrow(ReadingProgressFailure::notFound);
         purchases.requireRead(member, work.id(), chapter.id());
-        String snippet = check(work, chapter, input.startOffset(), input.endOffset(), input.contentVersion(), input.contentHash());
+        String snippet = check(work, chapter, input.startOffset(), input.endOffset(), input.contentVersion(), input.contentHash(), new HashMap<>());
         var saved = highlights.find(member, input).orElseGet(() -> highlights.insert(member, work.id(), input, snippet));
         return item(saved, work, chapter, "available", snippet);
     }
@@ -60,14 +59,14 @@ public class HighlightService {
         if (!highlights.delete(member, id)) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "하이라이트가 없습니다.");
     }
 
-    private Item describe(long member, Saved row, Work work) {
+    private Item describe(long member, Saved row, Work work, Map<String, PlainTextSource.Text> texts) {
         var chapter = visible(work, row.chapter()).orElse(null);
         if (chapter == null) {
             return new Item(Long.toString(row.id()), "hidden", null, null, null, null, null, null, null, row.created().toString());
         }
         try {
             purchases.requireRead(member, work.id(), chapter.id());
-            return item(row, work, chapter, "available", check(work, chapter, row.start(), row.end(), row.version(), row.hash()));
+            return item(row, work, chapter, "available", check(work, chapter, row.start(), row.end(), row.version(), row.hash(), texts));
         } catch (PurchaseFailure unavailable) {
             return new Item(Long.toString(row.id()), "hidden", null, null, null, null, null, null, null, row.created().toString());
         } catch (ResponseStatusException changed) {
@@ -75,8 +74,8 @@ public class HighlightService {
         }
     }
 
-    private String check(Work work, Chapter chapter, int start, int end, int version, String hash) {
-        var checked = coordinates.verify(work, chapter, start, version, hash);
+    private String check(Work work, Chapter chapter, int start, int end, int version, String hash, Map<String, PlainTextSource.Text> texts) {
+        var checked = coordinates.verify(work, chapter, start, version, hash, texts);
         if (work.magazine()) {
             if (end < start || checked.end() != null && end > checked.end()) throw ReadingProgressFailure.invalid();
             return null;
@@ -97,10 +96,6 @@ public class HighlightService {
 
     private static Optional<Chapter> visible(Work work, long id) {
         return work == null ? Optional.empty() : work.visible().stream().filter(chapter -> chapter.id() == id).findFirst();
-    }
-
-    private static void validateSlug(String slug) {
-        if (slug == null || !slug.matches("[a-z0-9-]{1,120}")) throw ReadingProgressFailure.invalid();
     }
 
     private void lock(long member) {
