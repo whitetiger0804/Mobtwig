@@ -1,12 +1,13 @@
 // #region 읽기 설정 계약
 import type { AsyncStorageStatic } from '@react-native-async-storage/async-storage';
+import { readingFontNames, type ReadingFont } from './readingFonts.ts';
 
 /** 현재 기기에 저장하여 다음 실행에도 적용하는 읽기 설정입니다. */
 export interface ReadingPreferences {
   /** 독서 화면의 배경 테마입니다. */
   theme: '크림' | '연노랑' | '연회색' | '다크';
-  /** 읽기 설정 화면에서 선택한 글꼴 이름입니다. */
-  font: string;
+  /** 읽기 설정에서 선택한 글꼴의 기기 저장 이름입니다. */
+  font: ReadingFont;
   /** 글자 크기 단계이며 0부터 4까지 사용합니다. */
   size: number;
 }
@@ -30,14 +31,14 @@ export function parseReadingPreferences(value: unknown): ReadingPreferences {
   }
   const preferences = value as Record<string, unknown>;
   if (!['크림', '연노랑', '연회색', '다크'].includes(preferences.theme as string)
-      || !['기본 명조', '기본 고딕', '나눔명조', '나눔고딕', '고운바탕', '고운돋움', '함렛', '플렉스고딕'].includes(preferences.font as string)
+      || !readingFontNames.includes(preferences.font as ReadingFont)
       || typeof preferences.size !== 'number' || !Number.isInteger(preferences.size)
       || preferences.size < 0 || preferences.size > 4) {
     throw new Error('지원하지 않는 읽기 설정입니다.');
   }
   return {
     theme: preferences.theme as ReadingPreferences['theme'],
-    font: preferences.font as string,
+    font: preferences.font as ReadingFont,
     size: preferences.size,
   };
 }
@@ -54,14 +55,14 @@ export async function loadReadingPreferences(storage: Pick<AsyncStorageStatic, '
 }
 
 /**
- * 설정을 검증한 뒤 기기 저장이 완료된 값을 반환합니다.
+ * 기기 저장이 완료된 설정의 사본을 반환합니다.
  * @param storage - 기기의 문자열 저장소입니다.
  * @param preferences - 사용자가 적용할 설정입니다.
  * @returns 저장이 완료된 설정의 사본입니다.
- * @throws Error - 설정 검증이나 기기 저장에 실패하면 발생합니다.
+ * @throws Error - 기기 저장에 실패하면 발생합니다.
  */
 export async function saveReadingPreferences(storage: Pick<AsyncStorageStatic, 'setItem'>, preferences: ReadingPreferences): Promise<ReadingPreferences> {
-  const saved = parseReadingPreferences(preferences);
+  const saved = { ...preferences };
   await storage.setItem(storageKey, JSON.stringify(saved));
   return saved;
 }
