@@ -20,3 +20,6 @@ server/app.jar
 
 # 비공개 본문 원문은 이미지/JAR/Git에 넣지 않습니다.
 server/content/
+
+# 커뮤니티 업로드 이미지는 공개 여부를 확인한 API로만 제공합니다.
+server/community-images/
