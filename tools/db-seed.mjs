@@ -63,11 +63,9 @@ try {
   if (restoreFailure) console.error('일부 본문을 복원하지 못했습니다. 위 파일을 확인하십시오.');
   process.exit(Number.isInteger(failure.status) ? failure.status : 1);
 }
-if (result.status === 0) {
-  console.log(`시드 자료 ${action === 'seed' ? '적용' : '제거'} 명령을 완료했습니다.`);
-  if (content) console.log(`본문 ${content.chapters.length}개 회차와 파일 ${content.files.length}개를 연결했습니다.`);
-}
-process.exit(result.status ?? 1);
+console.log(`시드 자료 ${action === 'seed' ? '적용' : '제거'} 명령을 완료했습니다.`);
+if (content) console.log(`본문 ${content.chapters.length}개 회차와 파일 ${content.files.length}개를 연결했습니다.`);
+process.exit(0);
 
 /**
  * 창작 채팅이 전달한 파일 목록·인코딩·해시를 검사하고 DB 연결용 메타데이터만 구성합니다.
