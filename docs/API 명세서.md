@@ -24,7 +24,7 @@ HTML은 `Cache-Control: no-store`, `Referrer-Policy: no-referrer`와 CSP를 사�
 
 ## 하이라이트 · #40
 
-`GET /api/members/highlights`는 본인의 기록을 저장 시각과 ID 내림차순으로 반환합니다. 선택적 `workId`는 작품 slug이며 `chapterId`는 작품과 함께 지정합니다. `page`는 1부터 시작하고 응답은 최대 30건의 `items`, `page`, `hasNext`입니다.
+`GET /api/members/highlights`는 본인의 기록을 저장 시각과 ID 내림차순으로 반환합니다. 선택적 `workId`는 작품 slug이며 `chapterId`는 단독으로도 지정할 수 있습니다. `page`는 1부터 시작하고 응답은 최대 30건의 `items`, `page`, `hasNext`입니다.
 
 `POST /api/members/highlights`에 `workId`, 문자열 `chapterId`, 정수 `startOffset`·`endOffset`, `contentVersion`, `contentHash`, `color`를 보냅니다. 색은 `YELLOW` 또는 `GREEN`입니다. 텍스트는 UTF-16 끝 제외 범위와 표시 원문의 SHA-256을 쓰며, 매거진은 같은 기사에 속하는 양 끝 포함 쪽 범위와 null 해시를 씁니다. 버전·해시·구간이 모두 같으면 기존 기록과 색을 반환합니다. 개정된 본문의 같은 좌표는 새 기록으로 저장하며 이전 기록은 재확인 상태로 보존합니다.
 
@@ -126,10 +126,46 @@ POST /api/members/purchases
 
 ## 작품 리뷰 · #138
 
-- `GET /works/{slug}/reviews?page={page}&size={size}`는 로그인 없이 공개 작품의 리뷰를 작성 시각·리뷰 ID 내림차순으로 반환합니다. 페이지는 1부터 시작하며 기본 1페이지·20건, 최대 50건입니다. 두 매개변수 중 하나가 잘못되거나 중복되면 400, 작품이 없거나 비공개이면 404입니다. 조회수를 변경하지 않습니다.
-- 200 응답은 `averageRating`, `reviewCount`, `ratingDistribution`(`"1"`~`"5"` 키), `items`, `hasNext`입니다. 집계는 페이지와 관계없이 삭제되지 않은 전체 리뷰를 대상으로 하며 평균은 소수 둘째 자리까지 반올림합니다. 활성 리뷰가 없으면 평균 `null`, 건수와 분포 0, `items: []`, `hasNext: false`입니다.
-- `POST /api/members/works/{slug}/reviews`는 활성 회원의 `MEMBER_SESSION`과 같은 세션의 `X-CSRF-TOKEN`을 요구합니다. JSON의 `rating`은 정수 1~5가 필수입니다. `body`는 선택이며 생략·`null`·공백뿐인 값은 별점만 저장합니다. 양끝 유니코드 공백을 제거한 뒤 최대 1,000자이며 본문 내부의 줄바꿈과 공백을 유지합니다. 회원당 작품별 활성 리뷰는 한 건입니다. 등록과 작품의 평균 평점·리뷰 건수 갱신은 함께 커밋됩니다.
-- 목록과 201 등록 응답의 항목은 `id`(문자열), `rating`, `body`(문자열 또는 `null`), `nickname`, `createdAt`(UTC ISO 8601)만 제공합니다. 400(입력), 404(작품), 409(중복)는 `{ "message": "안내" }`를 반환합니다. 미인증은 401, 인증된 요청의 CSRF 누락·불일치는 403이며 본문이 없습니다. 응답은 캐시하지 않습니다.
+공개 리뷰·평점, 본인 리뷰 수정·삭제, 댓글 작성·수정·삭제, 리뷰와 댓글의 공감·신고 접수를 제공합니다. 신고는 접수만 하며 관리자 심사·자동 숨김·이미지 첨부·추가 정렬은 현재 계약 범위에 포함하지 않습니다.
+
+`slug`는 공개 작품에서 받은 식별자를 사용합니다. `reviewId`·`commentId`와 응답의 숫자 ID는 문자열이며 `^-?[1-9][0-9]{0,18}$` 형식과 signed BIGINT 범위(-9223372036854775808~9223372036854775807)를 함께 검사합니다. 0·선행 0·범위 초과는 400입니다. 회원 ID는 요청으로 받지 않고 활성 `MEMBER_SESSION`에서 확인합니다. 회원 GET에는 CSRF가 필요하지 않으며 모든 POST·PUT·DELETE는 같은 세션의 `X-CSRF-TOKEN`이 필요합니다.
+
+| 메서드·경로 | 정상 응답과 동작 |
+| --- | --- |
+| `GET /works/{slug}/reviews?page={page}&size={size}` | 200 공개 리뷰 페이지입니다. 인증 쿠키를 보내도 회원별 플래그는 모두 `false`, `myReview`는 `null`입니다. |
+| `GET /api/members/works/{slug}/reviews?page={page}&size={size}` | 200 회원별 상태와 페이지 밖의 본인 활성 리뷰도 함께 반환합니다. |
+| `POST /api/members/works/{slug}/reviews` | 201 새 리뷰입니다. 작품별 회원당 활성 리뷰는 한 건이며 중복 등록은 409입니다. |
+| `PUT /api/members/reviews/{reviewId}` | 200 수정된 본인 활성 리뷰입니다. ID와 작성 시각은 유지합니다. |
+| `DELETE /api/members/reviews/{reviewId}` | 204이며 본문은 없습니다. soft delete 후 재작성하면 새 ID를 발급하며 남은 댓글을 새 리뷰로 옮기지 않습니다. |
+| `GET /reviews/{reviewId}/comments` | 200 공개 스레드 `{review, items}`입니다. 회원별 플래그는 모두 `false`입니다. |
+| `GET /api/members/reviews/{reviewId}/comments` | 200 현재 회원의 상태를 포함한 스레드입니다. |
+| `POST /api/members/reviews/{reviewId}/comments` | 201 새 댓글입니다. 삭제 부모에는 신규 댓글을 작성할 수 없습니다. |
+| `PUT /api/members/review-comments/{commentId}` | 200 수정된 본인 댓글입니다. ID와 작성 시각은 유지합니다. |
+| `DELETE /api/members/review-comments/{commentId}` | 204이며 본문은 없습니다. 댓글을 실제 삭제하고 해당 댓글의 공감·신고는 FK CASCADE로 정리합니다. |
+| `PUT /api/members/reviews/{reviewId}/like` | 200 `{likeCount, liked: true}`입니다. 반복 요청도 중복 없이 200입니다. |
+| `DELETE /api/members/reviews/{reviewId}/like` | 200 `{likeCount, liked: false}`입니다. 기존 공감이 없어도 같은 상태를 반환합니다. |
+| `PUT /api/members/review-comments/{commentId}/like` | 200 댓글 공감 수와 `liked: true`입니다. 반복 등록은 중복 없이 처리합니다. |
+| `DELETE /api/members/review-comments/{commentId}/like` | 200 댓글 공감 수와 `liked: false`입니다. 기존 공감이 없어도 200입니다. |
+| `POST /api/members/reviews/{reviewId}/reports` | 최초 201, 중복은 기존 신고 ID로 200 `{id, reported: true}`입니다. |
+| `POST /api/members/review-comments/{commentId}/reports` | 최초 201, 중복은 기존 신고 ID로 200 `{id, reported: true}`입니다. |
+
+리뷰 페이지의 `page`는 1부터 시작하고 생략하면 1입니다. `size`는 1~50이며 기본 20입니다. 빈 값·정수가 아닌 값·범위 밖·동일 매개변수의 중복은 400입니다. `items`는 활성 리뷰와 댓글이 한 개 이상 남은 삭제 리뷰 자리표시를 `createdAt`·리뷰 ID 내림차순으로 반환합니다.
+
+200 페이지는 `{averageRating, reviewCount, ratingDistribution, items, hasNext, totalItems, myReview}`입니다. `reviewCount`와 `ratingDistribution`의 `"1"`~`"5"`는 페이지와 관계없이 전체 활성 리뷰만 집계하며 별점만 남긴 리뷰도 포함합니다. `averageRating`은 소수 둘째 자리까지 반올림하고 활성 리뷰가 없으면 `null`입니다. 이때 DB의 `book.average_rating`은 NOT NULL 캐시이므로 `0.00`입니다. `totalItems`와 `hasNext`는 삭제 자리표시를 포함한 표시 항목 기준이므로 평가 수와 표시 항목 수가 다를 수 있습니다. 활성 리뷰가 없어도 남은 댓글이 있으면 `items`는 비어 있지 않을 수 있습니다. 회원 경로의 `myReview`는 현재 페이지와 관계없이 조회한 본인 활성 리뷰이며 없으면 `null`입니다.
+
+| 응답 항목 | 필드 |
+| --- | --- |
+| 리뷰 | `id: string`, `rating: integer 또는 null`, `body: string 또는 null`, `nickname: string 또는 null`, `createdAt: UTC ISO 8601`, `commentCount: integer`, `likeCount: integer`, `mine: boolean`, `liked: boolean`, `reported: boolean`, `deleted: boolean`입니다. |
+| 댓글 | `id: string`, `body: string`, `nickname: string`, `createdAt: UTC ISO 8601`, `likeCount: integer`, `mine: boolean`, `liked: boolean`, `reported: boolean`입니다. |
+| 스레드 | `review`는 원문 카드 또는 삭제 자리표시이며 `items`는 `createdAt`·댓글 ID 오름차순의 전체 댓글 배열입니다. 별도 페이지 제한은 없습니다. |
+
+삭제 자리표시는 `deleted: true`, `rating/body/nickname: null`, `mine/liked/reported: false`이며 ID·작성 시각·댓글 수·공감 수만 보존합니다. 알려진 삭제 리뷰의 스레드는 댓글이 0개여도 조회할 수 있습니다. 부모 삭제 후에도 남은 댓글의 본인 수정·삭제와 타인 댓글 공감·신고는 허용하지만 신규 댓글은 404입니다. 작품이 비공개이면 스레드 조회와 모든 변경이 404입니다. 탈퇴 회원의 활성 리뷰·댓글은 `nickname: "탈퇴한 회원"`으로 표시하며 활성 평점 집계에도 계속 포함합니다.
+
+리뷰 작성·수정 JSON은 `{rating, body?}`입니다. `rating`은 JSON 정수 1~5가 필수이며 `1.0` 같은 소수 표기와 문자열은 거부합니다. `body`는 선택이며 생략·`null`·공백뿐인 값은 별점만 남깁니다. 양끝 유니코드 공백을 제거한 뒤 최대 1,000 코드 포인트이며 내부 줄바꿈·공백은 유지합니다. PUT에서 `body`를 생략하면 기존 본문을 유지하는 대신 `null`로 바꿉니다. 댓글 작성·수정 JSON은 `{body}`이며 같은 공백 정규화 후 1~500 코드 포인트입니다. `null`·공백뿐인 댓글·타입 오류·추가 필드는 400입니다.
+
+공감 등록·해제는 본문 없이 요청하며 회원별 대상당 한 건만 저장합니다. 본인 리뷰·댓글에 공감하거나 공감을 해제하거나 신고하면 400입니다. 삭제 리뷰 자체에 대한 반응은 404입니다. 신고 JSON은 `{reason, detail?}`이며 `reason`은 `SPAM`, `ABUSE`, `INAPPROPRIATE`, `SPOILER`, `OTHER` 중 하나입니다. 선택 `detail`은 공백 정규화 후 최대 500 코드 포인트이며 생략·`null`·공백은 `null`로 저장합니다. 같은 회원·대상의 중복 신고도 입력 형식은 검증하며 최초 사유·상세를 변경하지 않습니다. 신고 응답은 본인 신고 ID와 `reported: true`만 제공하고 사유·상세·다른 사람의 신고 여부·신고 수를 노출하지 않습니다. 목록의 `reported`도 현재 회원의 신고 여부만 나타냅니다.
+
+입력·ID 형식·본인 반응 오류는 400, 미인증은 401, CSRF 누락·불일치는 403, 비공개·없는 대상·타인 작성물 수정삭제·삭제 리뷰 자체의 수정삭제와 반응은 404, 활성 리뷰 중복 등록은 409입니다. 업무 오류는 `{ "message": "안내" }`이며 401·403은 본문이 없습니다. 리뷰·댓글 처리 응답은 `Cache-Control: no-store`를 사용합니다. 목록·스레드는 동일 스냅샷으로 읽고, 리뷰 작성·수정·삭제와 평점 재집계는 작품 행 잠금 안에서 함께 처리합니다. 댓글과 공감·신고 변경도 같은 작품 잠금 순서를 지킵니다. 조회수·읽기 위치·독서 진행률은 변경하지 않습니다.
 
 ## 내 서재 목록 · #119
 
@@ -154,7 +190,7 @@ POST /api/members/purchases
 
 - 비공개 작품은 목록에서 제외합니다. 기록은 유지되므로 다시 공개되면 목록에 다시 나타납니다. 공개 작품의 제목·표지 등 필수 정보가 잘못되면 홈·상세와 같이 오류를 반환하며 해당 항목을 조용히 누락하지 않습니다.
 - 시각은 초 단위로 저장합니다. 같은 초에 연 작품 사이의 순서는 보장하지 않습니다.
-- 잘못된 slug는 400 `INVALID_SLUG`, 미인증은 본문 없는 401, CSRF 실패는 403, 없거나 비공개인 작품은 404 `NOT_FOUND`입니다.
+- 미인증은 본문 없는 401, CSRF 실패는 403, 조회되는 공개 작품이 없으면 404 `NOT_FOUND`입니다.
 
 홈과 최근 본 전용 화면은 `RecentWorksProvider`의 같은 목록을 표시합니다. 회원 목록은 위 API로 조회·기록하며 저장 실패를 메모리 기록으로 대체하지 않습니다. 비회원 기록은 현재 인증 범위의 메모리에 최대 20개를 보관합니다. 로그인·로그아웃·회원 변경 시 목록을 초기화하며 비회원 기록을 회원 DB로 자동 합치지 않습니다.
 
@@ -200,13 +236,25 @@ Swagger UI는 자신을 제공한 서버에 요청합니다. 관리자 POST 요�
 
 | 메서드 | 경로 | 인증·조건 | 정상 응답 |
 | --- | --- | --- | --- |
-| GET | `/works?query={query}&kind={kind}` | 공개 조회이며 query가 필수입니다. | 200 작품 검색 결과 배열입니다. |
+| GET | `/works?query={query}&kind={kind}&genre={genre}` | 공개 조회이며 query가 필수이고 kind·genre는 선택 사항입니다. | 200 작품 검색 결과 배열입니다. |
 | GET | `/sdui/home?kind={kind}` | 공개 조회이며 kind가 필수입니다. | 200 홈 SDUI입니다. |
 | GET | `/works/{slug}` | 공개 작품만 조회합니다. | 200 작품 상세입니다. |
 | GET | `/s/works/{slug}` | 공개 공유 안내이며 브라우저가 기존 상세 API로 작품을 확인합니다. | 200 HTML 안내입니다. |
 | GET | `/share/{file}` | 공유 안내의 JavaScript·CSS·로고를 제공합니다. | 200 정적 파일입니다. |
-| GET | `/works/{slug}/reviews?page={page}&size={size}` | 공개 작품의 활성 리뷰를 최신순으로 조회합니다. | 200 전체 평점 요약과 리뷰 페이지입니다. |
+| GET | `/works/{slug}/reviews?page={page}&size={size}` | 공개 작품의 활성 리뷰와 댓글이 남은 삭제 자리표시를 최신순으로 조회합니다. | 200 전체 활성 평점 요약과 표시 페이지입니다. |
+| GET | `/api/members/works/{slug}/reviews?page={page}&size={size}` | 활성 회원 세션이 필요합니다. | 200 회원별 상태·본인 활성 리뷰를 포함한 페이지입니다. |
 | POST | `/api/members/works/{slug}/reviews` | 회원 세션과 CSRF가 필요합니다. 별점은 필수이며 본문은 선택입니다. | 201 새 리뷰입니다. |
+| PUT | `/api/members/reviews/{reviewId}` | 회원 세션과 CSRF로 본인 활성 리뷰만 수정합니다. | 200 수정된 리뷰입니다. |
+| DELETE | `/api/members/reviews/{reviewId}` | 회원 세션과 CSRF로 본인 활성 리뷰만 삭제 처리합니다. | 204이며 본문은 없습니다. |
+| GET | `/reviews/{reviewId}/comments` | 공개 작품의 스레드를 조회하며 삭제 부모도 자리표시로 반환합니다. | 200 `{review, items}`입니다. |
+| GET | `/api/members/reviews/{reviewId}/comments` | 활성 회원 세션이 필요합니다. | 200 회원별 상태를 포함한 스레드입니다. |
+| POST | `/api/members/reviews/{reviewId}/comments` | 회원 세션과 CSRF로 활성 리뷰에 댓글을 작성합니다. | 201 새 댓글입니다. |
+| PUT | `/api/members/review-comments/{commentId}` | 회원 세션과 CSRF로 본인 댓글만 수정합니다. | 200 수정된 댓글입니다. |
+| DELETE | `/api/members/review-comments/{commentId}` | 회원 세션과 CSRF로 본인 댓글을 실제 삭제합니다. | 204이며 본문은 없습니다. |
+| PUT·DELETE | `/api/members/reviews/{reviewId}/like` | 회원 세션과 CSRF로 타인 활성 리뷰의 공감을 등록·해제합니다. | 200 `{likeCount, liked}`입니다. |
+| PUT·DELETE | `/api/members/review-comments/{commentId}/like` | 회원 세션과 CSRF로 타인 댓글의 공감을 등록·해제합니다. | 200 `{likeCount, liked}`입니다. |
+| POST | `/api/members/reviews/{reviewId}/reports` | 회원 세션과 CSRF로 타인 활성 리뷰의 신고를 접수합니다. | 최초 201, 중복 200 `{id, reported}`입니다. |
+| POST | `/api/members/review-comments/{commentId}/reports` | 회원 세션과 CSRF로 타인 댓글의 신고를 접수합니다. | 최초 201, 중복 200 `{id, reported}`입니다. |
 | GET | `/works/{slug}/chapters/{chapterId}` | 공개 작품의 공개된 회차만 조회합니다. | 200 텍스트 본문·목차·회차 이동 정보입니다. |
 | GET | `/api/members/recent-works` | 활성 회원 세션이 필요합니다. | 200 최근 본 공개 작품 최대 20개입니다. |
 | GET | `/api/members/library?kind={kind}` | 활성 회원 세션이 필요하며 kind는 선택 사항입니다. | 200 본인의 분류별 서재 목록입니다. |
@@ -226,18 +274,140 @@ Swagger UI는 자신을 제공한 서버에 요청합니다. 관리자 POST 요�
 | POST | `/api/admin/works/{id}/status` | ADMIN 세션과 CSRF가 필요합니다. | 204이며 본문은 없습니다. |
 | GET | `/actuator/health/readiness` | 공개 조회입니다. | 200 `{ "status": "UP" }`입니다. |
 
-일반 회원용 토큰 인증과 서재·리뷰·커뮤니티 요청은 이 명세의 구현 범위에 포함하지 않습니다. 표의 경로를 다른 기능의 API로 재사용하지 않습니다.
+일반 회원용 토큰 인증은 제공하지 않습니다. 커뮤니티를 포함한 회원 기능은 문서에 명시한 쿠키 세션을 사용하며, 커뮤니티의 별도 경로와 작성 규칙은 다음 절을 따릅니다.
+
+## 커뮤니티
+
+작품별·주제별·작품 홍보 게시판과 게시글·댓글, 이미지·이모티콘·임시저장, 게시글 공감·신고를 제공합니다. 작품 리뷰에 달리는 댓글과 별개이며 웹소설 회차 댓글 API가 아닙니다. 기존 `board`, `post`, `post_comment` 등의 테이블을 사용합니다.
+
+### 조회와 인증
+
+| 요청 | 응답과 동작 |
+| --- | --- |
+| `GET /community/boards?type=work&query=` | 200 `{items, stickers}`입니다. `type`은 `work`, `topic`, `promotion`이며 기본값은 `work`입니다. `query`로 게시판 이름을 부분 검색합니다. |
+| `GET /community/works?query=&page=1&size=20` | 200 `{items, page, size, totalItems, hasNext}`입니다. 제목·저자·출판사로 공개 작품을 검색하며 빈 검색어이면 전체 작품입니다. 각 항목은 `{work, boardId}`이고 게시판이 없으면 `boardId=null`입니다. |
+| `GET /community/works/{slug}/chapters` | 200 `{items}`입니다. 스포일러 선택에 사용할 공개 회차를 반환하며 작품 조회수를 올리지 않습니다. |
+| `GET /community/posts` | 200 `{items, page, size, totalItems, hasNext}`입니다. 공개 게시글을 게시 시각·ID 내림차순으로 반환합니다. |
+| `GET /community/posts/{postId}` | 200 게시글 한 건입니다. `reveal=true`로 해당 글의 스포일러를 확인할 수 있습니다. |
+| `GET /community/posts/{postId}/comments` | 200 `{items, page, size, totalItems, hasNext}`입니다. 댓글을 작성 시각·ID 오름차순으로 반환합니다. |
+| `GET /api/members/community/...` | 위 여섯 조회의 회원 경로입니다. 게시글·댓글에는 활성 회원의 `mine`, `liked`, `reported` 상태를 포함합니다. |
+| `GET /api/members/community/posts?mine=true` | 본인이 게시한 `PUBLISHED`·`HIDDEN` 글을 조회합니다. `DRAFT`·`DELETED`는 포함하지 않습니다. |
+
+공개 경로는 비회원 기준이며 `mine`, `liked`, `reported`는 false입니다. 회원 조회에는 `MEMBER_SESSION` 쿠키를 사용하며 GET에 CSRF는 필요하지 않습니다. 변경 요청은 같은 회원 세션으로 받은 `X-CSRF-TOKEN`이 필요합니다. 관리자 세션을 회원 세션으로 사용할 수 없습니다. 커뮤니티 JSON과 첨부 PNG 응답은 `Cache-Control: no-store`입니다.
+
+게시글 목록의 선택 조건은 `boardId`, `type`, `head`, `query`, `mine`입니다. 없는 게시판이나 공개 범위 밖의 게시판으로 제한하면 200과 빈 목록을 반환합니다. `page`는 1~2147483647이며 기본 1, `size`는 1~50이며 기본 20입니다. `query`는 양끝 Unicode 공백 제거 후 최대 100자로 제목·본문을 부분 검색합니다. 본인이 아닌 스포일러 글은 검색 대상에서 제외하여 결과 유무로 원문이 노출되지 않게 합니다. 같은 쿼리 이름을 반복하거나 `true`·`false` 외의 불리언 값을 보내면 400입니다. 공개 경로의 `mine=true`는 401입니다.
+
+작품 게시판과 연결 작품은 공개 상태여야 합니다. 비공개 작품의 게시글은 공개·내 글 목록에서 제외합니다. 공개 상세는 `PUBLISHED`만, 회원 상세는 본인의 `HIDDEN`도 조회합니다. 초안은 별도 경로로 읽으며 삭제 글은 조회할 수 없습니다.
+
+게시판에는 문자열 `id`, `type`, `name`, `work`, `heads`, `latestPost`가 있습니다. `work`는 작품별 게시판에서만 존재하고 주제·홍보 게시판에서는 null입니다. 작품 요약은 `id`(slug), `title`, `author`, `imageUrl`, `kind`이며 저자 미등록은 빈 문자열입니다. 회차는 `id`, `number`, `title`입니다. 게시판·게시글·댓글·회차·이모티콘 ID는 signed BIGINT 범위의 십진 **문자열**이며 0·선행 0은 허용하지 않습니다.
+
+`latestPost`는 게시판의 최신 공개글 한 건이며 없으면 null입니다. 필드는 `id`, `head`, `title`, `nickname`, `likeCount`, `commentCount`, `hasSpoiler`, `locked`입니다. 게시 시각·ID 내림차순으로 고르며 비공개 작품에 연결된 주제글은 제외합니다. 게시판 목록과 생성 응답 모두 공개 미리보기이므로 회원 경로도 `hasSpoiler=true`이면 `locked=true`, `title=null`을 반환합니다.
+
+게시판·작품 검색의 `query`도 양끝 Unicode 공백 제거 후 최대 100자입니다. 작품 검색은 제목·ID 순서이며 `page`·`size`의 범위와 기본값은 게시글 목록과 같습니다. 검색 조회는 게시판을 생성하지 않습니다.
+
+### 게시판 생성
+
+활성 회원은 `POST /api/members/community/boards`로 게시판을 만듭니다. 회원 세션·CSRF가 필요하며 다음 둘 중 하나의 입력만 받습니다.
+
+| 종류 | 입력 |
+| --- | --- |
+| 작품별 | `{"type":"work","workId":"sample-novel"}` |
+| 주제별 | `{"type":"topic","name":"독서 모임"}` |
+
+신규 생성은 201, 같은 작품 또는 같은 주제명의 게시판이 이미 있으면 200과 기존 게시판 객체를 반환합니다. 작품은 기존 공개 작품만 선택할 수 있으며 없는 작품·비공개 작품은 404입니다. 작품을 새로 등록하거나 공개할 때 게시판을 자동 생성하지 않습니다. 주제명은 양끝 Unicode 공백을 제거한 뒤 1~100자이고 중복은 DB collation 기준입니다. 작품별 중복은 `uk_board_book`, 주제명 중복은 V16의 `uk_board_type_name(type,name)`으로 제한합니다. 홍보 게시판을 만들거나 추가 필드를 보내면 400입니다.
+
+### 게시글 작성·수정·삭제
+
+| 요청 | 성공 응답 |
+| --- | --- |
+| `POST /api/members/community/posts` | 201 새로 게시한 본인 글입니다. 기존 서버 초안은 소비하거나 변경하지 않습니다. |
+| `PUT /api/members/community/posts/{postId}` | 200 수정한 본인 글입니다. |
+| `DELETE /api/members/community/posts/{postId}` | 204이며 본문은 없습니다. |
+
+작성·수정은 다음 필드를 모두 보내며 추가 필드는 허용하지 않습니다. 아래 ID와 작품은 요청 형식을 보여 주는 예시이며 접속한 서버에 존재한다는 뜻은 아닙니다.
+
+```json
+{
+  "boardId": "10",
+  "workId": "sample-novel",
+  "head": "IMPRESSION",
+  "title": "두 번째 이야기를 읽고",
+  "body": "이번 회차에서 인상적인 장면을 이야기합니다.",
+  "spoilerChapterId": null,
+  "hasSpoiler": true,
+  "images": [],
+  "stickerIds": []
+}
+```
+
+| 게시판 | 말머리 | 연결 작품 |
+| --- | --- | --- |
+| `work` | `IMPRESSION`, `QUESTION`, `THEORY`, `FREE` | 게시판의 작품입니다. `workId=null`이면 해당 작품을 사용하며 다른 작품을 지정하면 400입니다. |
+| `topic` | `STORY`, `QUESTION` | 선택입니다. 연결하지 않으면 `workId=null`입니다. |
+| `promotion` | `PROMOTION` | 공개 작품을 반드시 지정합니다. 모든 활성 회원이 작성할 수 있으며 별도 작가 역할은 요구하지 않습니다. |
+
+제목은 100자, 본문의 표시 텍스트는 10,000자 이하이며 인라인 이미지 표식을 포함한 전체 저장값은 25,000자 이하입니다. 등록된 첨부 URL과 일치하는 `![이미지](<URL>)` 표식만 URL별 첨부 개수만큼 최대 3개를 글자 수에서 제외합니다. 관리 이미지의 회원 접두사·`reveal` 차이와 목적지 퍼센트 인코딩을 인식하며 미등록·초과·잘못된 표식은 일반 텍스트로 계산합니다. 서버는 양끝 Unicode 공백을 제거하고 내부 공백·줄바꿈은 유지합니다. 길이는 Unicode 코드 포인트 기준이며 게시·수정에는 빈 제목·본문을 허용하지 않습니다. `hasSpoiler`는 스포일러 표시 토글이며 작품·회차 연결 없이도 true로 설정할 수 있습니다. 새 작성 화면은 `spoilerChapterId=null`을 보냅니다. 기존 회차 범위를 지정할 때는 연결 작품의 공개 회차여야 하며 `hasSpoiler=false`와 함께 지정할 수 없습니다. 이전 요청이 `hasSpoiler`를 생략한 경우에만 회차 지정 여부로 스포일러를 판단합니다.
+
+게시글 응답은 `id`, `boardId`, `boardType`, `boardName`, `work`, `head`, `title`, `body`, `nickname`, `createdAt`, `updatedAt`, `publishedAt`, `status`, `spoiler`, `hasSpoiler`, `locked`, `mine`, `liked`, `reported`, `likeCount`, `commentCount`, `images`, `stickers`입니다. 시각은 UTC ISO 8601이며 탈퇴 회원은 `탈퇴한 회원`으로 표시합니다. `images` 항목은 `url`, `width`, `height`, `representative`이고 첫 이미지가 대표가 됩니다.
+
+본인의 `PUBLISHED`·`HIDDEN` 글만 수정할 수 있으며 게시판·연결 작품·게시 시각·현재 공개 상태는 유지합니다. 타인의 글은 404입니다. 게시한 글을 삭제하면 `DELETED`로 변경하고 댓글·공감·신고 기록은 보존합니다. 삭제된 글과 그 댓글은 공개 조회되지 않습니다. 초안 삭제는 실제 삭제이며 이미 삭제된 게시글의 재삭제는 404입니다.
+
+### 댓글과 스포일러 확인
+
+| 요청 | 성공 응답 |
+| --- | --- |
+| `POST /api/members/community/posts/{postId}/comments` | 201 등록한 본인 댓글입니다. 같은 회원도 여러 개 작성할 수 있습니다. |
+| `PUT /api/members/community/comments/{commentId}` | 200 수정한 본인 댓글입니다. 부모 글과 생성 시각은 유지합니다. |
+| `DELETE /api/members/community/comments/{commentId}` | 204입니다. 본인 댓글과 연결 이모티콘을 실제 삭제합니다. |
+
+댓글 작성·수정 입력은 `{body, spoilerChapterId, hasSpoiler, stickerIds}`이며 네 필드를 모두 보냅니다. `hasSpoiler`와 기존 회차 입력의 호환 규칙은 게시글과 같습니다. 본문은 양끝 공백 제거 후 2,000자 이하입니다. 본문이 null·빈 문자열·공백이면 이모티콘이 하나 이상 있어야 합니다. 일반 이미지는 댓글에 첨부하지 않습니다. 수정·삭제는 부모 글이 공개 상태일 때 본인 댓글에만 허용하며 타인의 댓글은 404입니다.
+
+댓글 응답은 `id`, `postId`, `body`, `nickname`, `createdAt`, `updatedAt`, `spoiler`, `hasSpoiler`, `locked`, `mine`, `stickers`입니다. `spoiler`는 기존 회차 범위이므로 null이어도 `hasSpoiler=true`일 수 있습니다. 스포일러 확인은 다음처럼 분리합니다.
+
+- 게시글 상세의 `reveal=true`는 해당 게시글을 엽니다. 확인 전에는 서버 응답에서도 `title`, `body`가 null이며 `images`, `stickers`는 빈 배열입니다.
+- 댓글 목록의 `revealPost=true`는 부모 글만 확인합니다. 부모가 잠겨 있는데 이 확인 없이 댓글을 조회하면 403입니다.
+- 댓글 목록의 `revealIds=21,22`는 해당 댓글만 엽니다. 최대 50개를 쉼표로 지정하고 중복 ID는 한 번으로 처리합니다. 선택하지 않은 댓글은 `body=null`, `stickers=[]`, `locked=true`로 유지합니다.
+- 댓글 목록의 `reveal=true`는 부모 글과 해당 목록의 모든 댓글에 대한 확인으로 처리합니다. 개별 열람에는 `revealPost`·`revealIds`를 사용합니다.
+- 본인 글·댓글은 자동으로 열립니다. 비회원도 명시적으로 확인할 수 있으며 확인 여부는 DB·독서 진도·구매 상태를 변경하지 않습니다.
+
+### 이미지·이모티콘·임시저장
+
+`POST /api/members/community/images`에 `{base64, mimeType}`을 JSON으로 보냅니다. `base64`에는 `data:` 접두사가 없어야 하며 `mimeType`은 `image/jpeg` 또는 `image/png`입니다. 업로드 전에 클라이언트에서 선택 원본(PNG·JPEG·WebP)을 JPEG·PNG로 변환하고 긴 변을 1024px 이하로 줄입니다. 서버는 디코딩 후 2MiB 이하인지, 실제 형식이 MIME과 일치하는지, 가로·세로가 각각 1~1024px인지 검사합니다. 부가 메타데이터를 제거한 PNG로 다시 인코딩하며 결과도 2MiB 이하여야 합니다.
+
+성공은 201 `{url, width, height}`이며 `url`은 `/api/members/community/images/{owner}/{uuid}.png`입니다. 이 세 값을 게시글·초안 입력의 `images`에 넣습니다. 글당 최대 3장이고 다른 회원의 업로드·임의 외부 URL·파일 경로는 첨부할 수 없습니다. 본인 기존 글의 외부 이미지는 URL·치수를 그대로 보존할 수 있으며 새 업로드 제한을 과거 이미지에 소급 적용하지 않습니다.
+
+이미지는 정적 공개 폴더 밖에 저장합니다. 개발 환경에서는 서버 작업 디렉터리의 `./community-images`를 사용하고, 배포 환경은 `COMMUNITY_IMAGE_ROOT=/app/community-images`와 `community_images` 명명 볼륨으로 컨테이너 교체 후에도 첨부를 유지합니다. 공개 글 응답에서는 `/community/images/{owner}/{uuid}.png` 경로로 반환하며, 스포일러 글의 이미지는 `?reveal=true`가 붙습니다. 공개 경로는 해당 이미지가 `PUBLISHED` 글에 연결되고 작품도 공개일 때만 200 PNG를 반환합니다. 스포일러 이미지는 확인이 필요합니다. 회원 소유자는 회원 경로로 본인 초안·미첨부 업로드도 읽을 수 있으나 다른 회원은 공개 범위 밖 이미지에 접근할 수 없습니다. 숨김·삭제로 더 이상 공개 글에서 사용되지 않는 이미지는 공개 경로에서도 읽을 수 없습니다.
+
+이모티콘은 게시판 응답 `stickers`에서 받은 `id`를 `stickerIds`에 넣습니다. 글은 최대 8개, 댓글은 최대 4개이며 같은 이모티콘을 반복할 수 있습니다. 표시 정보는 `id`, `code`, `name`, `imageUrl`입니다. 정적 `/stickers/emote-wave.svg`, `/stickers/emote-cheer.svg`, `/stickers/emote-think.svg`, `/stickers/emote-thanks.svg`를 로그인 없이 읽을 수 있으며 별도 등록 API는 없습니다.
+
+| 요청 | 임시저장 동작 |
+| --- | --- |
+| `GET /api/members/community/draft` | 본인 초안을 200 게시글 객체로 반환하며 없으면 204입니다. |
+| `PUT /api/members/community/draft` | 게시글 입력과 같은 필드로 저장하고 200 초안을 반환합니다. 제목·본문은 빈 문자열을 허용합니다. |
+| `DELETE /api/members/community/draft` | 본인 초안을 실제 삭제하고 204를 반환합니다. 초안이 없어도 204입니다. |
+
+위 서버 초안 API는 기존 자료를 위해 유지합니다. 회원별 서버 초안은 하나이며 동시 저장도 회원 행을 잠가 같은 초안을 갱신합니다. 초안은 `status=DRAFT`, `publishedAt=null`이고 공개 목록·상세로 조회할 수 없습니다. 게시 요청은 항상 새 글을 만들며 기존 서버 초안은 보존합니다. 현재 클라이언트의 임시저장은 게시판별로 기기에 보관하고 위 초안 API를 호출하지 않습니다. 첨부 PNG 파일은 DB 행과 별도로 보관합니다.
+
+### 공감·신고와 오류
+
+`PUT /api/members/community/posts/{postId}/like`는 공감, `DELETE`는 해제이며 본문 없이 요청합니다. 두 요청 모두 200 `{liked, likeCount}`입니다. 반복 요청은 같은 상태로 처리합니다. 본인 글 공감·해제는 400입니다.
+
+`POST /api/members/community/posts/{postId}/reports`에는 `{reason, detail}`을 모두 보냅니다. 사유는 `SPAM`, `ABUSE`, `INAPPROPRIATE`, `SPOILER`, `OTHER`이며 상세는 양끝 공백 제거 후 최대 500자 또는 null입니다. 최초 접수는 201 `{id, reported:true}`, 동일 회원·글의 재접수는 같은 ID로 200이며 최초 사유·상세를 보존합니다. 본인 글 신고는 400이고 신고 원문은 다른 회원에게 공개하지 않습니다. 자동 숨김·심사 기능 및 댓글 공감·신고는 이번 계약에 포함하지 않습니다.
+
+잘못된 입력·말머리·첨부·스포일러 회차 등은 400, 미인증은 401, CSRF 실패 또는 미확인 부모 스포일러의 댓글 조회는 403, 없는 대상·타인 수정/삭제·공개 범위 밖은 404입니다. 이미지 저장·읽기 실패는 500입니다. 커뮤니티 컨트롤러의 업무 오류는 `{message}` JSON이며 인증·CSRF 필터 오류에는 본문이 없을 수 있습니다. 계정·소유자 ID는 작성 입력으로 받지 않으며 서버 세션에서 결정합니다.
 
 ## 공개 작품 검색 · #104
 
 `GET /works?query={query}&kind={kind}`로 제목·저자·출판사를 부분 검색합니다. `{query}`는 입력한 검색어이며 `{kind}`는 `all`, `book`, `magazine`, `novel` 중 선택한 작품 종류입니다. 중괄호는 자리 표시자이며 실제 요청에는 입력값을 넣습니다.
 
-로그인은 필요하지 않습니다. `query`는 정확히 한 번 지정하며 앞뒤 공백을 제거한 뒤 1자 이상 200자 이하입니다. `kind`를 생략하면 `all`입니다. 빈 검색어·빈 종류·중복 조건·지원하지 않는 종류는 400입니다.
+로그인은 필요하지 않습니다. `query`는 정확히 한 번 지정하며 앞뒤 공백을 제거한 뒤 1자 이상 200자 이하입니다. `kind`를 생략하면 `all`입니다. 선택적인 `genre`는 앞뒤 공백을 제거한 장르 이름이며 기존 검색어·종류와 AND로 결합합니다. 여러 번 지정하면 첫 번째 값을 사용합니다. 지정한 이름의 장르 연결이 없는 작품은 제외하고, 장르를 생략하면 무장르 작품도 포함합니다. 일치하는 장르가 없으면 빈 값이나 긴 값도 `200`과 `[]`를 반환하며 카테고리를 장르로 대체하지 않습니다. 빈 검색어·빈 종류·검색어 길이 초과·`query` 또는 `kind` 중복·지원하지 않는 종류는 400입니다.
 
-검색어의 `%`, `_`, `!`, 쉼표는 문자 그대로 처리합니다. 공개 작품만 출간일·DB ID 내림차순으로 반환하며, 같은 작품의 여러 저자가 일치해도 한 번만 반환합니다. 검색으로 조회수·최근 본 기록·읽기 위치가 변경되지는 않습니다.
+검색어의 `%`, `_`, `!`, 쉼표는 문자 그대로 처리합니다. 공개 작품만 출간일·DB ID 내림차순으로 반환하며, 같은 작품의 여러 저자나 장르가 연결되어도 한 번만 반환합니다. 장르 이름의 `%`, `_`, `!`도 와일드카드로 해석하지 않습니다. 검색으로 조회수·최근 본 기록·읽기 위치가 변경되지는 않습니다.
 
 ```typescript
 const parameters = new URLSearchParams({ query, kind });
+// 장르를 제한할 때만 추가합니다.
+parameters.set('genre', '판타지');
 const response = await fetch(`${apiBase}/works?${parameters}`, {
   headers: { Accept: 'application/json' },
 });
@@ -347,7 +517,7 @@ const detail = await detailResponse.json();
 }
 ```
 
-- 작품이 없거나 공개 상태가 아니면 404입니다. slug에는 영문 소문자·숫자·하이픈을 사용합니다.
+- 조회되는 공개 작품이 없으면 404입니다. 응답의 slug에는 등록된 영문 소문자·숫자·하이픈을 사용합니다.
 - `author`는 저자 이름을 `, `로 연결한 문자열이며, `category`는 장르·카테고리 이름을 ` · `로 연결한 문자열입니다.
 - `contents`에는 공개 시각이 현재 이하인 회차만 회차 번호 순서로 포함합니다. 날짜는 Asia/Seoul 기준입니다.
 - `pageCount`, `issue`, `publicationCycle`과 회차의 선택값은 null이면 생략합니다. 글자 수가 0이면 `characterCount`도 생략합니다.
@@ -491,7 +661,7 @@ await adminPost(`/api/admin/works/${createdWork.id}/chapters`, {
 await adminPost(`/api/admin/works/${createdWork.id}/status`, { publishStatus: 'HIDDEN' });
 ```
 
-상태 변경은 `PUBLISHED` 또는 `HIDDEN`만 받으며 204를 반환합니다. 공개 시 필수 메타데이터와 연결 관계·회차를 다시 검사하고 작품 게시판을 생성합니다. 같은 작품을 다시 공개해도 게시판을 중복 생성하지 않습니다.
+상태 변경은 `PUBLISHED` 또는 `HIDDEN`만 받으며 204를 반환합니다. 공개 시 필수 메타데이터와 연결 관계·회차를 다시 검사합니다. 게시판은 자동 생성하지 않으며 기존 게시판도 공개 상태 변경으로 삭제하지 않습니다.
 
 ### 팀원 관리자 생성과 로그아웃
 
@@ -589,7 +759,7 @@ OpenAPI 계약 검사는 시험 전용 DB에서 실제 HTTP 요청·응답을 �
 | HTTP 상태 | 조건 | 클라이언트 처리 |
 | --- | --- | --- |
 | 200 | 정상 본문이며 빈 파일도 포함합니다. | 본문·현재 장·목차를 표시합니다. |
-| 400 | 식별자 형식이 잘못됐습니다. | 선택 정보를 확인합니다. |
+| 400 | 회차 식별자 형식이 잘못됐습니다. | 선택 정보를 확인합니다. |
 | 404 | 작품/회차 부재, 비공개, 공개 시각 이전, 다른 작품의 회차입니다. | 다른 회차로 대신 이동하지 않습니다. |
 | 415 | HTML·EPUB·외부 URL 등 지원하지 않는 공급 형식입니다. | 텍스트 열람 미지원으로 안내합니다. |
 | 503 | 파일 부재·손상 UTF-8·경로 제한·2MiB 초과 등입니다. | 안내 후 재시도를 제공합니다. |

@@ -131,6 +131,20 @@ class OpenApiContractTest {
         valid(validator.validateRequest(SimpleRequest.Builder.post("/api/admin/works/1/chapters")
                 .withContentType("application/json").withHeader("Cookie", "SESSION=example-session")
                 .withHeader("X-CSRF-TOKEN", "example-token").withBody(Json.mapper().writeValueAsString(chapterExample)).build()));
+        var communityInput = new java.util.LinkedHashMap<String, Object>();
+        communityInput.put("boardId", "1"); communityInput.put("workId", null); communityInput.put("head", "STORY");
+        communityInput.put("title", "계약 검증"); communityInput.put("spoilerChapterId", null); communityInput.put("hasSpoiler", true);
+        communityInput.put("stickerIds", List.of());
+        String imageUrl = "/community/images/1/11111111-1111-4111-8111-111111111111.png";
+        communityInput.put("images", List.of(Map.of("url", imageUrl, "width", 8, "height", 8)));
+        communityInput.put("body", "가".repeat(10000) + "![이미지](<" + imageUrl + ">)");
+        String communityBody = mapper.writeValueAsString(communityInput);
+        valid(validator.validateRequest(SimpleRequest.Builder.post("/api/members/community/posts")
+                .withContentType("application/json").withHeader("Cookie", "MEMBER_SESSION=example-session")
+                .withHeader("X-CSRF-TOKEN", "example-token").withBody(communityBody).build()));
+        valid(validator.validateRequest(SimpleRequest.Builder.put("/api/members/community/draft")
+                .withContentType("application/json").withHeader("Cookie", "MEMBER_SESSION=example-session")
+                .withHeader("X-CSRF-TOKEN", "example-token").withBody(communityBody).build()));
     }
 
     @ParameterizedTest
