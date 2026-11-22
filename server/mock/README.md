@@ -35,7 +35,7 @@ node server/mock/index.mjs
 | `GET /health` | 간이 서버의 실행 상태를 반환합니다. |
 | `GET /sdui/home?kind={kind}` | `{kind}`에 `all`, `book`, `magazine`, `novel`을 넣어 해당 화면 구성을 조회합니다. |
 | `GET /works/:id` | 해당 ID의 작품 상세 정보 객체 하나를 반환합니다. |
-| `GET /works?query={query}&kind={kind}` | `{query}`는 검색어, `{kind}`는 `all`, `book`, `magazine`, `novel` 중 선택한 종류입니다. 제목·저자·출판사 부분 검색 결과를 `id`, `title`, `imageUrl`, `kind` 배열로 반환하며 결과가 없으면 `[]`입니다. 종류는 생략할 수 있습니다. |
+| `GET /works?query={query}&kind={kind}&genre={genre}` | 제목·저자·출판사 부분 검색과 선택적인 종류·장르 조건을 결합합니다. 종류는 `all`, `book`, `magazine`, `novel`이며 생략하면 전체입니다. 장르는 단일 이름으로 지정하고 생략하면 제한하지 않습니다. 결과는 `id`, `title`, `imageUrl`, `kind` 배열이며 일치 항목이 없으면 `[]`입니다. |
 | `GET /api/members/recent-works` | `fixtures/recent-works.json`의 최근 본 작품 고정 예시를 반환합니다. 인증을 확인하지 않으며 기록 요청(`POST /api/members/recent-works/{slug}`)은 제공하지 않습니다. |
 | `GET /api/members/library?kind={kind}` | `fixtures/library.json`의 서재 고정 예시를 반환합니다. 종류는 `all`, `book`, `magazine`, `novel`이며 생략하면 전체입니다. |
 | `GET /media/covers/...` | 공용 `media/covers/`의 도서·매거진·웹소설 표지 PNG를 반환합니다. |
@@ -63,6 +63,8 @@ node server/mock/index.mjs
 기본 예시에는 홈 화면의 빈 최근 본 작품과 도서 화면의 빈 최근 본 도서가 포함되어 있습니다. 이벤트 배너는 홈(`all`) 응답에만 포함합니다. 작품 제목은 제공받은 이미지 파일명에서 가져왔으며, 표지 16개와 배경 1개는 제공된 `temp` 폴더에서 가져온 테스트 자료입니다. 기존 `mock/assets/`의 파일을 공용 정적 리소스 폴더로 옮겼으며 이미지 내용은 변경하지 않았습니다.
 
 표지는 `../src/main/resources/static/media/covers/도서/`, `covers/매거진/`, `covers/웹소설/`에, 배경은 같은 `media/` 아래의 `backgrounds/`에 있습니다. mock은 이 폴더를 직접 읽으며 Spring Boot는 빌드에 포함한 같은 파일을 제공합니다. 실행 명령은 그대로 사용합니다. JSON 예시는 `mock/fixtures/`에 유지하며 실제 DB에 자동 등록하지 않습니다. 공유·배포 방식은 [이미지 저장소 구현 안내](../../docs/이미지%20저장소%20구현%20안내.md)를 참고합니다.
+
+`fixtures/work-genres.json`은 작품 ID별 장르 이름 배열을 선언합니다. 이 연결 목록으로 장르를 검색하며 상세의 `category` 표시 문자열을 장르로 해석하지 않습니다. 장르를 지정하면 연결이 없는 작품은 제외합니다. 장르 이름은 공백 제거 후 1~50자이며 빈 값·중복·길이 초과는 400입니다. 간이 서버의 가상 자료이며 실제 DB의 장르 연결이나 SQL 시드를 변경하지 않습니다. 이 파일 자체는 HTTP로 공개하지 않습니다.
 
 `fixtures/works.json`은 도서 6개, 매거진 5개, 웹소설 5개의 정보 배열입니다. 홈 응답의 작품 `id`, `title`, `imageUrl`과 대응하며, `GET /works/book-care`처럼 요청하면 해당 작품 객체만 반환합니다. 상세 응답에는 SDUI의 `sections`나 요소 `type`을 포함하지 않으며, 상세 화면의 배치는 클라이언트가 정합니다.
 

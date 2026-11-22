@@ -2,6 +2,9 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createServer } from 'node:http';
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import { runInNewContext } from 'node:vm';
 import { createMemberSessionClient, MemberRequestError, parseMemberIdentity } from '../src/memberSession.ts';
 
 const a = { id: '9007199254740994', email: 'a@example.test', nickname: '첫 회원', createdAt: '2026-11-07T01:00:00Z' };
@@ -224,6 +227,129 @@ test('현재 회원 401은 상태·요청 세대를 폐기하며 로그아웃 �
   const logins = server.calls.filter(c => c.path === '/api/auth/login').length;
   await assert.rejects(client.login(b.email, 'Password123'), /이전 계정/);
   assert.equal(server.calls.filter(c => c.path === '/api/auth/login').length, logins); client.dispose();
+});
+
+/** 실제 세션 클라이언트의 로그아웃 HTTP 응답만 지연합니다. */
+async function delayedLogoutClient(t, member = a) {
+  const server = transport(member), gate = deferred(), requests = [];
+  const client = createMemberSessionClient('https://api.example.test', async (input, init) => {
+    if (new URL(input).pathname === '/api/auth/logout') { requests.push(init); await gate.promise; }
+    return server.fetcher(input, init);
+  });
+  t.after(() => { gate.resolve(); client.dispose(); });
+  await client.refresh();
+  return { client, server, gate, requests };
+}
+
+/** 실제 계정 화면을 세션 구독·client 교체·언마운트와 함께 실행합니다. */
+function accountLogoutHarness(initialClient) {
+  const ts = createRequire(import.meta.url)('typescript');
+  const source = ts.createSourceFile('AccountScreens.tsx',
+    readFileSync(new URL('../src/AccountScreens.tsx', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const declaration = source.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === 'AccountScreen');
+  const compiled = ts.transpileModule(declaration.getText(source) + '\nexport { AccountScreen };', {
+    fileName: 'AccountScreens.tsx', compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX },
+  }).outputText;
+  const cells = [], effects = [], navigation = [];
+  let client = initialClient, mounted = true, dirty = true, cursor = 0, tree, ignoredStateWrites = 0;
+  let route = { screen: 'account' };
+  const app = { baseRoute: route, navigate: (next, reset) => { route = next; navigation.push({ route: next, reset }); dirty = true; } };
+  const effect = (run, dependencies) => {
+    const index = cursor++, previous = cells[index];
+    if (!previous || dependencies.some((value, i) => !Object.is(value, previous.dependencies[i]))) {
+      const cell = { dependencies, cleanup: previous?.cleanup }; cells[index] = cell;
+      effects.push(() => { cell.cleanup?.(); cell.cleanup = run(); });
+    }
+  };
+  const sandbox = { exports: {}, require: module => {
+    if (module === 'react/jsx-runtime') { const jsx = (type, props) => ({ type, props }); return { jsx, jsxs: jsx }; }
+    assert.equal(module, '../assets/brand/header.png'); return 1;
+  }, useState: initial => {
+    const index = cursor++; cells[index] ??= { value: initial };
+    return [cells[index].value, next => {
+      if (!mounted) { ignoredStateWrites++; return; }
+      const value = typeof next === 'function' ? next(cells[index].value) : next;
+      if (!Object.is(value, cells[index].value)) { cells[index].value = value; dirty = true; }
+    }];
+  }, useRef: initial => { const index = cursor++; return cells[index] ??= { current: initial }; },
+  useEffect: effect, useLayoutEffect: effect, useMemberAuth: () => ({ client, state: client.getSnapshot() }),
+  useApp: () => app, styles: {}, s: {}, colors: {} };
+  for (const type of ['View', 'Text', 'Action', 'Pressable', 'Image', 'Icon', 'AccountMenu']) sandbox[type] = type;
+  runInNewContext(compiled, sandbox);
+  let unsubscribe = client.subscribe(() => { dirty = true; });
+  const nodes = (node = tree) => node && typeof node === 'object' && node.props
+    ? [node, ...[node.props.children].flat(Infinity).filter(value => value && typeof value === 'object').flatMap(value => nodes(value))] : [];
+  const find = (type, label) => nodes().find(node => node.type === type && (node.props.label === label
+    || nodes(node).some(child => child.type === 'Text' && child.props.children === label)));
+  function unmount() {
+    if (!mounted) return;
+    mounted = false; unsubscribe(); for (const cell of cells) cell?.cleanup?.();
+    effects.length = 0; dirty = false; tree = null;
+  }
+  async function settle() {
+    for (let round = 0; round < 25; round++) {
+      if (mounted && route.screen !== 'account') unmount();
+      if (mounted && dirty) { dirty = false; cursor = 0; tree = sandbox.exports.AccountScreen(); }
+      effects.splice(0).forEach(run => run()); await new Promise(resolve => setImmediate(resolve));
+      if (!mounted || !dirty && !effects.length) return;
+    }
+    assert.fail('로그아웃 계정 화면이 안정되지 않았습니다.');
+  }
+  return { navigation, nodes, find, settle, unmount, get route() { return route; }, get ignoredStateWrites() { return ignoredStateWrites; },
+    async press(type, label) { const node = find(type, label); assert.ok(node); assert.ok(!node.props.disabled); node.props.onPress(); await settle(); },
+    leave(next) { app.navigate(next); unmount(); },
+    async replaceClient(next) { unsubscribe(); client = next; unsubscribe = client.subscribe(() => { dirty = true; }); dirty = true; await settle(); },
+  };
+}
+
+test('로그아웃 화면 경합은 정상 세대 변경 후 한 번 이동하고 실패 후에는 다시 시도합니다.', async t => {
+  for (const status of [204, 503]) {
+    const session = await delayedLogoutClient(t), ui = accountLogoutHarness(session.client); t.after(ui.unmount);
+    await ui.settle(); const generation = session.client.getSnapshot().generation;
+    session.server.setLogoutStatus(status); await ui.press('Pressable', '로그아웃');
+    assert.ok(session.client.getSnapshot().generation > generation); assert.equal(ui.navigation.length, 0);
+    session.gate.resolve(); await ui.settle();
+    if (status !== 204) {
+      assert.equal(ui.route.screen, 'account'); assert.equal(ui.find('Action', '로그아웃 다시 시도').props.disabled, false);
+      assert.ok(ui.nodes().some(node => node.type === 'Text' && String(node.props.children).includes('로그아웃 완료를 확인하지 못했습니다.')));
+      session.server.setLogoutStatus(204); await ui.press('Action', '로그아웃 다시 시도');
+    }
+    assert.equal(session.client.getSnapshot().status, 'anonymous');
+    assert.equal(ui.navigation.length, 1); assert.equal(ui.route.screen, 'login'); assert.equal(ui.navigation[0].reset, true);
+  }
+});
+
+test('로그아웃 화면 경합은 이탈 뒤의 응답이 화면을 되돌리지 않으며 전역 로그아웃을 완료합니다.', async t => {
+  for (const status of [204, 503]) {
+    const session = await delayedLogoutClient(t), ui = accountLogoutHarness(session.client); t.after(ui.unmount);
+    await ui.settle(); session.server.setLogoutStatus(status); await ui.press('Pressable', '로그아웃');
+    const destination = { screen: 'detail', workId: 'another-work' }; ui.leave(destination);
+    assert.equal(session.requests[0].signal.aborted, false);
+    session.gate.resolve(); await ui.settle();
+    assert.equal(ui.route, destination); assert.equal(ui.navigation.length, 1); assert.equal(ui.ignoredStateWrites, 0);
+    assert.equal(session.client.getSnapshot().status, status === 204 ? 'anonymous' : 'error');
+  }
+});
+
+test('로그아웃 화면 경합은 옛 client의 완료가 새 client의 대기·오류·이동에 영향을 주지 않습니다.', async t => {
+  for (const status of [204, 503]) {
+    const first = await delayedLogoutClient(t), second = await delayedLogoutClient(t, b);
+    const ui = accountLogoutHarness(first.client); t.after(ui.unmount); await ui.settle();
+    first.server.setLogoutStatus(status); await ui.press('Pressable', '로그아웃');
+    await ui.replaceClient(second.client); assert.equal(ui.find('Pressable', '로그아웃').props.disabled, false);
+    await ui.press('Pressable', '로그아웃'); first.gate.resolve(); await ui.settle();
+    assert.equal(ui.navigation.length, 0); assert.equal(ui.find('Action', '로그아웃 다시 시도').props.disabled, true);
+    assert.equal(second.client.getSnapshot().status, 'checking');
+    assert.ok(!ui.nodes().some(node => node.type === 'Text' && String(node.props.children).includes('로그아웃 완료를 확인하지 못했습니다.')));
+    second.gate.resolve(); await ui.settle(); assert.equal(ui.route.screen, 'login'); assert.equal(ui.navigation.length, 1);
+  }
+});
+
+test('로그아웃 화면 경합은 렌더 전 연속 입력에서도 요청 한 번과 대기 상태를 유지합니다.', async t => {
+  const session = await delayedLogoutClient(t), ui = accountLogoutHarness(session.client); t.after(ui.unmount); await ui.settle();
+  const press = ui.find('Pressable', '로그아웃').props.onPress; press(); press(); await ui.settle();
+  assert.equal(session.requests.length, 1); assert.equal(ui.find('Action', '로그아웃 다시 시도').props.disabled, true);
+  session.gate.resolve(); await ui.settle(); assert.equal(ui.navigation.length, 1); assert.equal(ui.route.screen, 'login');
 });
 
 test('회원 요청으로 관리자 경로를 우회하지 않고 폐기한 클라이언트는 늦게 복원되지 않습니다.', async () => {

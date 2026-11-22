@@ -47,7 +47,8 @@ const body = call => JSON.parse(call.init.body);
 // #region 응답 계약
 test('작품 전체 상품과 회차 상품 및 무료·소장 열람 여부를 구분합니다.', () => {
   for (const kind of ['book', 'magazine', 'novel']) {
-    for (const state of [{}, { price: 0, readable: true }, { owned: true, readable: true }]) {
+    for (const state of [{}, { price: 0, readable: true }, { owned: true, readable: true },
+      { readable: true }, { owned: true, readable: false }, { price: 0, readable: false }]) {
       const item = product(kind, state);
       assert.deepEqual(parsePurchaseProducts([item], item.workId), [item]);
       assert.deepEqual(parsePurchaseRecord(record(item)), record(item));
@@ -64,8 +65,7 @@ test('잘못된 상품 필드·회차 단위·소장 상태·다른 작품·중�
     { title: ' ' }, { imageUrl: 'file:///private.png' }, { imageUrl: '//other.test/a.png' },
     { imageUrl: 'https://user:password@example.test/a.png' }, { price: -1 }, { price: 0.5 },
     { price: 2_147_483_648 }, { currency: 'USD' }, { paymentMode: 'REAL' },
-    { chapterId: '21', chapterTitle: '회차' }, { owned: 'false' }, { readable: true },
-    { owned: true, readable: false }, { price: 0, readable: false },
+    { chapterId: '21', chapterTitle: '회차' }, { owned: 'false' }, { readable: 'true' },
   ];
   for (const patch of invalid) assert.throws(() => parsePurchaseProducts([product('book', patch)], 'sample-work'), Error);
   for (const patch of [{ chapterId: null, chapterTitle: null }, { chapterId: '' }, { chapterTitle: ' ' }]) {
@@ -106,14 +106,14 @@ test('서재의 분류·상태·최근 회차·중복 작품을 검사하고 목
   for (const value of [{}, [libraryWork({ kind: 'novel' })], [libraryWork({ libraryStatus: 'OWNED' })],
     [libraryWork({ imageUrl: 'javascript:bad' })], [libraryWork(), libraryWork()],
     ...[undefined, 0, -1, 1.5, '7', 2_147_483_648].map(lastReadChapterNumber => [libraryWork({ lastReadChapterNumber })]),
-    [libraryWork({ author: '' })], [libraryWork({ hasNextChapter: true })], [libraryWork({ hasNextChapter: 'false' })],
+    [libraryWork({ author: '' })], [libraryWork({ hasNextChapter: 'false' })],
     [libraryWork({ statistics: { views: 1, recommendations: 2, chapterCount: 3 } })]]) {
     response = value;
     await assert.rejects(readMemberLibrary(f.client, 'book'), /서재 응답/);
   }
   const novel = libraryWork({ id: 'another-work', kind: 'novel', libraryStatus: 'COMPLETED', lastReadChapterNumber: 7,
     statistics: { views: 123, recommendations: 45, chapterCount: 2 }, hasNextChapter: true });
-  response = [libraryWork(), novel];
+  response = [libraryWork({ hasNextChapter: true }), novel];
   assert.deepEqual(await readMemberLibrary(f.client, 'all'), response);
   for (const statistics of [null, {}, { views: -1, recommendations: 0, chapterCount: 2 },
     { views: 1, recommendations: 0, chapterCount: 1.5 }]) {

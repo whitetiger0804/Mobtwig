@@ -25,21 +25,24 @@ export interface PurchaseRecord extends Omit<PurchaseProduct, 'owned' | 'readabl
 }
 
 /** 서버가 구매와 함께 등록한 서재의 작품입니다. */
-export interface LibraryWork {
+interface LibraryWorkBase {
   id: string;
   title: string;
   imageUrl: string;
-  kind: WorkKind;
   libraryStatus: 'WANT_TO_READ' | 'READING' | 'COMPLETED';
   /** 저자 식별자 순서로 연결된 이름입니다. */
   author: string;
   /** 현재 회원이 마지막으로 저장한 공개 회차 번호이며 기록이 없으면 null입니다. */
   lastReadChapterNumber: number | null;
-  /** 웹소설의 실제 집계이며 도서·매거진은 null입니다. */
-  statistics: { views: number; recommendations: number; chapterCount: number } | null;
   /** 저장한 회차 뒤에 현재 공개된 회차가 있는지 나타냅니다. */
   hasNextChapter: boolean;
 }
+
+/** 작품 종류에 따라 통계 제공 여부가 결정되는 서재 작품입니다. */
+export type LibraryWork = LibraryWorkBase & (
+  | { kind: 'novel'; statistics: { views: number; recommendations: number; chapterCount: number } }
+  | { kind: 'book' | 'magazine'; statistics: null }
+);
 
 const object = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value);
 const text = (value: unknown): value is string => typeof value === 'string' && !!value.trim();
@@ -60,7 +63,7 @@ function imageUrl(value: unknown): boolean {
 }
 
 /** 상품과 구매 스냅샷의 공통 필드를 확인합니다. */
-function validItem(value: unknown): value is PurchaseProduct {
+function validItem(value: unknown): value is Omit<PurchaseProduct, 'owned' | 'readable'> & Record<string, unknown> {
   if (!object(value) || !id(value.productId) || !slug(value.workId) || !kind(value.kind)
       || !text(value.title) || !imageUrl(value.imageUrl) || !Number.isInteger(value.price)
       || (value.price as number) < 0 || (value.price as number) > 2_147_483_647
@@ -76,8 +79,7 @@ export function parsePurchaseProducts(value: unknown, workId: string): PurchaseP
   const ids = new Set<string>(), targets = new Set<string | null>();
   for (const item of value) {
     if (!validItem(item) || item.workId !== workId || ids.has(item.productId) || targets.has(item.chapterId)
-        || typeof item.owned !== 'boolean' || typeof item.readable !== 'boolean'
-        || item.readable !== (item.price === 0 || item.owned)) throw invalid();
+        || typeof item.owned !== 'boolean' || typeof item.readable !== 'boolean') throw invalid();
     ids.add(item.productId); targets.add(item.chapterId);
   }
   return value;
@@ -85,9 +87,9 @@ export function parsePurchaseProducts(value: unknown, workId: string): PurchaseP
 
 /** 구매 응답을 현재 가격이 아닌 구매 당시 스냅샷으로 검증합니다. */
 export function parsePurchaseRecord(value: unknown): PurchaseRecord {
-  if (!validItem(value) || !object(value) || !id(value.purchaseId) || !text(value.purchasedAt)
+  if (!validItem(value) || !id(value.purchaseId) || !text(value.purchasedAt)
       || !/^\d{4}-\d{2}-\d{2}T.+Z$/.test(value.purchasedAt) || !Number.isFinite(Date.parse(value.purchasedAt))) throw invalid();
-  return value as unknown as PurchaseRecord;
+  return { ...value, purchaseId: value.purchaseId, purchasedAt: value.purchasedAt };
 }
 // #endregion
 
@@ -127,7 +129,7 @@ export async function readMemberLibrary(client: MemberSessionClient, selectedKin
         || !['WANT_TO_READ', 'READING', 'COMPLETED'].includes(item.libraryStatus as string)
         || !(item.lastReadChapterNumber === null || Number.isInteger(item.lastReadChapterNumber)
           && (item.lastReadChapterNumber as number) >= 1 && (item.lastReadChapterNumber as number) <= 2_147_483_647)
-        || typeof item.hasNextChapter !== 'boolean' || item.hasNextChapter && item.lastReadChapterNumber === null
+        || typeof item.hasNextChapter !== 'boolean'
         || !(item.kind === 'novel' ? object(item.statistics)
           && [item.statistics.views, item.statistics.recommendations, item.statistics.chapterCount]
             .every(count => typeof count === 'number' && Number.isSafeInteger(count) && count >= 0)
@@ -170,8 +172,7 @@ export function purchaseProduct(client: MemberSessionClient, product: PurchasePr
         body: JSON.stringify({ productId: current.product.productId, expectedPrice: current.product.price, requestId: current.requestId }) });
       if (client.getSnapshot().generation !== owner.generation) throw canceled();
       const record = parsePurchaseRecord(value);
-      if (record.productId !== current.product.productId || record.workId !== current.product.workId
-          || record.kind !== current.product.kind || record.chapterId !== current.product.chapterId || record.price !== current.product.price) throw invalid();
+      if (record.productId !== current.product.productId || record.price !== current.product.price) throw invalid();
       attempts.delete(product.productId);
       return record;
     } catch (failure) {

@@ -36,14 +36,24 @@ function parseWorkSearchResults(value: unknown): WorkSearchResult[] {
   });
 }
 
-/** 공개 작품 검색 API를 호출합니다. */
+/**
+ * 공개 작품 검색 API를 호출합니다.
+ * @param apiUrl - 선택한 서버의 기본 주소입니다.
+ * @param query - 검색할 작품 제목·저자·출판사의 일부입니다.
+ * @param kind - 검색할 작품 종류입니다.
+ * @param signal - 화면 이탈이나 조건 변경 시 요청을 취소합니다.
+ * @param genre - 선택한 장르 이름이며 생략하면 장르를 제한하지 않습니다.
+ * @returns 조건에 일치하는 공개 작품입니다.
+ */
 export async function searchWorks(
   apiUrl: string,
   query: string,
   kind: WorkSearchFilter,
   signal: AbortSignal,
+  genre?: string,
 ): Promise<WorkSearchResult[]> {
   const parameters = new URLSearchParams({ query, kind });
+  if (genre !== undefined) parameters.set('genre', genre);
   const response = await fetch(`${apiUrl}/works?${parameters}`, { signal });
   if (!response.ok) throw new Error(`검색 요청을 처리하지 못했습니다. (HTTP ${response.status})`);
   return parseWorkSearchResults(await response.json());

@@ -109,6 +109,27 @@ test('공개 검색은 제목·저자·출판사의 일부와 종류를 사용�
   assert.deepEqual(await (await fetch(`${base}/works?query=not-found-search-104`)).json(), []);
 });
 
+test('장르는 명시한 연결 목록으로 검색어·종류와 결합하며 무장르와 미등록 이름은 제외합니다.', async context => {
+  const genreFile = await copyFixture(context, join(mockDirectory, 'fixtures', 'work-genres.json'));
+  await writeFile(genreFile, JSON.stringify({ 'novel-library': ['판타지', '현대판타지'] }), 'utf8');
+  const base = await startServer(context, { workGenresPath: genreFile });
+  const query = works.find(work => work.id === 'novel-library').title;
+  for (const genre of ['판타지', '현대판타지', ' \u00A0판타지\uFEFF ']) {
+    const response = await fetch(base + '/works?' + new URLSearchParams({ query, kind: 'novel', genre }));
+    assert.equal(response.status, 200);
+    assert.deepEqual((await response.json()).map(work => work.id), ['novel-library']);
+  }
+  for (const parameters of [
+    { query, kind: 'book', genre: '판타지' },
+    { query, genre: '없는 장르' },
+    { query: works[0].title, genre: '판타지' },
+    { query, genre: '%' },
+  ]) {
+    assert.deepEqual(await (await fetch(base + '/works?' + new URLSearchParams(parameters))).json(), []);
+  }
+  assert.equal((await fetch(base + '/fixtures/work-genres.json')).status, 404);
+});
+
 test('검색어의 퍼센트·밑줄·느낌표·쉼표를 문자 그대로 검색합니다.', async context => {
   const copied = await copyFixture(context, worksPath);
   await writeFile(copied, JSON.stringify([
@@ -126,12 +147,17 @@ test('검색어의 퍼센트·밑줄·느낌표·쉼표를 문자 그대로 검�
 test('검색 조건의 누락·공백·중복·길이·종류 오류를 400으로 구분합니다.', async context => {
   const base = await startServer(context);
   for (const parameters of ['', 'query=', 'query=+%C2%A0', 'query=a&query=b', 'query=a&kind=',
-    'query=a&kind=book&kind=book', 'query=a&kind=other', new URLSearchParams({ query: '😀'.repeat(201) }).toString()]) {
+    'query=a&kind=book&kind=book', 'query=a&kind=other', new URLSearchParams({ query: '😀'.repeat(201) }).toString(),
+    'query=a&genre=', 'query=a&genre=+%C2%A0', 'query=a&genre=x&genre=x',
+    new URLSearchParams({ query: 'a', genre: '😀'.repeat(51) }).toString()]) {
     assert.equal((await fetch(`${base}/works?${parameters}`)).status, 400, parameters);
   }
   const response = await fetch(`${base}/works?${new URLSearchParams({ query: '😀'.repeat(200) })}`);
   assert.equal(response.status, 200);
   assert.deepEqual(await response.json(), []);
+  const genreBoundary = await fetch(base + '/works?' + new URLSearchParams({ query: 'a', genre: '😀'.repeat(50) }));
+  assert.equal(genreBoundary.status, 200);
+  assert.deepEqual(await genreBoundary.json(), []);
 });
 
 /**
