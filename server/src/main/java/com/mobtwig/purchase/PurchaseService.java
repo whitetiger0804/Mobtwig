@@ -54,7 +54,6 @@ public class PurchaseService {
      */
     @Transactional(readOnly = true)
     public List<PurchaseResponses.@NonNull Product> products(@Nullable Long member, String slug) {
-        validateSlug(slug);
         Work work = repository.work(slug, false).filter(w -> w.status().equals("PUBLISHED")).orElseThrow(PurchaseFailure::notFound);
         return repository.products(work.id(), member).stream()
                 .map(offer -> product(work, offer.product(), offer.chapterTitle(), offer.owned())).toList();
@@ -144,7 +143,6 @@ public class PurchaseService {
      */
     @Transactional(readOnly = true)
     public void requireRead(@Nullable Long member, String slug, @Nullable Long chapterId) {
-        validateSlug(slug);
         Work work = repository.work(slug, false).filter(w -> w.status().equals("PUBLISHED")).orElseThrow(PurchaseFailure::notFound);
         if (chapterId != null) {
             Chapter chapter = repository.chapter(work.id(), chapterId, false).orElseThrow(PurchaseFailure::notFound);

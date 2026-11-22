@@ -126,7 +126,7 @@ public class PurchaseController {
     private static long member(Principal principal) { return Long.parseLong(principal.getName()); }
 
     private static int price(JsonNode value) {
-        if (!value.isIntegralNumber() || !value.canConvertToInt() || value.asInt() < 0) throw PurchaseFailure.invalid();
+        if (!value.isIntegralNumber() || !value.canConvertToInt()) throw PurchaseFailure.invalid();
         return value.asInt();
     }
 
