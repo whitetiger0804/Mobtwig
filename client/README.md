@@ -2,7 +2,7 @@
 
 React Native와 Expo를 사용하는 TypeScript 클라이언트입니다. 홈은 서버가 보내는 SDUI 구역을 렌더링하며 메뉴, 패널, 입력란과 공통 빈 요소를 제공합니다.
 
-홈의 화면 표시 계약은 `src/homeSchema.ts`에 정의합니다. 실제 업무 데이터의 DB 저장 구조와 인증·변경 API는 아직 확정하지 않았습니다. 홈 외의 미연동 영역은 표지 자리를 예약하지 않고 `EmptyState`만 표시합니다. 테스트 자료는 앱에 넣지 않고 `server/mock/`에서 제공합니다.
+홈의 화면 표시 계약은 `src/homeSchema.ts`에 정의합니다. 실제 서버는 회원 인증·서재·독서 기록·구매·리뷰·커뮤니티 API를 제공하며 앱에서 사용합니다. HTTP 계약은 [API 명세서](../docs/API%20명세서.md), DB 변경은 [Flyway 안내](../server/src/main/resources/db/migration/README.md)를 따릅니다. `server/mock/`은 공개 조회 계약을 확인하는 읽기 전용 간이 서버이며 회원 변경 API 검증에는 별도 테스트 DB를 연결한 Spring 서버를 사용합니다.
 
 ## 팀 공통 버전
 
@@ -12,9 +12,18 @@ React Native와 Expo를 사용하는 TypeScript 클라이언트입니다. 홈은
 
 `app.json`의 `scheme: mobtwig`, Android 패키지 `com.whitetiger0804.mobtwig`를 포함한 개발 또는 배포 빌드로 검사합니다. Expo Go는 이 앱의 custom scheme 등록을 대신하지 않습니다. Android cold 검사는 `adb shell am force-stop com.whitetiger0804.mobtwig` 후 `adb shell am start -a android.intent.action.VIEW -d "mobtwig://works/novel-record" com.whitetiger0804.mobtwig`로 시작합니다. 같은 명령을 앱 실행 중 다시 보내 warm 진입을 확인합니다. 존재하지 않는 slug, 잘못된 링크와 하이라이트 공유 취소 후 위치 복귀도 확인합니다.
 
+Expo 개발 앱은 완전히 종료된 상태의 외부 링크를 보관한 뒤 개발 런처를 먼저 표시할 수 있습니다. 이때 개발 프로젝트 선택이 필요합니다. 종료 상태에서 작품으로 바로 진입하는 동작은 JavaScript 번들이 내장되고 개발 런처가 없는 배포 형태의 APK로 검사합니다. 개발 앱의 실행 중 링크 검사와 구분합니다.
+
 HTTPS 앱 연결은 `app.config.js`에서 공유 origin에 맞춰 준비합니다. Android는 `/s/works/` 경로의 `autoVerify` intent filter를 생성하고, iOS는 확정한 `IOS_BUNDLE_IDENTIFIER`가 있을 때 associated domain을 설정합니다. `APPLE_TEAM_ID`는 확정한 Apple 개발 팀을 사용할 때 지정합니다. 로컬 HTTP 공유 origin에서는 HTTPS 앱 연결을 추가하지 않습니다. 설정 변경 후에는 네이티브 앱을 다시 빌드해야 합니다.
 
-공유 웹 안내는 Spring 서버의 `/s/works/{slug}`에서 제공합니다. 기존 공개 `GET /works/{slug}`를 로그인 쿠키 없이 한 번 요청하고 제목·표지·종류·저자를 표시합니다. 실패 시에만 사용자 재시도를 제공하며 자동 갱신이나 폴링은 없습니다. 기존 상세 API에는 조회수 집계가 있으므로 안내 페이지 한 번의 정상 조회에도 기존 집계가 적용됩니다. query의 제목·문장·이동 주소는 사용하지 않습니다. 앱 열기는 검증된 slug의 `mobtwig://works/{slug}`이며 설치 주소는 아직 없어 ‘설치 준비 중’으로 표시합니다. 실제 설치 전후 흐름은 배포 주소가 준비된 뒤 별도 검증이 필요합니다.
+이미 `android/`가 생성되어 있다면 재빌드 전에 Expo 설정을 네이티브 프로젝트에 반영합니다. `--no-clean`은 기존 네이티브 폴더를 유지하며, 개발 서버의 새로고침만으로는 설치 앱의 링크 수신 설정이 갱신되지 않습니다.
+
+```powershell
+npx expo prebuild --platform android --no-clean --no-install --skip-dependency-update react,react-native
+npm run android -- --device
+```
+
+공유 웹 안내는 Spring 서버의 `/s/works/{slug}`에서 제공합니다. 기존 공개 `GET /works/{slug}`를 로그인 쿠키 없이 한 번 요청하고 제목·표지·종류·저자를 표시합니다. 실패 시에만 사용자 재시도를 제공하며 자동 갱신이나 폴링은 없습니다. 기존 상세 API에는 조회수 집계가 있으므로 안내 페이지 한 번의 정상 조회에도 기존 집계가 적용됩니다. query의 제목·문장·이동 주소는 사용하지 않습니다. 앱 열기는 검증된 slug의 `mobtwig://works/{slug}`이며 설치 주소는 아직 없어 ‘설치 준비 중’으로 표시합니다. 스토어 설치 후 원래 공유 링크를 다시 여는 흐름은 설치 주소가 준비된 뒤 별도 검증이 필요합니다.
 
 ### HTTPS 도메인 검증 파일 준비 · #64
 
@@ -28,9 +37,17 @@ npm run links:files -- --output-dir .expo/app-links/.well-known --android-sha256
 
 iOS도 준비된 경우 프로세스 환경의 `IOS_BUNDLE_IDENTIFIER`와 필요 시 `APPLE_TEAM_ID`를 설정한 뒤 `--ios-app-id "$env:IOS_APPLICATION_IDENTIFIER"`를 추가합니다. 이 명령은 Expo CLI와 별개로 실행하므로 프로세스 환경 변수를 사용합니다. 값이 없거나 형식·Bundle ID가 다르면 파일 생성 전에 오류로 종료합니다. 서명 정보가 미확정이면 검증 파일을 생성하지 않고 설정·단위 검사까지만 진행합니다.
 
-생성한 파일은 추후 승인된 배포에서 공유 origin의 `/.well-known/`에 HTTPS·200·`application/json`으로 제공하며 리다이렉트 없이 접근되어야 합니다. 설치 앱의 서명이 파일의 인증서와 일치해야 합니다. 현재 공개 서버 반영은 별도 배포 작업이며 설정 준비만으로 기기의 도메인 검증이 완료되지는 않습니다.
+생성한 파일은 공유 origin의 `/.well-known/`에 HTTPS·200·`application/json`으로 제공하며 리다이렉트 없이 접근되어야 합니다. 설치 앱의 서명이 파일의 인증서와 일치해야 합니다. 개발 앱의 인증서로 준비한 파일은 다른 인증서로 서명한 배포 앱까지 인증하지 않으므로 배포 서명에 맞는 지문도 등록합니다.
+
+공용 Windows 서버에서는 Caddy가 `C:/Mobtwig/public/.well-known/assetlinks.json`과 `C:/Mobtwig/public/share/`를 제공합니다. 공유 안내 파일은 `server/src/main/resources/static/share/`의 5개 파일이며, `/s/works/{slug}`는 이 폴더의 `index.html`로 연결합니다. 그 외 API 요청은 기존 `127.0.0.1:8080` 프록시를 사용합니다. 이 정적 배포본을 변경할 때는 원본 파일과 함께 반영해야 합니다. 서버의 작품 데이터는 별개이므로 로컬에만 있는 작품은 공개 웹 안내에서 조회되지 않습니다.
 
 Android에서 새 앱 설치와 파일 배포 후 `adb shell pm verify-app-links --re-verify com.whitetiger0804.mobtwig`, `adb shell pm get-app-links --user 0 com.whitetiger0804.mobtwig`로 검증 결과를 확인합니다. 도메인이 `verified`인지 확인한 다음 HTTPS 공유 링크를 눌러 종료·실행 상태에서 같은 작품으로 이동하는지 검사합니다. iOS는 Associated Domains 권한이 포함된 서명 앱을 실제 iPhone에 설치한 뒤 Safari·메시지의 HTTPS 링크로 확인합니다. 설치 후에는 원래 공유 링크를 다시 열어 같은 작품으로 이동합니다. 자동 설치 후 복원은 후속 검증 대상입니다.
+
+도메인이 `verified`여도 기기에서 앱의 링크 열기를 꺼 두었다면 자동으로 열리지 않습니다. Android의 ‘설정 → 애플리케이션 → 모북이 → 기본으로 설정’에서 ‘지원되는 링크 열기’를 확인합니다. 명령 출력의 `Verification link handling allowed`는 `true`여야 하며, `Selection state: Disabled`만으로 검증된 주소가 차단됐다고 판단하지 않습니다. 실제 연결 검사는 앱 패키지를 강제로 지정하지 않고 HTTPS 주소로 실행합니다.
+
+```powershell
+adb -s <기기ID> shell am start -W -a android.intent.action.VIEW -c android.intent.category.BROWSABLE -d "https://mobtwig.xn--3h3b098b.kro.kr/s/works/<작품slug>"
+```
 
 [Expo Android App Links](https://docs.expo.dev/linking/android-app-links/), [Expo iOS Universal Links](https://docs.expo.dev/linking/ios-universal-links/)와 [Apple 도메인 연결 안내](https://developer.apple.com/documentation/xcode/supporting-associated-domains)를 기준으로 합니다.
 
@@ -68,7 +85,7 @@ npm ci
 | `npm run ios:go` | macOS의 iOS 시뮬레이터에서 Expo Go로 앱을 엽니다. |
 | `npm run web` | 웹 개발 화면을 엽니다. |
 | `npm run typecheck` | TypeScript 타입을 검사합니다. |
-| `npm test` | SDUI 계약과 간이 서버의 HTTP 응답을 검사합니다. |
+| `npm test` | 조회 계약·회원 요청·독서 저장·구매·리뷰·커뮤니티·공유 및 간이 서버 응답을 검사합니다. |
 | `npm run docs` | UI 코드 문서를 `docs-api/`에 생성합니다. |
 | `npx expo export --platform all` | Android·iOS·웹 JavaScript와 자산을 `dist/`에 내보냅니다. |
 
@@ -110,7 +127,7 @@ adb -s <기기ID> reverse tcp:8090 tcp:8090
 
 `EXPO_PUBLIC_MOCK_API_URL=http://127.0.0.1:8090`을 사용하면 기기의 8090 포트가 개발 PC의 간이 서버로 연결됩니다. USB 없이 사용할 때는 서버 README의 LAN 실행 방법과 접근 가능한 PC 주소를 사용합니다. 실제 개발 서버 주소도 기기에서 접근 가능해야 합니다. 예를 들어 Android 에뮬레이터의 `10.0.2.2`는 개발 PC를 가리키지만 실제 휴대폰에서는 같은 뜻이 아닙니다. Metro 연결 주소와 데이터 API 주소는 별개입니다.
 
-서버 선택이 정상이어도 해당 서버가 `GET /sdui/home?kind=all|book|magazine|novel`을 구현하지 않았으면 홈을 표시할 수 없습니다. 현재 Spring Boot 서버에는 이 API가 없으며, `server/mock/`만 해당 응답을 제공합니다. 실패하면 다른 서버로 바꾸지 않고 오류와 다시 불러오기 버튼을 표시합니다.
+Spring Boot 서버와 간이 서버 모두 `GET /sdui/home?kind=all|book|magazine|novel`을 제공합니다. Spring 서버는 `SDUI_HOME_PATH`의 홈 구성 파일을 요청마다 읽고 `dataSource.type`이 `publishedWorks`인 구역에 DB의 공개 작품을 채웁니다. 간이 서버는 `server/mock/fixtures/home.json`을 사용합니다. 조회가 실패하면 오류와 다시 불러오기 버튼을 표시합니다.
 
 테스트를 끝낼 때 두 터미널에서 각각 `Ctrl+C`를 누르고 필요하면 `adb -s <기기ID> reverse --remove tcp:8090`으로 연결을 해제합니다.
 
@@ -120,18 +137,18 @@ adb -s <기기ID> reverse tcp:8090 tcp:8090
 | --- | --- |
 | `index.ts` | Expo에 루트 컴포넌트를 등록합니다. |
 | `App.tsx` | 안전 영역, 공통 메뉴, 화면 선택, 패널을 구성합니다. |
-| `src/appState.tsx` | 화면 스택, 현재 탭, 패널, 뒤로 가기만 관리합니다. |
+| `src/appState.tsx` | 화면 스택·탭·패널·뒤로 가기와 기기에 저장하는 읽기 설정·서재 탭을 관리합니다. |
 | `src/serverConnection.tsx` | 테스트 실행의 서버 선택과 일반 실행의 API 주소 공급을 담당합니다. |
 | `src/homeSchema.ts` | 홈의 표시 계약과 수신 JSON 검증을 담당합니다. |
 | `src/HomeContent.tsx` | 홈을 조회하고 공통 요소로 렌더링합니다. |
 | `src/workDetails.ts` | 작품 ID별 상세 조회와 정보 응답 검증을 담당합니다. |
 | `src/EmptyState.tsx` | 표시할 데이터가 없을 때 쓰는 공통 빈 요소입니다. |
-| `src/ui.tsx` | 버튼·입력란·카드·아이콘과 공통 스타일입니다. |
-| `src/CatalogScreens.tsx` | 홈·검색·상세·서재·기록·공유 화면 틀입니다. |
-| `src/AccountScreens.tsx` | 계정 입력과 읽기 설정 화면 틀입니다. |
-| `src/CommunityScreens.tsx` | 커뮤니티·글쓰기·댓글·신고 화면 틀입니다. |
-| `src/ReviewScreens.tsx` | 리뷰·리뷰 작성·댓글 화면 틀입니다. |
-| `src/ReadingScreens.tsx` | 텍스트 본문 API·목차·회차 이동과 미연동 미디어·설정집 화면입니다. |
+| `src/ui.tsx` | 버튼·제목·칩·아이콘과 공통 스타일입니다. |
+| `src/CatalogScreens.tsx` | 홈·검색·상세·서재·독서 기록·공유 화면을 연결합니다. |
+| `src/AccountScreens.tsx` | 회원 인증·계정 정보와 기기에 저장하는 읽기 설정 화면입니다. |
+| `src/CommunityScreens.tsx` | 게시판·게시글·이미지·댓글·공감·신고 API와 화면을 연결합니다. |
+| `src/ReviewScreens.tsx` | 리뷰·댓글의 조회·작성·수정·삭제와 공감·신고를 연결합니다. |
+| `src/ReadingScreens.tsx` | 텍스트·매거진 PNG 열람, 회차 이동·위치 저장과 미연동 앱북 미디어·설정집 화면입니다. |
 
 `Route`는 화면 이동과 작품 상세 조회에 필요한 식별자를 전달하는 타입입니다. 홈의 SDUI 타입과 작품 상세 조회 응답은 표시용 계약이며 DB 테이블을 정의하지 않습니다. 상·하단 메뉴와 상세 화면 배치는 앱에 남고 홈 본문 구역은 서버 응답으로 결정합니다.
 
@@ -155,22 +172,44 @@ adb -s <기기ID> reverse tcp:8090 tcp:8090
 ## 현재 동작 범위
 
 - 상·하단 메뉴와 분류 탭으로 화면을 이동합니다.
-- 홈은 선택한 서버에서 SDUI를 조회하고 로딩·오류·빈 목록·실제 항목을 구분합니다.
-- 작품 상세는 선택한 서버에서 ID별 정보를 조회하며 다른 작품으로 이동하거나 뒤로 가면 이전 요청을 취소합니다.
-- 검색 설정·서재 관리·읽기 설정 등의 패널을 열고 닫습니다.
-- 입력란의 값과 선택한 탭은 실행 중 React 상태에만 보관합니다.
-- 계정, 서재, 미디어, 관계도, 리뷰, 게시글, 댓글 등의 미연동 영역에는 `EmptyState`를 표시합니다.
-- 회원가입, 로그인·로그아웃과 현재 회원 표시를 서버에 연결합니다. 등록·구매·저장·삭제·공유 등 후속 동작은 비활성 상태를 유지합니다.
+- 홈·작품 검색·상세는 선택한 서버의 응답을 표시하고 로딩·오류·빈 목록을 구분합니다. 검색 요청에는 검색어·작품 종류와 선택한 장르를 전달합니다.
+- 회원가입·로그인·로그아웃과 현재 회원 정보를 서버에 연결합니다. 시연 회원가입은 서버의 `SIGNUP_DEMO_ENABLED=true` 설정이 필요합니다.
+- 회원의 서재·찜·웹소설 구독·최근 본 작품·구매 내역을 API로 조회하거나 변경합니다.
+- 텍스트 본문과 매거진 PNG를 열고 회원의 읽기 위치·책갈피·하이라이트를 서버에 저장합니다. 유료 본문은 소장 권한이 필요합니다.
+- 리뷰·댓글과 커뮤니티 게시글·댓글·이미지·공감·신고를 API에 연결합니다. 작품 링크 공유와 링크를 통한 상세 진입도 제공합니다.
+- 읽기 설정의 테마·글꼴 이름·크기와 마지막 서재 탭은 계정과 관계없이 현재 기기에 저장하고 다음 실행에 복원합니다. 서버의 회원 읽기 설정 테이블과 자동 동기화하지 않습니다.
+- 비밀번호 변경·탈퇴·비밀번호 복구·소셜 로그인은 비활성 상태입니다. 설정집·앱북 이미지/영상/오디오·이벤트·알림은 미연동 화면입니다.
+- 웹소설 검색의 장르 칩은 선택하면 결과를 다시 조회하고 같은 칩을 다시 누르면 해제합니다. 처음에는 모든 장르를 포함하며 다른 작품 종류 탭에는 장르 조건을 보내지 않습니다. 결과는 출간일·ID 최신순입니다.
+- 상세 검색 패널의 카테고리·가격·정렬 적용은 비활성 상태입니다. 읽기 설정의 글꼴 8개는 번들에 포함한 실제 글꼴을 사용합니다.
 
 미연동 화면의 빈 요소는 API 오류를 감지한 결과가 아닙니다. SDUI 홈에서는 정상 빈 목록과 통신·계약 오류를 별도로 처리합니다. 지원하지 않는 버전·요소와 중복 키는 오류로 표시하며 정상 빈 목록으로 바꾸지 않습니다.
 
-브랜드 아이콘과 헤더 이미지만 클라이언트의 `assets/brand/`에 포함합니다. 테스트 표지 16개와 배경 1개는 서버에서 URL로 전달합니다. 화면은 세로 방향과 최대 너비 480의 모바일 배치를 사용합니다.
+브랜드 아이콘·헤더 이미지는 클라이언트의 `assets/brand/`, 읽기 글꼴은 `assets/fonts/`에 포함합니다. 테스트 표지 16개와 배경 1개는 서버에서 URL로 전달합니다. 화면은 세로 방향과 최대 너비 480의 모바일 배치를 사용합니다.
+
+## 읽기 글꼴
+
+앱은 공식 원본 글꼴 8개를 `assets/fonts/`에 포함합니다. 앱 초기화에서 설정 복원과 글꼴 로드를 함께 완료한 뒤 화면을 열며, 본문·글꼴 타일·테마·크기 미리보기가 같은 등록 이름을 사용합니다. 로드 실패는 기존 오류 화면에서 다시 확인할 수 있습니다.
+
+| 표시 이름 | 실제 글꼴 원본 | 기기 저장 이름 | 원문 라이선스 |
+| --- | --- | --- | --- |
+| 기본 명조 | [Noto Serif KR](https://raw.githubusercontent.com/notofonts/noto-cjk/f8d157532fbfaeda587e826d4cd5b21a49186f7c/Serif/SubsetOTF/KR/NotoSerifKR-Regular.otf) | `기본 명조` | [OFL](https://raw.githubusercontent.com/notofonts/noto-cjk/f8d157532fbfaeda587e826d4cd5b21a49186f7c/Serif/LICENSE) |
+| 기본 고딕 | [Noto Sans KR](https://raw.githubusercontent.com/notofonts/noto-cjk/f8d157532fbfaeda587e826d4cd5b21a49186f7c/Sans/SubsetOTF/KR/NotoSansKR-Regular.otf) | `기본 고딕` | [OFL](https://raw.githubusercontent.com/notofonts/noto-cjk/f8d157532fbfaeda587e826d4cd5b21a49186f7c/Sans/LICENSE) |
+| 나눔명조 | [NanumMyeongjo](https://raw.githubusercontent.com/google/fonts/06bfe0d62a98375cb09c942fa18e68bd32cff057/ofl/nanummyeongjo/NanumMyeongjo-Regular.ttf) | `나눔명조` | [OFL](https://raw.githubusercontent.com/google/fonts/06bfe0d62a98375cb09c942fa18e68bd32cff057/ofl/nanummyeongjo/OFL.txt) |
+| 나눔고딕 | [NanumGothic](https://raw.githubusercontent.com/google/fonts/06bfe0d62a98375cb09c942fa18e68bd32cff057/ofl/nanumgothic/NanumGothic-Regular.ttf) | `나눔고딕` | [OFL](https://raw.githubusercontent.com/google/fonts/06bfe0d62a98375cb09c942fa18e68bd32cff057/ofl/nanumgothic/OFL.txt) |
+| 고운바탕 | [Gowun Batang](https://raw.githubusercontent.com/google/fonts/06bfe0d62a98375cb09c942fa18e68bd32cff057/ofl/gowunbatang/GowunBatang-Regular.ttf) | `고운바탕` | [OFL](https://raw.githubusercontent.com/google/fonts/06bfe0d62a98375cb09c942fa18e68bd32cff057/ofl/gowunbatang/OFL.txt) |
+| 고운돋움 | [Gowun Dodum](https://raw.githubusercontent.com/google/fonts/06bfe0d62a98375cb09c942fa18e68bd32cff057/ofl/gowundodum/GowunDodum-Regular.ttf) | `고운돋움` | [OFL](https://raw.githubusercontent.com/google/fonts/06bfe0d62a98375cb09c942fa18e68bd32cff057/ofl/gowundodum/OFL.txt) |
+| 함렛 | [Hahmlet](https://raw.githubusercontent.com/google/fonts/06bfe0d62a98375cb09c942fa18e68bd32cff057/ofl/hahmlet/Hahmlet%5Bwght%5D.ttf) | `함렛` | [OFL](https://raw.githubusercontent.com/google/fonts/06bfe0d62a98375cb09c942fa18e68bd32cff057/ofl/hahmlet/OFL.txt) |
+| 프리텐다드 | [Pretendard](https://raw.githubusercontent.com/orioncactus/pretendard/7aeb0698819be2b4097dae8ec8fe6a795e5cf3ae/packages/pretendard/dist/public/static/Pretendard-Regular.otf) | `플렉스고딕` | [OFL](https://raw.githubusercontent.com/orioncactus/pretendard/7aeb0698819be2b4097dae8ec8fe6a795e5cf3ae/LICENSE) |
+
+기존 `mobtwig:reading-preferences:v1` 저장 형식과 이름을 유지합니다. `플렉스고딕` 저장값은 프리텐다드에 연결하므로 설정을 초기화하지 않습니다. 등록 이름·저작권·OFL 원문은 `src/readingFonts.ts`에서 관리하며 고지도 앱 번들에 포함합니다. 실행 중 사용하지 않는 원본·라이선스 주소는 위 표에 기록합니다. 글꼴의 문자 지원 범위는 각 원본을 따릅니다.
+
+글꼴은 [Noto CJK](https://github.com/notofonts/noto-cjk), [Google Fonts](https://github.com/google/fonts), [프리텐다드](https://github.com/orioncactus/pretendard)의 원본을 사용합니다. 원본 자산은 합계 약 38 MB이며 배포 파일 크기는 압축 방식에 따라 달라집니다.
 
 ## 서버 연동 전제
 
 `EXPO_PUBLIC_API_URL`은 일반 실행 및 테스트의 실제 개발 서버 주소이고, `EXPO_PUBLIC_MOCK_API_URL`은 테스트의 간이 서버 주소입니다. 환경 변수는 번들에 반영되므로 변경 후 앱을 완전히 다시 불러옵니다. 이미 배포한 번들의 주소는 서버 환경 변수만 바꿔 변경할 수 없습니다.
 
-실제 개발 서버에서도 홈의 `GET /sdui/home`과 작품 상세의 `GET /works/:id` 조회 계약을 구현해야 합니다. 회원 인증은 `/api/auth/csrf`, `/login`, `/logout`, `/session` 계약을 사용합니다. 시연 가입은 같은 경로 아래 `/terms`와 `/signup`을 사용합니다.
+Spring 서버는 홈 `GET /sdui/home`, 검색 `GET /works`, 상세 `GET /works/{slug}`와 공개 조회 API를 제공합니다. 회원 인증은 `/api/auth/` 아래 `csrf`, `login`, `logout`, `session`, 시연 가입은 `terms`, `signup`을 사용합니다. 회원 데이터 변경은 `/api/members/` 경로에서 현재 회원 세션과 CSRF를 사용하며 [API 명세서](../docs/API%20명세서.md)를 따릅니다.
 
 `EXPO_PUBLIC_` 값은 앱에 포함되므로 비밀번호나 비밀키를 넣지 않습니다.
 
@@ -192,7 +231,7 @@ TypeDoc은 `index.ts`, `App.tsx`, `src/` 전체에서 공개한 화면·공통 �
 
 상세의 첫 장/첫 화 읽기 또는 목차 항목은 workId와 chapterId를 reader 화면에 전달합니다. GET /works/{slug}/chapters/{chapterId}의 body를 재정규화하거나 HTML로 해석하지 않고 텍스트로 표시합니다. 공개 목차 순서의 이전/다음 회차, 경계 비활성, 현재 장 정보, 목차 선택, 로딩/오류/재시도/15초 제한과 이탈 취소를 제공합니다. 목차는 본문 응답에 포함돼 상세 조회수를 추가 집계하지 않습니다. 현재 장 버튼은 맨 위로만 이동하고 진도/페이지를 기록하지 않습니다. 세계관 미연동 화면을 왕복해도 읽던 작품과 회차로 돌아옵니다.
 
-기존 DB 정수 contentVersion과 정규화 본문의 contentHash를 구분하며 문자 수는 body.length(UTF-16)입니다. 기존 파일 URL이 HTML/EPUB/외부 HTTP이면 415 안내를 표시합니다. 페이지뷰·독서 기록·AI·설정집 구현은 후속입니다.
+기존 DB 정수 contentVersion과 정규화 본문의 contentHash를 구분하며 문자 수는 body.length(UTF-16)입니다. 기존 파일 URL이 HTML/EPUB/외부 HTTP이면 415 안내를 표시합니다. 독서 위치·책갈피·하이라이트는 회원 API와 연결되어 있습니다. 페이지뷰·AI·설정집은 이 텍스트 열람 기능에서 구현하지 않습니다.
 
 간이 서버는 fixtures/chapter-text.json의 명시적인 검증 예문을 반환합니다. 실제 본문·운영 데이터가 아닙니다. 실제 서버 DB 검사는 전용 MySQL을 쓰는 ReaderApiTest와 node server/src/test/js/reader-contract.mjs --with-db를 함께 실행합니다.
 
@@ -200,7 +239,7 @@ TypeDoc은 `index.ts`, `App.tsx`, `src/` 전체에서 공개한 화면·공통 �
 
 텍스트 뷰어의 현재 문단 하이라이트에서 범위와 노랑·초록을 선택합니다. 웹의 읽기 전용 입력에서는 드래그로 선택할 수 있습니다. 네이티브에서는 문단을 길게 누르거나 버튼을 누른 뒤 전체 선택과 시작·끝 조정으로 범위를 지정합니다. 조정은 유니코드 문자의 경계에서 이루어집니다. 선택 패널은 한 문단만 표시하며, 저장을 마치면 기존 뷰어의 스크롤 위치로 돌아옵니다.
 
-매거진은 이미지를 불러온 현재 쪽에 색을 기록합니다. 독서 기록에서 전체 또는 현재 작품의 하이라이트를 확인하고, 저장 위치 열기·삭제·문장 공유 화면으로 이동합니다. 텍스트 위치를 열면 해당 문단 시작으로 스크롤하고 선택했던 범위에 색을 표시합니다. 기기 공유와 링크 복사는 #63에서 연결합니다.
+매거진은 이미지를 불러온 현재 쪽에 색을 기록합니다. 독서 기록에서 전체 또는 현재 작품의 하이라이트를 확인하고, 저장 위치 열기·삭제·문장 공유 화면으로 이동합니다. 텍스트 위치를 열면 해당 문단 시작으로 스크롤하고 선택했던 범위에 색을 표시합니다. 기기 공유와 작품 링크 복사를 제공합니다.
 
 ## #39 책갈피
 
@@ -210,7 +249,7 @@ TypeDoc은 `index.ts`, `App.tsx`, `src/` 전체에서 공개한 화면·공통 �
 
 작품 상세의 이어보기는 회원의 저장 회차와 문단을 엽니다. 목차에서 회차를 직접 고르면 해당 회차 처음에서 읽습니다. 사용자의 스크롤이 멈추면 빈 줄 다음의 UTF-16 문단 경계 또는 회차 끝을 저장합니다. 짧은 회차와 스크롤 제스처를 인식하지 못한 환경에서는 저장 버튼을 사용할 수 있습니다. 긴 단일 문단 내부나 다른 뷰어가 저장한 문단 내부 위치는 해당 문단 처음으로 복원됩니다.
 
-저장 실패는 화면의 위치를 유지합니다. 서버 위치 확인 후 다시 저장할 수 있으며, 본문 개정 시 최신 본문에서 위치를 다시 확인합니다. 상세와 뷰어 사이에 다른 기기가 저장하면 어디서 읽을지 선택할 때까지 자동 저장을 멈춥니다. 뷰어의 뒤로 가기·회차 이동 버튼은 예약된 저장이나 진행 중 저장의 결과를 먼저 확인합니다. 브라우저 새로고침, OS 뒤로 가기, 앱 종료에는 이 대기가 적용되지 않습니다.
+통신으로 저장하지 못하면 화면의 위치를 유지하고 서버 위치를 확인한 뒤 재시도할 수 있습니다. 저장 충돌이나 진입 시 revision 차이는 최신 서버 위치를 조회해 복원합니다. 본문 개정 시에는 현재 본문과 위치를 다시 확인하며, 실패한 옛 위치를 충돌 후 임의로 덮어쓰지 않습니다. 뷰어의 뒤로 가기·회차 이동 버튼은 예약된 저장이나 진행 중 저장의 결과를 먼저 확인합니다. 브라우저 새로고침, OS 뒤로 가기, 앱 종료에는 이 대기가 적용되지 않습니다.
 
 ## #38 매거진 쪽 이어보기
 
