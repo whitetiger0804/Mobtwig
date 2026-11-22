@@ -138,7 +138,7 @@ class AdminApiTest {
         var created = browser.post("/api/admin/works", work);
         assertEquals(201, created.statusCode(), created.body());
         long id = ((Number) object(created).get("id")).longValue();
-        assertEquals(1L, count("SELECT COUNT(*) FROM board WHERE type='WORK' AND book_id=" + id));
+        assertEquals(0L, count("SELECT COUNT(*) FROM board WHERE type='WORK' AND book_id=" + id));
         assertEquals(1L, count("SELECT COUNT(*) FROM book WHERE id=" + id + " AND submitted_by_member_id IS NULL AND view_count=0"));
         assertEquals(1L, count("SELECT COUNT(*) FROM book_author WHERE book_id=" + id));
         assertEquals(1L, count("SELECT COUNT(*) FROM book_genre WHERE book_id=" + id));
@@ -153,7 +153,8 @@ class AdminApiTest {
         assertEquals(200, home.statusCode());
         assertTrue(home.body().contains(slug));
         assertEquals(204, browser.post("/api/admin/works/" + id + "/status", Map.of("publishStatus", "PUBLISHED")).statusCode());
-        assertEquals(1L, count("SELECT COUNT(*) FROM board WHERE book_id=" + id));
+        assertEquals(0L, count("SELECT COUNT(*) FROM board WHERE book_id=" + id));
+        jdbc.update("INSERT INTO board(type,book_id) VALUES('WORK',?)", id);
         assertEquals(204, browser.post("/api/admin/works/" + id + "/status", Map.of("publishStatus", "HIDDEN")).statusCode());
         assertEquals(404, browser.get("/works/" + slug).statusCode());
         assertFalse(browser.get("/sdui/home?kind=all").body().contains(slug));

@@ -73,6 +73,11 @@ class WorkSearchApiTest {
                 INSERT INTO book_author(book_id,author_id) VALUES
                 (-96001,-96101),(-96001,-96102),(-96003,-96101),(-96004,-96101)
                 """);
+        jdbc.update("INSERT INTO genre(id,name) VALUES(-96201,'판타지'),(-96202,'로맨스'),(-96203,'현대판타지'),(-96204,'특수%_!')");
+        jdbc.update("""
+                INSERT INTO book_genre(book_id,genre_id) VALUES
+                (-96001,-96201),(-96001,-96203),(-96003,-96201),(-96003,-96202),(-96004,-96201),(-96005,-96204)
+                """);
     }
 
     @AfterEach
@@ -81,8 +86,10 @@ class WorkSearchApiTest {
         assertTrue(database != null && (database.equals("mobtwig_ci") || database.matches("[A-Za-z0-9_]+_test")));
         jdbc.update("DELETE FROM book_stat_daily WHERE book_id IN (" + BOOK_IDS + ")");
         jdbc.update("DELETE FROM book_author WHERE book_id IN (" + BOOK_IDS + ")");
+        jdbc.update("DELETE FROM book_genre WHERE book_id IN (" + BOOK_IDS + ")");
         jdbc.update("DELETE FROM book WHERE id IN (" + BOOK_IDS + ")");
         jdbc.update("DELETE FROM author WHERE id IN (-96101,-96102)");
+        jdbc.update("DELETE FROM genre WHERE id IN (-96201,-96202,-96203,-96204)");
     }
 
     @Test
@@ -95,6 +102,28 @@ class WorkSearchApiTest {
         assertEquals("과학 입문", science.path(0).path("title").asString());
         assertEquals("/media/도서/과학 표지.png", science.path(0).path("imageUrl").asString());
         assertEquals("book", science.path(0).path("kind").asString());
+    }
+
+    @Test
+    void combinesGenreWithQueryAndKindWithoutDuplicatesOrGenrelessWorks() throws Exception {
+        assertEquals(List.of("search-science", "search-novel"), ids(results(search("과학", "all", "판타지"))));
+        assertEquals(List.of("search-novel"), ids(results(search("과학", "novel", "판타지"))));
+        assertEquals(List.of("search-science"), ids(results(search("과학", "book", "현대판타지"))));
+        assertEquals(List.of("search-science", "search-novel"), ids(results(search("과학", "all", " \u00A0판타지\uFEFF "))));
+        assertEquals(List.of("search-science", "search-magazine", "search-novel"), ids(results(search("과학", "all"))));
+        assertEquals(List.of(), ids(results(search("과학", "magazine", "판타지"))));
+    }
+
+    @Test
+    void matchesLiteralGenreNamesAndReturnsEmptyForUnknownNames() throws Exception {
+        assertEquals(List.of("search-literal"), ids(results(search("자바", "all", "특수%_!"))));
+        assertEquals(List.of(), ids(results(search("자바", "all", "%"))));
+        assertEquals(List.of(), ids(results(search("과학", "novel", "등록되지 않은 장르"))));
+        for (String genre : List.of("", " \u00A0\uFEFF ", "😀".repeat(51))) {
+            assertEquals(List.of(), ids(results(search("과학", "all", genre))));
+        }
+        assertEquals(List.of("search-science", "search-novel"), ids(results(get("/works?query=" + encode("과학")
+                + "&genre=" + encode("판타지") + "&genre=" + encode("로맨스")))));
     }
 
     @Test
@@ -146,6 +175,7 @@ class WorkSearchApiTest {
             assertEquals(400, get("/works?" + parameters).statusCode(), parameters);
         }
         assertEquals(0, results(search("😀".repeat(200), "all")).size());
+        assertEquals(0, results(search("a", "all", "😀".repeat(50))).size());
     }
 
     @Test
@@ -179,6 +209,10 @@ class WorkSearchApiTest {
 
     private HttpResponse<String> search(String query, String kind) throws Exception {
         return get("/works?query=" + encode(query) + "&kind=" + encode(kind));
+    }
+
+    private HttpResponse<String> search(String query, String kind, String genre) throws Exception {
+        return get("/works?query=" + encode(query) + "&kind=" + encode(kind) + "&genre=" + encode(genre));
     }
 
     private HttpResponse<String> get(String path) throws Exception {

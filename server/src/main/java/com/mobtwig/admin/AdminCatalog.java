@@ -109,7 +109,7 @@ public class AdminCatalog {
         if (input.genreIds().isEmpty() && input.categoryIds().isEmpty()) {
             throw AdminRules.bad("장르 또는 카테고리를 한 개 이상 선택하십시오.");
         }
-        chapters(input.chapters(), input.kind(), input.pageCount());
+        var chapters = chapters(input.chapters(), input.kind(), input.pageCount());
         long id = insert("""
                 INSERT INTO book(content_type,slug,title,description,cover_image_url,published_date,
                     publisher,file_format,page_count,volume_label,publish_cycle,serial_status,publish_status)
@@ -121,8 +121,7 @@ public class AdminCatalog {
         link("book_author", "author_id", id, input.authorIds());
         link("book_genre", "genre_id", id, input.genreIds());
         link("book_category", "category_id", id, input.categoryIds());
-        for (var chapter : input.chapters()) { insertChapter(id, chapter); }
-        if ("PUBLISHED".equals(input.publishStatus())) { board(id); }
+        for (var chapter : chapters) { insertChapter(id, chapter); }
         return id;
     }
 
@@ -137,8 +136,8 @@ public class AdminCatalog {
         StoredWork work = stored(id);
         var existing = new java.util.ArrayList<>(storedChapters(id));
         existing.add(input);
-        chapters(existing, "MAGAZINE".equals(work.contentType()) ? "magazine" : "book", work.pageCount());
-        return insertChapter(id, input);
+        var chapters = chapters(existing, "MAGAZINE".equals(work.contentType()) ? "magazine" : "book", work.pageCount());
+        return insertChapter(id, chapters.getLast());
     }
 
     /**
@@ -154,7 +153,7 @@ public class AdminCatalog {
             if (!slug.matches("[a-z0-9-]+")) { throw AdminRules.bad("작품 식별자가 올바르지 않습니다."); }
             AdminRules.text(work.title(), "작품 제목", 200);
             AdminRules.text(work.description(), "작품 소개", 65535);
-            AdminRules.url(AdminRules.text(work.imageUrl(), "표지 주소", 500), "표지 주소");
+            AdminRules.url(work.imageUrl(), "표지 주소");
             AdminRules.text(work.publisher(), "출판사", 100);
             AdminRules.text(work.fileFormat(), "파일 형식", 20);
             if (work.publishedAt() == null) { throw AdminRules.bad("작품 발행일을 입력하십시오."); }
@@ -172,7 +171,6 @@ public class AdminCatalog {
             authors.forEach(name -> AdminRules.text(name, "저자 이름", 100));
             classifications.forEach(name -> AdminRules.text(name, "분류 이름", 50));
             chapters(storedChapters(id), "MAGAZINE".equals(work.contentType()) ? "magazine" : "book", work.pageCount());
-            board(id);
         }
         jdbc.update("UPDATE book SET publish_status=? WHERE id=?", status, id);
     }
@@ -192,13 +190,6 @@ public class AdminCatalog {
         for (long value : values) { jdbc.update("INSERT INTO " + table + "(book_id," + column + ") VALUES (?,?)", id, value); }
     }
 
-    private void board(long id) {
-        jdbc.update("""
-                INSERT INTO board(type,book_id,name) SELECT 'WORK',?,NULL
-                WHERE NOT EXISTS(SELECT 1 FROM board WHERE book_id=?)
-                """, id, id);
-    }
-
     private StoredWork stored(long id) {
         return jdbc.query("""
                 SELECT id,content_type,slug,title,description,cover_image_url AS image_url,
@@ -211,24 +202,28 @@ public class AdminCatalog {
         return jdbc.query("SELECT * FROM chapter WHERE book_id=? ORDER BY chapter_no", (rs, row) -> {
             Timestamp published = rs.getTimestamp("published_at");
             return new AdminRequests.Chapter(rs.getInt("chapter_no"),
-                    AdminRules.text(rs.getString("title"), "회차 제목", 200),
+                    rs.getString("title"),
                     published == null ? null : published.toInstant(), rs.getInt("char_count"),
                     rs.getString("summary"), rs.getString("category_label"),
                     rs.getObject("start_page", Integer.class), rs.getString("content_url"));
         }, id);
     }
 
-    private void chapters(List<AdminRequests.@NonNull Chapter> values, String kind, @Nullable Integer pageCount) {
+    private List<AdminRequests.@NonNull Chapter> chapters(List<AdminRequests.@NonNull Chapter> values,
+            String kind, @Nullable Integer pageCount) {
         if (values.isEmpty()) { throw AdminRules.bad("회차를 한 개 이상 등록하십시오."); }
+        var normalized = values.stream().map(chapter -> new AdminRequests.Chapter(
+                chapter.chapterNo(), chapter.title(), chapter.publishedAt(), chapter.characterCount(),
+                AdminRules.optional(chapter.summary(), "회차 요약", 65535),
+                AdminRules.optional(chapter.category(), "회차 분류", 50), chapter.pageNumber(),
+                AdminRules.optional(chapter.contentUrl(), "본문 주소", 500))).toList();
         int previousChapter = 0;
         int previousPage = 0;
-        for (var chapter : values.stream().sorted(Comparator.comparingInt(AdminRequests.Chapter::chapterNo)).toList()) {
+        for (var chapter : normalized.stream().sorted(Comparator.comparingInt(AdminRequests.Chapter::chapterNo)).toList()) {
             if (chapter.chapterNo() <= previousChapter) { throw AdminRules.bad("회차 번호가 중복되었습니다."); }
             previousChapter = chapter.chapterNo();
             AdminRules.text(chapter.title(), "회차 제목", 200);
-            AdminRules.optional(chapter.summary(), "회차 요약", 65535);
-            AdminRules.optional(chapter.category(), "회차 분류", 50);
-            String content = AdminRules.optional(chapter.contentUrl(), "본문 주소", 500);
+            String content = chapter.contentUrl();
             if (chapter.publishedAt() != null && content == null) { throw AdminRules.bad("공개 회차에는 본문 주소가 필요합니다."); }
             Instant published = chapter.publishedAt();
             if (published != null && (published.isBefore(Instant.parse("1970-01-01T00:00:01Z"))
@@ -244,6 +239,7 @@ public class AdminCatalog {
                 previousPage = page;
             }
         }
+        return normalized;
     }
 
     private long insertChapter(long bookId, AdminRequests.Chapter chapter) {
@@ -252,9 +248,7 @@ public class AdminCatalog {
                 INSERT INTO chapter(book_id,chapter_no,title,published_at,char_count,summary,category_label,start_page,content_url)
                 VALUES (?,?,?,?,?,?,?,?,?)
                 """, bookId, chapter.chapterNo(), chapter.title(), published == null ? null : Timestamp.from(published),
-                chapter.characterCount(), AdminRules.optional(chapter.summary(), "회차 요약", 65535),
-                AdminRules.optional(chapter.category(), "회차 분류", 50), chapter.pageNumber(),
-                AdminRules.optional(chapter.contentUrl(), "본문 주소", 500));
+                chapter.characterCount(), chapter.summary(), chapter.category(), chapter.pageNumber(), chapter.contentUrl());
     }
 
     private long insert(@NonNull String sql, @Nullable Object @NonNull ... values) {

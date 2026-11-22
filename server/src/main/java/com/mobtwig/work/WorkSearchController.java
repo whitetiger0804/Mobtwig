@@ -25,8 +25,8 @@ public class WorkSearchController {
     }
 
     /**
-     * 검색어와 선택한 콘텐츠 종류에 맞는 공개 작품을 반환합니다.
-     * @param parameters 검색어 query와 선택적인 종류 kind입니다. 각 값은 한 번만 지정합니다.
+     * 검색어·콘텐츠 종류·선택 장르에 맞는 공개 작품을 반환합니다.
+     * @param parameters 검색어 query와 선택적인 종류 kind·장르 genre입니다. 각 값은 한 번만 지정합니다.
      * @return 검색 결과이며 결과가 없으면 빈 목록입니다.
      * @throws ResponseStatusException 검색 조건이 중복되거나 올바르지 않으면 발생합니다.
      */
@@ -34,9 +34,10 @@ public class WorkSearchController {
     public List<@NonNull WorkSearchResponse> search(@RequestParam MultiValueMap<String, String> parameters) {
         List<String> queries = parameters.get("query");
         List<String> kinds = parameters.get("kind");
+        List<String> genres = parameters.get("genre");
         if (queries == null || queries.size() != 1 || kinds != null && kinds.size() != 1) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "검색어와 종류는 각각 한 번만 지정하십시오.");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "검색어·종류는 각각 한 번만 지정하십시오.");
         }
-        return search.search(queries.getFirst(), kinds == null ? "all" : kinds.getFirst());
+        return search.search(queries.getFirst(), kinds == null ? "all" : kinds.getFirst(), genres == null ? null : genres.getFirst());
     }
 }
