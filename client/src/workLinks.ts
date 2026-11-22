@@ -15,7 +15,7 @@ export function parseWorkLink(value: string, baseUrl?: string): string | null {
 
 /**
  * 초기 URL을 기다리는 동안 수신한 새 링크가 초기 URL에 덮이지 않도록 구독합니다.
- * Expo 개발 런처 주소는 초기 작품 링크로 해석하지 않습니다.
+ * Expo 개발 런처 주소는 초기·실행 중 모두 작품 링크로 해석하지 않습니다.
  */
 export function observeWorkLinks(source: {
   addEventListener(type: 'url', listener: (event: { url: string }) => void): { remove(): void };
@@ -23,14 +23,18 @@ export function observeWorkLinks(source: {
 }, update: (target: { workId: string | null; sequence: number } | null) => void, baseUrl?: string) {
   let active = true;
   let sequence = 0;
+  const isSharedLink = (url: string | null | undefined) => {
+    let shared = !!url && url.startsWith('mobtwig:');
+    try { shared ||= !!url && url.startsWith(shareOrigin(baseUrl) + '/s/'); } catch { /* 별도 공유 설정 오류는 링크 오류 화면에서 처리합니다. */ }
+    return shared;
+  };
   const receive = ({ url }: { url: string }) => {
-    if (active) update({ workId: parseWorkLink(url, baseUrl), sequence: ++sequence });
+    if (active && isSharedLink(url)) update({ workId: parseWorkLink(url, baseUrl), sequence: ++sequence });
   };
   const subscription = source.addEventListener('url', receive);
   source.getInitialURL().then(url => {
     if (!active || sequence !== 0) return;
-    let shared = !!url && url.startsWith('mobtwig:');
-    try { shared ||= !!url && url.startsWith(shareOrigin(baseUrl) + '/s/'); } catch { /* 별도 공유 설정 오류는 링크 오류 화면에서 처리합니다. */ }
+    const shared = isSharedLink(url);
     update(shared && url ? { workId: parseWorkLink(url, baseUrl), sequence: ++sequence } : null);
   }).catch(() => {
     if (active && sequence === 0) update({ workId: null, sequence: ++sequence });
