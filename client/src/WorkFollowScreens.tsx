@@ -99,11 +99,11 @@ export function WorkFollowActions({ workId, kind }: { workId: string; kind: Work
   return <View style={styles.actionsSection}>
     <View style={s.row}>
       <View style={styles.control}>
-        <IconButton icon="heart" label={favoriteLabel} disabled={disabled} selected={value?.favorite} onPress={() => void toggle('favorite')} />
+        <IconButton icon="heart" label={favoriteLabel} disabled={disabled} selected={value?.favorite} filled={value?.favorite} onPress={() => void toggle('favorite')} />
         <Text style={s.muted}>{favoriteLabel}</Text>
       </View>
       {kind === 'novel' && <View style={styles.control}>
-        <IconButton icon="bookmark" label={subscriptionLabel} disabled={disabled} selected={value?.subscribed} onPress={() => void toggle('subscription')} />
+        <IconButton icon="bookmark" label={subscriptionLabel} disabled={disabled} selected={value?.subscribed} filled={value?.subscribed} onPress={() => void toggle('subscription')} />
         <Text style={s.muted}>{subscriptionLabel}</Text>
       </View>}
     </View>
@@ -158,6 +158,6 @@ export function FavoriteWorksScreen() {
 }
 
 const styles = StyleSheet.create({
-  actionsSection: { alignItems: 'flex-start', gap: 8, marginVertical: 8 },
-  control: { alignItems: 'center', minWidth: 52 },
+  actionsSection: { alignItems: 'flex-start', gap: 8 },
+  control: { flexDirection: 'row', alignItems: 'center', gap: 2 },
 });

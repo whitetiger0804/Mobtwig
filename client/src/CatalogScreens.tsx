@@ -1,7 +1,7 @@
 // #region 의존성 가져오기
 import { useRecentWorks } from './recentWorksContext';
 import { useEffect, useRef, useState } from 'react';
-import { Share } from 'react-native';
+import { AccessibilityInfo, Share } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { workShare } from './workSharing';
 import { parseHomeResponse, type SduiSection } from './homeSchema';
@@ -63,7 +63,8 @@ export function SearchScreen({ route }: {
   const [kind, setKind] = useState(route.kind);
   const [query, setQuery] = useState('');
   const [submittedQuery, setSubmittedQuery] = useState<string | null>(null);
-  const [genre, setGenre] = useState('로맨스');
+  const [genre, setGenre] = useState<string>();
+  const selectedGenre = kind === 'novel' ? genre : undefined;
   const apiUrl = useApiUrl();
   const [recommended, setRecommended] = useState<Extract<SduiSection, { type: 'workShelf' }>['items'] | null>(null);
   const [recommendError, setRecommendError] = useState<string | null>(null);
@@ -97,7 +98,7 @@ export function SearchScreen({ route }: {
       .then(parseHomeResponse)
       .then(home => {
         const shelf = home.sections.find(section => section.type === 'workShelf');
-        if (!controller.signal.aborted) setRecommended(shelf?.type === 'workShelf' ? shelf.items : []);
+        if (!controller.signal.aborted) setRecommended(shelf?.items ?? []);
       })
       .catch((reason: unknown) => {
         if (!controller.signal.aborted) setRecommendError(reason instanceof Error ? reason.message : '서버 연결을 확인해 주십시오.');
@@ -116,7 +117,7 @@ export function SearchScreen({ route }: {
     setSearchResults(null);
     setSearchError(null);
     setSearchLoading(true);
-    searchWorks(apiUrl, submittedQuery, kind, controller.signal)
+    searchWorks(apiUrl, submittedQuery, kind, controller.signal, selectedGenre)
       .then(results => {
         if (!controller.signal.aborted) setSearchResults(results);
       })
@@ -129,7 +130,7 @@ export function SearchScreen({ route }: {
         if (!controller.signal.aborted) setSearchLoading(false);
       });
     return () => controller.abort();
-  }, [apiUrl, kind, submittedQuery, searchAttempt]);
+  }, [apiUrl, kind, selectedGenre, submittedQuery, searchAttempt]);
 
   const openWork = (work: WorkSearchResult) => navigate({ screen: 'detail', workId: work.id });
   const searchContent = kind === undefined
@@ -227,9 +228,9 @@ export function SearchScreen({ route }: {
       </> : <>
         <ScrollView horizontal style={c.horizontalStrip} showsHorizontalScrollIndicator={false} contentContainerStyle={c.searchFilters}>
           <IconButton icon="settings" label="검색 설정" onPress={() => navigate({ screen: 'filters', kind })} />
-          {(kind === 'novel' ? ['로맨스', '판타지', '현대판타지', '로맨스판타지'] : ['카테고리', '가격', '발행일']).map(label => <Chip key={label} label={label} selected={kind === 'novel' && genre === label} onPress={() => kind === 'novel' ? setGenre(label) : navigate({ screen: 'filters', kind })} />)}
+          {(kind === 'novel' ? ['로맨스', '판타지', '현대판타지', '로맨스판타지'] : ['카테고리', '가격', '발행일']).map(label => <Chip key={label} label={label} selected={kind === 'novel' && genre === label} onPress={() => kind === 'novel' ? setGenre(current => current === label ? undefined : label) : navigate({ screen: 'filters', kind })} />)}
         </ScrollView>
-        <Title action={<Pressable accessibilityRole="button" onPress={() => navigate({ screen: 'filters', kind })} style={c.sortButton}><Text style={s.muted}>인기순</Text><View style={c.downIcon}><Icon name="next" size={12} /></View></Pressable>}>검색 결과 · {submittedQuery ?? query}</Title>
+        <Title action={<Pressable accessibilityRole="button" onPress={() => navigate({ screen: 'filters', kind })} style={c.sortButton}><Text style={s.muted}>최신순</Text><View style={c.downIcon}><Icon name="next" size={12} /></View></Pressable>}>검색 결과</Title>
         {searchContent}
       </>}
     </ScrollView>
@@ -267,7 +268,7 @@ export function FiltersScreen() {
  * @param props - 해당 작품의 목차 또는 회차와 표시 분류입니다.
  * @returns 실제 항목 수에 맞는 목록 또는 빈 상태 안내입니다.
  */
-function DetailContents({ items, kind, workId, products, ready, busy, authenticated, purchase }: {
+function DetailContents({ items, kind, workId, products, ready, busy, purchasingProductId, authenticated, purchase }: {
   /** 선택 회차와 함께 전달할 작품 slug입니다. */
   workId: string;
   /** 서버에서 받은 목차 또는 회차 목록입니다. */
@@ -280,10 +281,12 @@ function DetailContents({ items, kind, workId, products, ready, busy, authentica
   ready: boolean;
   /** 다른 구매를 처리하고 있는지 나타냅니다. */
   busy: boolean;
+  /** 진행 표시를 붙일 현재 구매 상품입니다. 다른 회차는 입력만 잠급니다. */
+  purchasingProductId?: string;
   /** 회원 구매 요청을 보낼 수 있는지 나타냅니다. */
   authenticated: boolean;
   /** 선택한 회차 상품의 구매를 처리합니다. */
-  purchase: (product: PurchaseProduct) => Promise<void>;
+  purchase: (product: PurchaseProduct) => Promise<boolean>;
 }) {
   const { navigate } = useApp();
   if (items.length === 0) return <EmptyState title={kind === 'novel' ? '표시할 회차가 없습니다.' : '표시할 목차가 없습니다.'} />;
@@ -311,7 +314,7 @@ function DetailContents({ items, kind, workId, products, ready, busy, authentica
           </View>}
         </View>
         {ready && product && !product.readable && kind === 'novel'
-          ? <Action compact label="구매" style={c.chapterPurchase} disabled={busy}
+          ? <Action compact label="구매" style={c.chapterPurchase} disabled={busy} loading={busy && product.productId === purchasingProductId}
             onPress={() => authenticated ? void purchase(product) : navigate({ screen: 'login' })} />
           : readable && <IconButton icon="next" label={item.title + ' 본문 읽기'}
             onPress={() => navigate({ screen: 'reader', kind, workId, chapterId: item.id })} />}
@@ -341,7 +344,6 @@ export function DetailScreen({ route }: {
   const [work, setWork] = useState<WorkDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
-  const [tab, setTab] = useState('회차');
   const { state: auth, client: member } = useMemberAuth();
   const offer = useWorkProducts(route.workId);
   const owner = auth.generation + ':' + auth.member?.id;
@@ -396,7 +398,8 @@ export function DetailScreen({ route }: {
   </View>;
 
   const kind = work.kind;
-  const openReviews = () => navigate({ screen: 'reviews', kind, workId: work.id, workTitle: work.title });
+  const reviewContext = { kind, workId: work.id, workTitle: work.title, workAuthor: work.author, workImageUrl: work.imageUrl };
+  const openReviews = () => navigate({ ...reviewContext, screen: 'reviews' });
   const firstChapter = work.contents[0];
   const resumePosition = reading?.position?.unit === (kind === 'magazine' ? 'page' : 'utf16')
     && work.contents.some(chapter => chapter.id === reading.position?.chapterId)
@@ -410,17 +413,14 @@ export function DetailScreen({ route }: {
   const canRead = productsReady && (!startProduct || startProduct.readable);
   const authenticated = auth.status === 'authenticated';
   const productLabel = canRead ? readingLabel : '구매';
-  const contentsProps = { products: offer.products, ready: productsReady, busy: offer.busy, authenticated, purchase: offer.purchase };
+  const contentsProps = { products: offer.products, ready: productsReady, busy: offer.busy,
+    purchasingProductId: offer.purchasingProductId, authenticated, purchase: offer.purchase };
   return <View testID={'detail-' + work.id} style={c.detail}>
-    <View style={[c.detailSummary, kind === 'book' && c.bookDetailSummary]}>
-      <Image accessibilityLabel={work.title + ' 표지'} source={{ uri: new URL(work.imageUrl, apiUrl + '/').href }} resizeMode="cover" style={[c.detailCover, kind === 'book' && c.bookDetailCover]} />
-      <View style={[c.detailSummaryInfo, kind === 'novel' && c.novelSummaryInfo]}>
-        <View accessible accessibilityRole="header" accessibilityLabel={work.title} style={c.detailTitleWords}>
-          {work.title.split(/\s+/).map((word, index) => <Text key={index} style={c.detailTitle}>{word}</Text>)}
-        </View>
+    <View style={c.detailSummary}>
+      <Image accessibilityLabel={work.title + ' 표지'} source={{ uri: new URL(work.imageUrl, apiUrl + '/').href }} resizeMode="cover" style={c.detailCover} />
+      <View style={c.detailSummaryInfo}>
+        <Text accessibilityRole="header" style={c.detailTitle}>{work.title}</Text>
         <Text style={c.detailAuthor}>{work.author}</Text>
-        <Action compact tone="secondary" label="작품 공유" icon="share"
-          onPress={() => navigate({ screen: 'share', workId: work.id, shareWorkTitle: work.title })} />
         {kind === 'book' && <View style={c.publisherRow}><Text style={s.muted}>출판사</Text><Text style={[s.text, s.grow]}>{work.publisher}</Text></View>}
         {kind === 'magazine' && work.issue && <Text style={c.detailIssue}>{work.issue}</Text>}
         {kind === 'novel' && work.statistics && <View style={c.stats}>
@@ -428,7 +428,8 @@ export function DetailScreen({ route }: {
             <View style={c.stat}><Text style={s.muted}>추천</Text><Text style={c.statValue}>{work.statistics.recommendations.toLocaleString('ko-KR')}</Text></View>
             <View style={c.stat}><Text style={s.muted}>평점</Text><Text style={c.statValue}>{work.statistics.rating}</Text></View>
           </View>}
-        <Action label={productLabel} style={c.detailPrimaryAction} disabled={!startChapter || !productsReady || offer.busy || canRead && readingLoading}
+        <Action label={productLabel} style={c.detailPrimaryAction} loading={offer.busy && startProduct?.productId === offer.purchasingProductId}
+          disabled={!startChapter || !productsReady || offer.busy || canRead && readingLoading}
           onPress={() => {
             if (!canRead && startProduct) {
               if (authenticated) void offer.purchase(startProduct);
@@ -444,21 +445,25 @@ export function DetailScreen({ route }: {
       <Action compact label="상품 다시 불러오기" onPress={offer.refresh} /></View>}
     {offer.message !== null && <Text accessibilityLiveRegion="polite" style={s.muted}>{offer.message}</Text>}
     {readingFailed && <Action compact tone="secondary" label="저장 위치 다시 확인" onPress={() => setReadingAttempt(value => value + 1)} />}
-    <WorkFollowActions key={work.id} workId={work.id} kind={kind} />
+    <View style={c.detailTools}>
+      <WorkFollowActions key={work.id} workId={work.id} kind={kind} />
+      <Action compact tone="quiet" label="작품 공유" icon="share"
+        onPress={() => navigate({ screen: 'share', workId: work.id, shareWorkTitle: work.title })} />
+    </View>
     {kind === 'novel' ? <>
       <View style={c.detailTags}><Text style={c.kindPill}>웹소설</Text><Text style={c.kindPill}>{work.category}</Text></View>
       <View style={c.novelIntroduction}>
         <View style={s.grow}><Text style={s.subtitle}>작품 소개</Text><Text style={[c.detailBody, c.description]}>{work.description}</Text></View>
       </View>
       <View style={c.detailTabs}>
-        {['회차', '리뷰'].map(label => <Pressable key={label} accessibilityRole="tab" accessibilityState={{ selected: tab === label }} onPress={() => label === '리뷰' ? openReviews() : setTab(label)} style={[c.detailTab, tab === label && c.categoryTabSelected]}><Text style={[c.categoryTabLabel, tab === label && c.selectedLabel]}>{label}</Text></Pressable>)}
+        {['회차', '리뷰'].map(label => <Pressable key={label} accessibilityRole="tab" accessibilityState={{ selected: label === '회차' }} onPress={label === '리뷰' ? openReviews : undefined} style={[c.detailTab, label === '회차' && c.categoryTabSelected]}><Text style={[c.categoryTabLabel, label === '회차' && c.selectedLabel]}>{label}</Text></Pressable>)}
         <Text style={[s.muted, c.chapterCount]}>전체 {work.contents.length}화</Text>
       </View>
       <DetailContents items={work.contents} kind={kind} workId={work.id} {...contentsProps} />
     </> : kind === 'book' ? <>
       <View style={c.detailSection}>
         <Title>작품 정보</Title>
-        <View style={c.introductionCard}><Text style={s.subtitle}>책 소개</Text><Text style={c.detailBody}>{work.description}</Text></View>
+        <View style={c.introductionCard}><Text style={c.detailBody}>{work.description}</Text></View>
         <View style={c.metadata}>
           <View style={c.metadataRow}><Text style={c.metadataLabel}>분야</Text><Text style={[s.text, s.grow]}>{work.category}</Text></View>
           <View style={c.metadataRow}><Text style={c.metadataLabel}>발행일</Text><Text style={[s.text, s.grow]}>{work.publishedAt}</Text></View>
@@ -476,7 +481,7 @@ export function DetailScreen({ route }: {
         </View>
       </View>
       <View style={c.detailSection}>
-        <Title action={<Text style={s.muted}>{work.contents.length}개 아티클{work.pageCount !== undefined && ' · ' + work.pageCount + '쪽'}</Text>}>목차</Title>
+        <Title>목차</Title>
         <DetailContents items={work.contents} kind={kind} workId={work.id} {...contentsProps} />
       </View>
       <View style={c.detailSection}>
@@ -490,12 +495,7 @@ export function DetailScreen({ route }: {
       </View>
     </>}
     <View style={c.detailSection}>
-      <Title action={<View style={[s.row, { gap: 8 }]}>
-        <Action compact tone="secondary" label="리뷰 보기" onPress={openReviews} />
-        {kind === 'book' && <Action compact tone="secondary" label="리뷰 작성"
-          onPress={() => navigate({ screen: 'reviewWrite', kind, workId: work.id, workTitle: work.title })} />}
-      </View>}>리뷰</Title>
-      <WorkReviewPreview workId={work.id} />
+      <WorkReviewPreview {...reviewContext} />
     </View>
   </View>;
 }
@@ -509,23 +509,37 @@ export function DetailScreen({ route }: {
  * 구매 후 서버가 등록한 작품을 화면 진입마다 다시 조회합니다. 회원·서버·분류가
  * 바뀌면 목록 컴포넌트를 새로 생성하여 이전 회원의 자료를 표시하지 않습니다.
  *
- * @param props - 서재에서 선택한 분류를 포함하는 화면 속성입니다.
+ * 마지막으로 선택한 탭은 기기에 저장하므로 다른 화면이나 앱 재실행 후에도 유지합니다.
+ *
  * @returns 고정 탭과 조회 상태 또는 스크롤 가능한 회원 서재입니다.
  */
-export function LibraryScreen({ route }: {
-  /** 서재의 현재 분류 탭을 제공하는 UI 이동 상태입니다. */
-  route: Route;
-}) {
-  const { navigate } = useApp();
+export function LibraryScreen() {
+  const { navigate, libraryTab: kind, setLibraryTab } = useApp();
   const { state: auth, client } = useMemberAuth();
   const apiUrl = useApiUrl();
-  const kind = route.kind ?? 'book';
+  const [savingTab, setSavingTab] = useState(false);
+  const [tabError, setTabError] = useState('');
+  /**
+   * 저장에 성공한 탭만 표시하며 저장 실패 시 기존 선택을 유지합니다.
+   * @param tab - 사용자가 선택한 서재 분류입니다.
+   * @returns 탭 저장과 화면 상태 갱신이 끝나면 이행됩니다.
+   */
+  async function selectTab(tab: typeof kind) {
+    setSavingTab(true);
+    setTabError('');
+    navigate({ screen: 'library' }, true);
+    try { await setLibraryTab(tab); }
+    catch { setTabError('서재 탭을 저장하지 못했습니다. 다시 선택해 주세요.'); }
+    finally { setSavingTab(false); }
+  }
   return <View style={s.grow}>
-    <View style={c.libraryTabs}>{(['book', 'magazine', 'novel'] as const).map(value => <Pressable key={value} accessibilityRole="tab" accessibilityState={{ selected: kind === value }} onPress={() => navigate({ screen: 'library', kind: value }, true)} style={c.libraryTab}>
+    <View style={c.libraryTabs}>{(['book', 'magazine', 'novel'] as const).map(value => <Pressable key={value} accessibilityRole="tab"
+      accessibilityState={{ selected: kind === value, disabled: savingTab }} disabled={savingTab} onPress={() => { void selectTab(value); }} style={c.libraryTab}>
       <Text style={[c.categoryTabLabel, kind === value && c.selectedLabel]}>{kindLabel(value)}</Text>
       {kind === value && <View style={c.libraryTabIndicator} />}
     </Pressable>)}</View>
     <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={c.libraryBody}>
+      {!!tabError && <Text accessibilityRole="alert" style={s.error}>{tabError}</Text>}
       {auth.status === 'checking' ? <ActivityIndicator color={colors.green} />
         : auth.status === 'error' ? <View style={c.section}><Text style={s.error}>로그인 상태를 확인하지 못했습니다.</Text>
           <Action label="로그인 상태 다시 확인" onPress={() => { void client.refresh(); }} /></View>
@@ -597,19 +611,17 @@ function LibraryContents({ kind }: { kind: NonNullable<Route['kind']> }) {
   </View>;
   if (items === null) return <ActivityIndicator accessibilityLabel="서재 불러오는 중" color={colors.green} />;
   if (items.length === 0) return <EmptyState title="서재가 비어 있습니다." />;
-  if (kind !== 'novel') return <View style={c.libraryGrid}>{items.map(work => <Pressable key={work.id}
-    accessibilityRole="button" accessibilityLabel={work.title + ' 상세 보기'} style={c.libraryGridItem}
-    onPress={() => navigate({ screen: 'detail', workId: work.id, kind: work.kind })}>
-    <Image accessibilityLabel={work.title + ' 표지'} source={{ uri: new URL(work.imageUrl, apiUrl + '/').href }} resizeMode="cover" style={c.libraryGridCover} />
-    <Text style={c.libraryGridTitle} numberOfLines={2}>{work.title}</Text>
-  </Pressable>)}</View>;
-  return <View style={c.libraryNovelList}>
+  return <View style={kind === 'novel' ? c.libraryNovelList : c.libraryGrid}>
     {openingError !== null && <Text accessibilityRole="alert" style={s.error}>{openingError}</Text>}
-    {items.map(work => <View key={work.id} style={c.libraryNovelItem}>
+    {items.map(work => work.kind !== 'novel' ? <Pressable key={work.id}
+      accessibilityRole="button" accessibilityLabel={work.title + ' 상세 보기'} style={c.libraryGridItem}
+      onPress={() => navigate({ screen: 'detail', workId: work.id, kind: work.kind })}>
+      <Image accessibilityLabel={work.title + ' 표지'} source={{ uri: new URL(work.imageUrl, apiUrl + '/').href }} resizeMode="cover" style={c.libraryGridCover} />
+      <Text style={c.libraryGridTitle} numberOfLines={2}>{work.title}</Text>
+    </Pressable> : <View key={work.id} style={c.libraryNovelItem}>
       <Pressable accessibilityRole="button" accessibilityLabel={work.title + ' 상세 보기'}
         onPress={() => navigate({ screen: 'detail', workId: work.id, kind: work.kind })} style={c.libraryNovelCoverColumn}>
         <Image accessibilityLabel={work.title + ' 표지'} source={{ uri: new URL(work.imageUrl, apiUrl + '/').href }} resizeMode="cover" style={c.libraryNovelCover} />
-        {work.lastReadChapterNumber !== null && <Text style={c.libraryNovelRecent}>최근 본 화: {work.lastReadChapterNumber}화</Text>}
       </Pressable>
       <View style={c.libraryNovelInfo}>
         <Pressable accessibilityRole="button" accessibilityLabel={work.title + ' 상세 보기'}
@@ -617,9 +629,10 @@ function LibraryContents({ kind }: { kind: NonNullable<Route['kind']> }) {
           <Text style={c.libraryNovelTitle} numberOfLines={2}>{work.title}</Text>
         </Pressable>
         <Text style={c.libraryNovelAuthor}>{work.author}</Text>
-        {work.statistics !== null && <Text style={c.libraryNovelStats}>
+        <Text style={c.libraryNovelStats}>
           조회 {work.statistics.views.toLocaleString('ko-KR')} · 추천 {work.statistics.recommendations.toLocaleString('ko-KR')} · 회차 {work.statistics.chapterCount}
-        </Text>}
+        </Text>
+        {work.lastReadChapterNumber !== null && <Text style={c.libraryNovelRecent}>최근 읽은 회차 · {work.lastReadChapterNumber}화</Text>}
         <View style={c.libraryNovelActions}>
           <Action compact style={c.libraryNovelAction} label={work.lastReadChapterNumber === null ? '첫 화 읽기' : 'EP.' + work.lastReadChapterNumber + ' 이어보기'}
             disabled={opening !== null} onPress={() => { void openNovel(work, false); }} />
@@ -820,9 +833,9 @@ export function RecentScreen() {
     <Action label="다시 불러오기" onPress={() => { void refresh(); }} />
   </View>;
   return <View style={[s.page, c.recentPage]}>
-    <Title action={!state.authenticated && <Pressable accessibilityRole="button" accessibilityState={{ disabled: state.items.length === 0 }} disabled={state.items.length === 0} onPress={clearGuest} style={c.clearRecent}>
+    {!state.authenticated && <Pressable accessibilityRole="button" accessibilityState={{ disabled: state.items.length === 0 }} disabled={state.items.length === 0} onPress={clearGuest} style={c.clearRecent}>
       <Text style={[s.muted, state.items.length === 0 && c.disabledHistory]}>전체 삭제</Text>
-    </Pressable>}>최근 본 작품</Title>
+    </Pressable>}
     {state.items.length === 0 ? <EmptyState title="표시할 최근 본 작품이 없습니다." description="작품을 열어 보면 이 목록에 표시됩니다." />
       : <View style={c.recentHistoryList}>{state.items.map(work => <Pressable key={work.id} accessibilityRole="button" accessibilityLabel={work.title + ' 상세 보기'}
         onPress={() => navigate({ screen: 'detail', workId: work.id })} style={c.recentHistoryItem}>
@@ -840,13 +853,19 @@ export function RecentScreen() {
 export function ShareScreen() {
   const { route } = useApp();
   const [message, setMessage] = useState('');
+  const [copied, setCopied] = useState(false);
   const [busy, setBusy] = useState(false);
+  const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const writing = useRef(false);
   const active = useRef(false);
   useEffect(() => {
     active.current = true;
-    return () => { active.current = false; };
-  }, []);
+    setCopied(false);
+    return () => {
+      active.current = false;
+      if (copyTimer.current !== null) clearTimeout(copyTimer.current);
+    };
+  }, [route.workId]);
   let content: ReturnType<typeof workShare> | null = null;
   let error = '';
   try {
@@ -860,13 +879,20 @@ export function ShareScreen() {
     setMessage('');
     try {
       if (copy) {
-        const copied = await Clipboard.setStringAsync(content.url);
-        if (active.current) setMessage(copied ? '작품 링크를 복사했습니다.' : '링크를 복사하지 못했습니다. 다시 시도해 주세요.');
+        const succeeded = await Clipboard.setStringAsync(content.url);
+        if (active.current) {
+          setCopied(succeeded);
+          if (copyTimer.current !== null) clearTimeout(copyTimer.current);
+          if (succeeded) {
+            copyTimer.current = setTimeout(() => setCopied(false), 2000);
+            AccessibilityInfo.announceForAccessibility('링크를 복사했습니다.');
+          } else setMessage('링크를 복사하지 못했습니다. 다시 시도해 주세요.');
+        }
       } else {
-        const result = await Share.share({ title: content.title, message: content.message });
-        if (active.current && result.action === Share.dismissedAction) setMessage('공유를 취소했습니다.');
+        await Share.share({ title: content.title, message: content.message });
       }
     } catch {
+      if (active.current && copy) setCopied(false);
       if (active.current) setMessage(copy ? '링크를 복사하지 못했습니다. 다시 시도해 주세요.' : '공유를 열지 못했습니다. 다시 시도해 주세요.');
     } finally {
       writing.current = false;
@@ -874,16 +900,19 @@ export function ShareScreen() {
     }
   }
   return <View style={c.sharePage}>
+    <View style={c.shareDescription}><Title>작품 링크 공유</Title></View>
     {content && <View style={c.bookmarkCard}>
       <Text style={s.subtitle}>{content.title}</Text>
       {!!route.shareExcerpt && <Text selectable style={s.text}>{route.shareExcerpt}</Text>}
-      <Text selectable style={s.muted}>{content.url}</Text>
+      <View style={s.row}>
+        <Text selectable style={[s.muted, s.grow]}>{content.url}</Text>
+        <IconButton icon={copied ? 'check' : 'link'} label={copied ? '링크 복사 완료' : '링크 복사'}
+          selected={copied} disabled={busy} onPress={() => void send(true)} />
+      </View>
     </View>}
-    <View style={c.shareDescription}><Title>작품 링크 공유</Title><Text style={s.text}>받는 사람도 같은 작품으로 이동합니다.</Text></View>
     {!!error && <Text accessibilityRole="alert" style={s.error}>{error}</Text>}
     <Action disabled={!content || busy} label="공유" icon="share" onPress={() => void send(false)} />
-    <Action disabled={!content || busy} tone="secondary" label="링크 복사" icon="link" onPress={() => void send(true)} />
-    {!!message && <Text accessibilityLiveRegion="polite" style={s.muted}>{message}</Text>}
+    {!!message && <Text accessibilityRole="alert" style={s.error}>{message}</Text>}
   </View>;
 }
 
@@ -894,14 +923,13 @@ export function ShareScreen() {
  * 작품은 빈 상태이며 앱 열기는 비활성화되어 있습니다. 외부 주소나 앱 링크를
  * 실행하거나 앱 설치 여부를 검사하지 않습니다.
  *
- * @returns 브랜드, 빈 공유 작품, 앱 열기 버튼과 설치 안내입니다.
+ * @returns 브랜드, 빈 공유 작품과 비활성 앱 열기 버튼입니다.
  */
 export function FallbackScreen() {
   return <View style={c.fallbackPage}>
     <View style={c.fallbackBrand}><Image source={require('../assets/brand/header.png')} style={c.fallbackLogo} /><Text style={c.fallbackBrandText}>모북이</Text></View>
     <EmptyState compact title="표시할 공유 작품이 없습니다." style={c.fallbackInfo} />
     <Pressable disabled accessibilityRole="button" accessibilityState={{ disabled: true }} style={[c.shareAction, c.sharePrimary, c.fallbackAction]}><Text style={c.sharePrimaryText}>앱에서 작품 열기</Text><Icon name="next" color="#fff" size={18} /></Pressable>
-    <Text style={c.fallbackNotice}>앱 설치 후에도 이 작품으로 이어집니다.</Text>
   </View>;
 }
 // #endregion
@@ -916,24 +944,21 @@ const c = StyleSheet.create({
   recommendItem: { width: 120, gap: 8 },
   recommendCover: { width: '100%', aspectRatio: 2 / 3, borderRadius: 7, backgroundColor: colors.pale },
   recommendTitle: { fontSize: 14, fontWeight: '700', color: colors.ink },
-  recentList: { padding: 20, flexDirection: 'row', flexWrap: 'wrap', gap: 16 },
-  recentItem: { width: 120, gap: 8 },
-  recentCover: { width: '100%', aspectRatio: 2 / 3, borderRadius: 7, backgroundColor: colors.pale },
-  searchTop: { paddingTop: 16, paddingHorizontal: 20, backgroundColor: '#fff' },
-  searchField: { height: 52, borderRadius: 26, backgroundColor: '#F0F1E8', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 7, marginBottom: 16 },
+  searchTop: { paddingTop: 8, paddingHorizontal: 20, backgroundColor: '#fff' },
+  searchField: { height: 52, borderRadius: 26, backgroundColor: '#F0F1E8', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 7, marginBottom: 8 },
   searchInput: { flex: 1, minWidth: 0, fontSize: 14, color: colors.ink, paddingVertical: 12 },
   categoryTabs: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: colors.line },
-  categoryTab: { flex: 1, height: 56, alignItems: 'center', justifyContent: 'center', borderBottomWidth: 3, borderBottomColor: 'transparent' },
+  categoryTab: { flex: 1, height: 48, alignItems: 'center', justifyContent: 'center', borderBottomWidth: 3, borderBottomColor: 'transparent' },
   categoryTabSelected: { borderBottomColor: colors.green },
   categoryTabLabel: { fontSize: 16, color: colors.muted },
-  searchBody: { padding: 20, paddingTop: 20, gap: 28, paddingBottom: 40 },
-  searchHistory: { minHeight: 118, gap: 12 },
-  clearHistory: { paddingHorizontal: 8, paddingVertical: 6 },
+  searchBody: { paddingHorizontal: 20, paddingTop: 12, gap: 20, paddingBottom: 24 },
+  searchHistory: { gap: 8 },
+  clearHistory: { minHeight: 44, justifyContent: 'center', paddingHorizontal: 8 },
   disabledHistory: { opacity: 0.45 },
   searchHistoryList: { gap: 4 },
-  searchHistoryItem: { minHeight: 42, flexDirection: 'row', alignItems: 'center', gap: 8, paddingLeft: 8, paddingRight: 4 },
-  searchHistorySearch: { minHeight: 42, flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 12 },
-  searchHistoryRemove: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+  searchHistoryItem: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 8, paddingLeft: 8, paddingRight: 4 },
+  searchHistorySearch: { minHeight: 44, flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  searchHistoryRemove: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
   searchFilters: { gap: 8, alignItems: 'center' },
   sortButton: { flexDirection: 'row', alignItems: 'center', gap: 7, paddingVertical: 8 },
   downIcon: { transform: [{ rotate: '90deg' }] },
@@ -941,69 +966,66 @@ const c = StyleSheet.create({
   filterSection: { gap: 18 },
   filterOptions: { flexDirection: 'row', gap: 10 },
   applyButton: { marginTop: 46 },
-  detail: { paddingHorizontal: 20, paddingTop: 14, paddingBottom: 40 },
-  detailPrimaryAction: { minHeight: 46, paddingVertical: 12, marginTop: 'auto' },
-  detailSummary: { flexDirection: 'row', alignItems: 'flex-start', gap: 22 },
-  bookDetailSummary: { gap: 20 },
-  detailCover: { width: 132, aspectRatio: 2 / 3, borderRadius: 7 },
-  bookDetailCover: { width: 138 },
-  detailSummaryInfo: { flex: 1, minWidth: 0, minHeight: 207, paddingTop: 3, paddingBottom: 0, gap: 10 },
-  novelSummaryInfo: { gap: 7 },
-  detailTitleWords: { minHeight: 66, flexDirection: 'row', flexWrap: 'wrap', columnGap: 6, alignContent: 'flex-start', alignItems: 'flex-start' },
-  detailTitle: { maxWidth: '100%', fontSize: 24, lineHeight: 32, fontWeight: '700', color: colors.ink },
-  detailAuthor: { fontSize: 14, lineHeight: 25, color: '#625D50' },
-  detailIssue: { fontSize: 12, lineHeight: 23, color: '#477A96' },
+  detail: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 24 },
+  detailPrimaryAction: { minHeight: 46, paddingVertical: 10, marginTop: 4 },
+  detailSummary: { flexDirection: 'row', alignItems: 'flex-start', gap: 16 },
+  detailCover: { width: 120, aspectRatio: 2 / 3, borderRadius: 7 },
+  detailSummaryInfo: { flex: 1, minWidth: 0, gap: 8 },
+  detailTitle: { fontSize: 22, lineHeight: 30, fontWeight: '700', color: colors.ink },
+  detailAuthor: { fontSize: 14, lineHeight: 21, color: '#625D50' },
+  detailIssue: { fontSize: 12, lineHeight: 18, color: '#477A96' },
+  detailTools: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 8, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: colors.line },
   detailBody: { fontSize: 13, lineHeight: 23, color: '#625D50' },
   publisherRow: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 26 },
   detailStatus: { padding: 28, gap: 16, alignItems: 'center' },
   stats: { flexDirection: 'row', justifyContent: 'space-between' },
   stat: { alignItems: 'flex-start', gap: 5 },
   statValue: { fontSize: 14, fontWeight: '700', color: colors.ink },
-  detailTags: { flexDirection: 'row', marginTop: 20, marginBottom: 16, gap: 8 },
+  detailTags: { flexDirection: 'row', marginTop: 16, marginBottom: 12, gap: 8 },
   kindPill: { paddingHorizontal: 18, paddingVertical: 6, borderRadius: 14, overflow: 'hidden', backgroundColor: colors.pale, color: colors.green, fontSize: 11 },
-  novelIntroduction: { padding: 16, flexDirection: 'row', minHeight: 126, borderRadius: 22, backgroundColor: colors.pale, gap: 12 },
+  novelIntroduction: { padding: 16, flexDirection: 'row', borderRadius: 16, backgroundColor: colors.pale, gap: 12 },
   description: { marginTop: 10 },
   detailTabs: { flexDirection: 'row', marginTop: 14, borderBottomWidth: 1, borderBottomColor: colors.line },
   detailTab: { width: 91, height: 48, justifyContent: 'center', borderBottomWidth: 3, borderBottomColor: 'transparent', paddingHorizontal: 4 },
   chapterCount: { flex: 1, textAlign: 'right', alignSelf: 'center' },
-  detailSection: { marginTop: 52, gap: 25 },
-  introductionCard: { borderRadius: 20, backgroundColor: colors.pale, minHeight: 212, padding: 17, paddingVertical: 24, gap: 16, justifyContent: 'center' },
-  magazineIntroduction: { minHeight: 197, backgroundColor: '#E2EDF3', gap: 22 },
-  magazineIntroductionTitle: { color: colors.ink, fontSize: 22, lineHeight: 31, fontWeight: '700' },
-  metadata: { gap: 14, paddingTop: 8 },
+  detailSection: { marginTop: 28, gap: 12 },
+  introductionCard: { borderRadius: 16, backgroundColor: colors.pale, padding: 16, gap: 12 },
+  magazineIntroduction: { backgroundColor: '#E2EDF3' },
+  magazineIntroductionTitle: { color: colors.ink, fontSize: 20, lineHeight: 28, fontWeight: '700' },
+  metadata: { gap: 10, paddingTop: 4 },
   metadataRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 20 },
   metadataLabel: { width: 75, fontSize: 12, lineHeight: 21, color: colors.muted },
-  quoteEmpty: { borderRadius: 16, minHeight: 94, backgroundColor: '#F2EDDE', padding: 12, justifyContent: 'center' },
+  quoteEmpty: { borderRadius: 16, backgroundColor: '#F2EDDE', padding: 16 },
   quoteText: { color: colors.brown, fontSize: 17, lineHeight: 27, textAlign: 'center' },
-  contentsRow: { minHeight: 86, paddingVertical: 16, flexDirection: 'row', alignItems: 'center', gap: 18, borderBottomWidth: 1, borderBottomColor: colors.line },
-  novelContentsRow: { minHeight: 70, paddingVertical: 12, gap: 27 },
+  contentsRow: { minHeight: 68, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', gap: 12, borderBottomWidth: 1, borderBottomColor: colors.line },
+  novelContentsRow: { gap: 16 },
   contentNumber: { width: 28, fontSize: 13, color: colors.muted },
-  contentInfo: { flex: 1, gap: 8 },
+  contentInfo: { flex: 1, gap: 4 },
   contentTitle: { fontSize: 14, lineHeight: 20, color: colors.ink },
   contentMetaText: { fontSize: 11, lineHeight: 16, color: colors.muted },
   chapterPurchase: { minHeight: 36, paddingHorizontal: 15, paddingVertical: 8 },
   contentMetadata: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  libraryTabs: { paddingTop: 16, paddingHorizontal: 20, paddingBottom: 7, flexDirection: 'row', backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: colors.line },
-  libraryTab: { flex: 1, height: 56, alignItems: 'center', justifyContent: 'center' },
+  libraryTabs: { paddingHorizontal: 20, flexDirection: 'row', backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: colors.line },
+  libraryTab: { flex: 1, height: 48, alignItems: 'center', justifyContent: 'center' },
   libraryTabIndicator: { position: 'absolute', bottom: 0, width: 36, height: 3, borderRadius: 1.5, backgroundColor: colors.green },
-  libraryBody: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 40 },
+  libraryBody: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 24 },
   libraryGrid: { flexDirection: 'row', flexWrap: 'wrap', columnGap: '6.2%', rowGap: 16 },
-  libraryGridItem: { width: '29.2%', paddingBottom: 20, gap: 12 },
+  libraryGridItem: { width: '29.2%', gap: 8 },
   libraryGridCover: { width: '100%', aspectRatio: 2 / 3, borderRadius: 7, backgroundColor: colors.pale },
   libraryGridTitle: { minHeight: 40, fontSize: 13, fontWeight: '700', lineHeight: 19, color: colors.ink },
-  libraryNovelList: { gap: 20 },
-  libraryNovelItem: { minHeight: 160, flexDirection: 'row', alignItems: 'flex-start', gap: 20, paddingBottom: 20, borderBottomWidth: 1, borderBottomColor: colors.line },
-  libraryNovelCoverColumn: { width: 72, gap: 12 },
+  libraryNovelList: { gap: 16 },
+  libraryNovelItem: { flexDirection: 'row', alignItems: 'flex-start', gap: 16, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: colors.line },
+  libraryNovelCoverColumn: { width: 72 },
   libraryNovelCover: { width: 72, height: 108, borderRadius: 7, backgroundColor: colors.pale },
-  libraryNovelRecent: { fontSize: 10, lineHeight: 20, textAlign: 'center', color: colors.green },
+  libraryNovelRecent: { fontSize: 12, lineHeight: 18, color: colors.green },
   libraryNovelInfo: { flex: 1, minWidth: 0, gap: 6 },
-  libraryNovelTitle: { color: colors.ink, fontSize: 17, lineHeight: 28, fontWeight: '700' },
-  libraryNovelAuthor: { color: '#625D50', fontSize: 11, lineHeight: 22 },
-  libraryNovelStats: { color: colors.muted, fontSize: 10, lineHeight: 23 },
+  libraryNovelTitle: { color: colors.ink, fontSize: 16, lineHeight: 23, fontWeight: '700' },
+  libraryNovelAuthor: { color: '#625D50', fontSize: 12, lineHeight: 18 },
+  libraryNovelStats: { color: colors.muted, fontSize: 11, lineHeight: 17 },
   libraryNovelActions: { flexDirection: 'row', gap: 8, marginTop: 4 },
   libraryNovelAction: { flex: 1, minWidth: 0, paddingHorizontal: 8 },
-  recentPage: { paddingHorizontal: 20, paddingTop: 20, paddingBottom: 40, gap: 18 },
-  clearRecent: { paddingHorizontal: 8, paddingVertical: 6 },
+  recentPage: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 24, gap: 8 },
+  clearRecent: { alignSelf: 'flex-end', minHeight: 44, justifyContent: 'center', paddingHorizontal: 8 },
   recentHistoryList: { gap: 2 },
   recentHistoryItem: { minHeight: 106, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', gap: 14, borderBottomWidth: 1, borderBottomColor: colors.line },
   recentHistoryCover: { width: 56, height: 80, borderRadius: 6, backgroundColor: colors.pale },
@@ -1025,18 +1047,16 @@ const c = StyleSheet.create({
   highlightQuote: { backgroundColor: colors.pale, padding: 10, borderRadius: 8 },
   highlightText: { fontSize: 18, lineHeight: 29, color: colors.ink },
   highlightSource: { marginHorizontal: 10, fontSize: 12, lineHeight: 18, color: colors.muted },
-  sharePage: { paddingHorizontal: 24, paddingTop: 24, paddingBottom: 50, gap: 20 },
-  shareDescription: { gap: 13, paddingTop: 8, paddingBottom: 26 },
+  sharePage: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 20, gap: 12 },
+  shareDescription: { gap: 4, paddingRight: 44, paddingBottom: 4 },
   shareAction: { height: 48, borderRadius: 24, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: colors.pale, borderWidth: 1, borderColor: colors.line, opacity: 0.55 },
   sharePrimary: { backgroundColor: colors.green, borderColor: colors.green },
   sharePrimaryText: { color: '#fff', fontWeight: '700', fontSize: 14 },
-  shareActionText: { color: colors.ink, fontWeight: '700', fontSize: 14 },
   fallbackPage: { paddingHorizontal: 24, paddingTop: 130, paddingBottom: 54, backgroundColor: '#F2F6ED' },
   fallbackBrand: { alignItems: 'center', gap: 11 },
   fallbackLogo: { width: 38, height: 38 },
   fallbackBrandText: { color: colors.ink, fontSize: 29, lineHeight: 42, fontWeight: '700' },
   fallbackInfo: { marginTop: 24 },
   fallbackAction: { height: 52, borderRadius: 26, marginTop: 24 },
-  fallbackNotice: { fontSize: 12, color: colors.muted, textAlign: 'center', marginTop: 30 },
 });
 // #endregion

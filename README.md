@@ -20,7 +20,7 @@ teamproject/
 | --- | --- |
 | Node.js / npm | `24.21.0` / `12.1.0`입니다. `.nvmrc`와 `client/package.json`에 명시합니다. |
 | 모바일 앱 | Expo `58.0.23`, React Native `0.88.1`, React `19.3.0`, TypeScript `6.0.3`입니다. `package-lock.json`을 공유합니다. |
-| 백엔드 | Java `21`, Spring Boot `4.1.2`입니다. `server/pom.xml`로 의존성을 관리합니다. |
+| 백엔드 | Java `21`, Spring Boot `4.2.0`입니다. `server/pom.xml`로 의존성을 관리합니다. |
 | 빌드 | Maven Wrapper가 Maven `3.9.16`을 내려받습니다. 배포 파일의 SHA-256도 검사합니다. |
 | DB | MySQL `8.4.11` LTS입니다. Compose에 이미지 태그와 digest를 고정합니다. |
 | DB 보조 도구 | Python `3.13.15`를 기준으로 합니다. SQLAlchemy·PyMySQL 및 간접 의존성은 `server/db/requirements.txt`로 고정합니다. |
@@ -82,7 +82,7 @@ MySQL이 `healthy`이면 준비된 상태입니다. 개발 DB 주소는 `127.0.0
 
 ```powershell
 .\mvnw.cmd -version
-.\mvnw.cmd -B -ntp verify
+.\mvnw.cmd -B -ntp -DskipTests package
 .\mvnw.cmd spring-boot:run
 ```
 
@@ -92,7 +92,9 @@ MySQL이 `healthy`이면 준비된 상태입니다. 개발 DB 주소는 `127.0.0
 Invoke-RestMethod http://127.0.0.1:8080/actuator/health/readiness
 ```
 
-`status`가 `UP`이면 정상입니다. 현재 업무용 API·엔티티·테이블은 없으며, DB 구조 확정 전이므로 최초 시작 시 적용할 Flyway 마이그레이션이 없다는 메시지는 정상입니다. `verify`는 현재 프로젝트의 컴파일·패키징을 확인하며 아직 업무 기능 테스트는 포함하지 않습니다.
+`status`가 `UP`이면 정상입니다. 서버는 홈 SDUI·작품 검색과 상세·회원 인증·독서 활동·구매·리뷰·커뮤니티·관리자 API를 제공합니다. 시작할 때 Flyway가 아직 적용하지 않은 SQL 마이그레이션을 적용하고 Hibernate가 구조를 검증합니다. 작품·본문 자료는 별도로 등록하며 [자료 등록 안내](tools/README.md)를 따릅니다.
+
+위의 `-DskipTests package`는 개발 DB에서 통합 테스트를 실행하지 않고 빌드합니다. `verify`에는 실제 HTTP·세션·MySQL 테스트가 포함되며, 테스트는 `mobtwig_ci` 또는 이름이 `_test`로 끝나는 별도 DB에서만 허용합니다. 자동 검증의 DB 준비·환경변수·명령은 [.github/workflows/ci.yml](.github/workflows/ci.yml)을 기준으로 합니다. 개발·공용 DB를 통합 테스트에 사용하지 않습니다.
 
 ### 3. 프론트엔드 실행
 
@@ -105,13 +107,13 @@ npm run typecheck
 npm start
 ```
 
-Expo 안내에 따라 기기를 연결합니다. 브라우저에서 확인하려면 `npm start` 대신 `npm run web`을 실행합니다. 현재 앱은 `Mobtwig` 제목을 표시하며 API 요청을 하지 않습니다. API 기능을 추가할 때 [클라이언트 안내](client/README.md)의 기기별 주소에 맞춰 `client/.env`를 설정합니다. DB 비밀번호는 앱의 `EXPO_PUBLIC_` 변수에 넣지 않습니다.
+Expo 안내에 따라 기기를 연결합니다. 브라우저에서 확인하려면 `npm start` 대신 `npm run web`을 실행합니다. 앱은 선택한 API 서버에서 홈·작품·회원 정보를 조회하고 독서 기록·구매·리뷰·커뮤니티 변경을 처리합니다. `client/.env`가 없는 최초 설정에서는 예시 파일을 복사하고 [클라이언트 안내](client/README.md)의 기기별 주소를 확인합니다. 예시의 일반 실행 주소는 공용 API입니다. 로컬 Spring 서버를 검사하려면 `EXPO_PUBLIC_API_URL`을 기기에서 접근 가능한 로컬 서버 주소로 지정한 뒤 앱을 다시 불러옵니다. DB 비밀번호는 앱의 `EXPO_PUBLIC_` 변수에 넣지 않습니다.
 
 ## 팀 작업과 종료
 
 - 프론트엔드 의존성을 변경하면 `package.json`과 `package-lock.json`을 함께 공유하고, 받은 팀원은 `npm ci`를 실행합니다. 새 의존성의 버전도 범위 없이 저장하도록 설정했습니다.
 - 백엔드 의존성은 `pom.xml`과 Maven Wrapper로 공유합니다. 각자 설치된 Maven 대신 `mvnw.cmd`를 사용합니다.
-- DB 구조는 [Flyway 마이그레이션 안내](server/src/main/resources/db/migration/README.md)에 따라 SQL 파일로 공유합니다. Hibernate는 구조 검증만 수행합니다. 실제 테이블의 자료형·제약을 확정한 뒤 첫 마이그레이션을 추가합니다.
+- DB 구조는 [Flyway 마이그레이션 안내](server/src/main/resources/db/migration/README.md)에 따라 SQL 파일로 공유합니다. Hibernate는 구조 검증만 수행합니다. 이미 적용한 마이그레이션은 수정하지 않고 다음 버전의 SQL로 구조를 변경합니다.
 - `.env.example`은 설정 항목만 공유합니다. 기존 볼륨의 DB·계정·비밀번호는 `.env` 수정만으로 변경되지 않습니다.
 - Python 보조 작업 환경과 DB 접속 방법은 [DB 안내](server/db/README.md)를 따릅니다.
 

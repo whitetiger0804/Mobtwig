@@ -10,13 +10,13 @@ export function useWorkProducts(workId?: string) {
   const apiUrl = useApiUrl();
   const { client, state: auth } = useMemberAuth();
   const [revision, setRevision] = useState(0);
-  const owner = [apiUrl, auth.generation, auth.status, auth.member?.id, workId].join(':');
+  const owner = [apiUrl, auth.generation, auth.status, workId].join(':');
   const currentOwner = useRef(owner);
   currentOwner.current = owner;
   const active = useRef(true);
   const lock = useRef<string | null>(null);
   const [state, setState] = useState<{ owner: string; revision: number; products: PurchaseProduct[] | null; error: string | null } | null>(null);
-  const [notice, setNotice] = useState<{ owner: string; message: string; busy: boolean } | null>(null);
+  const [notice, setNotice] = useState<{ owner: string; message: string | null; busy: boolean; productId?: string } | null>(null);
   useEffect(() => { active.current = true; return () => { active.current = false; }; }, []);
   useEffect(() => {
     if (!workId || !['authenticated', 'anonymous'].includes(auth.status)) return;
@@ -30,18 +30,19 @@ export function useWorkProducts(workId?: string) {
   }, [apiUrl, client, owner, revision, workId, auth.status]);
 
   const refresh = () => setRevision(value => value + 1);
-  async function purchase(product: PurchaseProduct): Promise<void> {
-    if (lock.current === owner) return;
+  async function purchase(product: PurchaseProduct): Promise<boolean> {
+    if (lock.current === owner) return false;
     lock.current = owner;
-    setNotice({ owner, busy: true, message: '구매를 확인하고 있습니다.' });
+    setNotice({ owner, busy: true, message: null, productId: product.productId });
     const stillCurrent = () => active.current && currentOwner.current === owner && client.getSnapshot().generation === auth.generation;
     try {
       await purchaseProduct(client, product, uuid.v4);
-      if (!stillCurrent()) return;
-      setNotice({ owner, busy: false, message: '구매가 완료되었습니다.' });
+      if (!stillCurrent()) return false;
+      setNotice(null);
       refresh();
+      return true;
     } catch (failure) {
-      if (!stillCurrent()) return;
+      if (!stillCurrent()) return false;
       const message = failure instanceof MemberRequestError
         ? failure.status === 401 ? '로그인이 필요합니다.'
           : failure.code === 'PRICE_CHANGED' ? '가격이 변경되었습니다. 가격을 확인한 뒤 다시 구매해 주세요.'
@@ -51,11 +52,13 @@ export function useWorkProducts(workId?: string) {
         : '구매 결과를 확인하지 못했습니다. 다시 구매를 눌러 확인해 주세요.';
       setNotice({ owner, busy: false, message });
       if (failure instanceof MemberRequestError && [404, 409].includes(failure.status)) refresh();
+      return false;
     } finally { if (lock.current === owner) lock.current = null; }
   }
   const visible = state?.owner === owner && state.revision === revision ? state : null;
   return { products: visible?.products ?? null, loading: !!workId && visible === null,
     error: auth.status === 'error' ? auth.error : visible?.error ?? null,
     message: notice?.owner === owner ? notice.message : null, busy: notice?.owner === owner && notice.busy,
+    purchasingProductId: notice?.owner === owner && notice.busy ? notice.productId : undefined,
     purchase, refresh };
 }

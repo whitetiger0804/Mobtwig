@@ -3,6 +3,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState, ty
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useMemberAuth } from './memberAuth';
 import { saveReadingPreferences, type ReadingPreferences } from './readingPreferences';
+import { saveLibraryTab, type LibraryTab } from './libraryPreferences';
 import { BackHandler } from 'react-native';
 import type { ReadingPosition } from './readingProgress';
 // #endregion
@@ -34,7 +35,7 @@ export type CommunityTab = 'work' | 'topic' | 'promotion';
  */
 export type Screen =
   | 'home' | 'search' | 'detail' | 'reader' | 'media' | 'world' | 'worldTerms' | 'imageFull'
-  | 'library' | 'records' | 'recent' | 'community' | 'post' | 'writePost'
+  | 'library' | 'records' | 'recent' | 'community' | 'communityBoard' | 'post' | 'writePost'
   | 'reviews' | 'reviewWrite' | 'reviewComments' | 'login' | 'signup' | 'my'
   | 'account' | 'password' | 'withdraw' | 'readingSettings' | 'filters' | 'share'
   | 'libraryManage' | 'postMenu' | 'report' | 'commentCompose' | 'events' | 'purchaseHistory'
@@ -53,12 +54,33 @@ export interface Route {
   kind?: ContentTab;
   /** 선택한 커뮤니티 탭입니다. 생략하면 커뮤니티 화면은 작품별 탭을 사용합니다. */
   mode?: CommunityTab;
+  /** 현재 커뮤니티 게시판의 식별자와 헤더 제목입니다. */
+  boardId?: string;
+  boardTitle?: string;
+  /** 조회하거나 수정할 커뮤니티 게시글·댓글의 식별자입니다. */
+  postId?: string;
+  commentId?: string;
+  /** 로그인 뒤 게시판 생성 창을 다시 엽니다. */
+  communityCreate?: boolean;
+  /** 본인 게시글 목록을 엽니다. */
+  communityMine?: boolean;
+  /** 댓글 편집 패널이 현재 페이지와 부모 글의 스포일러 확인을 이어받습니다. */
+  communityPage?: number;
+  communityReveal?: boolean;
+  /** 로그인 완료 후 복원할 커뮤니티 화면입니다. */
+  communityReturnScreen?: 'community' | 'communityBoard' | 'post' | 'writePost';
   /** 작품 상세를 조회할 식별자입니다. 상세 화면으로 이동할 때 지정합니다. */
   workId?: string;
   /** 리뷰 화면에 표시할 작품 제목입니다. */
   workTitle?: string;
-  /** 리뷰 작성 화면에서 시작한 로그인은 성공 후 작성 화면으로 돌아갑니다. */
-  returnToReview?: boolean;
+  /** 리뷰 화면 상단에 표시할 작품의 저자입니다. */
+  workAuthor?: string;
+  /** 리뷰 화면 상단에 표시할 작품의 표지 주소입니다. */
+  workImageUrl?: string;
+  /** 댓글 스레드 또는 수정할 리뷰의 숫자 식별자입니다. */
+  reviewId?: string;
+  /** 인증 세대가 바뀐 뒤 공개 작품 정보로 다시 열 리뷰 흐름의 화면입니다. */
+  reviewReturnScreen?: 'detail' | 'reviews' | 'reviewWrite' | 'reviewComments';
   /** 본문에서 선택한 공개 회차의 식별자입니다. 숫자 순서로 해석하지 않습니다. */
   chapterId?: string;
   /** 작품 상세의 이어보기에서 확인한 표시 위치입니다. */
@@ -73,6 +95,8 @@ export interface Route {
   shareWorkTitle?: string;
   /** 이어보기 위치와 같은 응답에서 받은 revision입니다. 최초 기록은 null입니다. */
   resumeRevision?: string | null;
+  /** 현재 독서 흐름에서 추가 스크롤로 다음 회차를 자동 열고 구매할지 지정합니다. */
+  autoContinue?: boolean;
   /** 가입 성공 후 로그인 입력란에 채울 이메일입니다. */
   registeredEmail?: string;
 }
@@ -106,10 +130,16 @@ export interface AppContextValue {
    * @param preferences - 화면에 반영할 독서 설정입니다.
    */
   setReadingPreferences: (preferences: ReadingPreferences) => Promise<void>;
+  /** 현재 기기에 저장한 마지막 서재 분류 탭입니다. */
+  libraryTab: LibraryTab;
+  /** 기기에 저장한 뒤 서재의 선택 탭을 변경합니다.
+   * @param tab - 도서·매거진·웹소설 중 선택한 탭입니다.
+   */
+  setLibraryTab: (tab: LibraryTab) => Promise<void>;
   /** 현재 앱 실행 중 검색 화면에 표시할 최근 검색어입니다. */
   searchHistory: string[];
   /** 검색어를 최근 검색 기록 맨 앞에 추가하고 중복을 정리합니다.
-   * @param query - 검색에 사용한 문자열입니다.
+   * @param query - 검색 화면에서 공백과 빈 값을 정리한 검색어입니다.
    */
   addSearchHistory: (query: string) => void;
   /** 지정한 검색어 하나를 최근 검색 기록에서 제거합니다.
@@ -133,10 +163,23 @@ export interface AppContextValue {
    */
   navigate: (route: Route, reset?: boolean, replace?: boolean) => void;
   /**
+   * 게시글 삭제 후 패널을 닫고 기존 게시판으로 돌아갑니다.
+   * @param board - 기존 게시판이 없는 직접 진입에서 현재 게시글을 대신할 게시판입니다.
+   * @returns 값을 반환하지 않고 기존 게시판의 내 글·탭 선택을 유지합니다.
+   */
+  returnToCommunityBoard: (board: Pick<Route, 'boardId' | 'mode' | 'boardTitle'>) => void;
+  /**
+   * 현재 화면이 저장을 마친 뒤 뒤로 이동하도록 이탈 처리를 등록합니다.
+   * @param handler - 실제 스택 이동 함수를 전달받는 현재 화면의 처리입니다.
+   * @returns 화면 교체 시 호출할 등록 해제 함수입니다.
+   */
+  registerBackHandler: (handler: (next: () => void) => void) => () => void;
+  /**
    * 열린 패널을 닫거나 이전 일반 화면으로 돌아갑니다.
    *
    * @remarks
-   * 패널을 먼저 닫습니다. 상단 탭 또는 로그인 화면이 루트이면 현재 화면을 유지합니다.
+   * 패널을 먼저 닫고, 패널이 없으면 현재 화면의 이탈 처리를 거칩니다.
+   * 상단 탭 또는 로그인 화면이 루트이면 현재 화면을 유지합니다.
    * 그 외의 독립 화면에서 이전 화면이 없으면 전체 홈으로 돌아갑니다.
    *
    * @returns 값을 반환하지 않고 화면 상태를 변경합니다.
@@ -155,26 +198,30 @@ const AppContext = createContext<AppContextValue | null>(null);
  * @remarks
  * 시작 단계에서 결정한 경로와 복원된 읽기 설정을 사용합니다.
  * Android 뒤로 가기를 연결하고 해제 시 이벤트 구독을 정리합니다.
- * 화면 이동 상태는 메모리에 두고 읽기 설정은 기기에 저장합니다.
+ * 화면 이동 상태는 메모리에 두고 읽기 설정과 마지막 서재 탭은 기기에 저장합니다.
  *
  * @param props - 화면 상태를 공유할 하위 요소입니다.
  * @returns 하위 요소를 감싸는 화면 컨텍스트 공급자입니다.
  */
-export function AppProvider({ children, initialRoute, initialReadingPreferences }: {
+export function AppProvider({ children, initialRoute, initialReadingPreferences, initialLibraryTab }: {
   /** 화면 상태와 이동 함수를 공유하는 하위 React 요소입니다. */
   children: ReactNode;
   /** 최초 로그인 확인 결과로 결정한 시작 화면입니다. */
   initialRoute: Route;
   /** 시작 단계에서 기기 저장소로부터 복원한 읽기 설정입니다. */
   initialReadingPreferences: ReadingPreferences;
+  /** 시작 단계에서 기기 저장소로부터 복원한 서재 탭입니다. */
+  initialLibraryTab: LibraryTab;
 }) {
   const [stack, setStack] = useState<Route[]>([initialRoute]);
   const [overlay, setOverlay] = useState<Route | null>(null);
   const [readingPreferences, updateReadingPreferences] = useState(initialReadingPreferences);
+  const [libraryTab, updateLibraryTab] = useState(initialLibraryTab);
   const [searchHistory, setSearchHistory] = useState<string[]>([]);
   const baseRoute = stack[stack.length - 1];
   const { state: auth } = useMemberAuth();
   const previousGeneration = useRef(auth.generation);
+  const backHandler = useRef<((next: () => void) => void) | null>(null);
   useEffect(() => {
     if (previousGeneration.current === auth.generation) return;
     previousGeneration.current = auth.generation;
@@ -197,6 +244,17 @@ export function AppProvider({ children, initialRoute, initialReadingPreferences 
   }, []);
 
   /**
+   * 선택한 서재 탭을 기기에 저장한 뒤 현재 실행 상태에도 적용합니다.
+   * @param tab - 다음 진입에도 사용할 서재 분류입니다.
+   * @returns 기기 저장과 실행 상태 반영이 끝나면 이행됩니다.
+   * @throws Error - 기기 저장에 실패하면 발생합니다.
+   */
+  const setLibraryTab = useCallback(async (tab: LibraryTab) => {
+    await saveLibraryTab(AsyncStorage, tab);
+    updateLibraryTab(tab);
+  }, []);
+
+  /**
    * 패널 여부에 따라 표시 상태 또는 화면 스택을 갱신합니다.
    *
    * @param next - 이동할 화면과 탭입니다.
@@ -214,10 +272,22 @@ export function AppProvider({ children, initialRoute, initialReadingPreferences 
     setStack(previous => replaceStack ? [next] : replace ? [...previous.slice(0, -1), next] : [...previous, next]);
   }, []);
 
+  /**
+   * 게시글 삭제 후 기존 게시판까지 돌아가며 직접 진입한 글은 해당 게시판으로 교체합니다.
+   * @param board - 직접 진입한 게시글을 대신할 게시판의 식별자·종류·제목입니다.
+   * @returns 값을 반환하지 않습니다.
+   */
+  const returnToCommunityBoard = useCallback((board: Pick<Route, 'boardId' | 'mode' | 'boardTitle'>) => {
+    setOverlay(null);
+    setStack(previous => {
+      const index = previous.map(route => route.screen).lastIndexOf('communityBoard');
+      return index >= 0 ? previous.slice(0, index + 1)
+        : [...previous.slice(0, -1), { screen: 'communityBoard', ...board }];
+    });
+  }, []);
+
   const addSearchHistory = useCallback((query: string) => {
-    const normalized = query.trim();
-    if (!normalized) return;
-    setSearchHistory(previous => [normalized, ...previous.filter(item => item.toLocaleLowerCase() !== normalized.toLocaleLowerCase())].slice(0, 8));
+    setSearchHistory(previous => [query, ...previous.filter(item => item.toLocaleLowerCase() !== query.toLocaleLowerCase())].slice(0, 8));
   }, []);
 
   const removeSearchHistory = useCallback((query: string) => {
@@ -225,6 +295,16 @@ export function AppProvider({ children, initialRoute, initialReadingPreferences 
   }, []);
 
   const clearSearchHistory = useCallback(() => setSearchHistory([]), []);
+
+  /**
+   * 현재 화면의 이탈 처리를 공통 뒤로가기에 연결합니다.
+   * @param handler - 저장 후 실제 화면 스택 이동을 호출할 처리입니다.
+   * @returns 현재 화면이 해제될 때 호출할 정리 함수입니다.
+   */
+  const registerBackHandler = useCallback((handler: (next: () => void) => void) => {
+    backHandler.current = handler;
+    return () => { backHandler.current = null; };
+  }, []);
 
   /**
    * 패널을 우선 닫고, 패널이 없으면 화면 스택에서 뒤로 이동합니다.
@@ -236,11 +316,13 @@ export function AppProvider({ children, initialRoute, initialReadingPreferences 
       setOverlay(null);
       return;
     }
-    setStack(previous => previous.length > 1
+    const next = () => setStack(previous => previous.length > 1
       ? previous.slice(0, -1)
       : ['home', 'community', 'login'].includes(previous[0].screen)
         ? previous
         : [{ screen: 'home', kind: 'all' }]);
+    if (backHandler.current) backHandler.current(next);
+    else next();
   }, [overlay]);
 
   useEffect(() => {
@@ -255,7 +337,7 @@ export function AppProvider({ children, initialRoute, initialReadingPreferences 
   }, [back, overlay, stack.length, baseRoute.screen]);
 
   return (
-    <AppContext.Provider value={{ route: overlay ?? baseRoute, baseRoute, overlay, readingPreferences, setReadingPreferences, searchHistory, addSearchHistory, removeSearchHistory, clearSearchHistory, navigate, back }}>
+    <AppContext.Provider value={{ route: overlay ?? baseRoute, baseRoute, overlay, readingPreferences, setReadingPreferences, libraryTab, setLibraryTab, searchHistory, addSearchHistory, removeSearchHistory, clearSearchHistory, navigate, returnToCommunityBoard, registerBackHandler, back }}>
       {children}
     </AppContext.Provider>
   );

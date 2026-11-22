@@ -62,6 +62,7 @@ function sendJson(response, status, body) {
  * @param options - 테스트에서 사용할 파일 경로 설정입니다.
  * @param options.fixturePath - 네 종류의 화면 응답이 담긴 JSON 파일입니다.
  * @param options.worksPath - 작품 ID별 상세 정보가 담긴 JSON 배열 파일입니다.
+ * @param options.workGenresPath - 작품 ID별 장르 이름 목록을 담은 JSON 파일입니다.
  * @param options.recentWorksPath - 최근 본 작품 고정 예시가 담긴 JSON 배열 파일입니다.
  * @param options.libraryPath - 내 서재 고정 예시가 담긴 JSON 배열 파일입니다.
  * @param options.assetsRoot - 실제 서버와 공유하는 테스트용 PNG 이미지의 최상위 디렉터리입니다.
@@ -70,6 +71,7 @@ function sendJson(response, status, body) {
 export async function createMockServer({
   fixturePath = join(mockDirectory, 'fixtures', 'home.json'),
   worksPath = join(mockDirectory, 'fixtures', 'works.json'),
+  workGenresPath = join(mockDirectory, 'fixtures', 'work-genres.json'),
   chaptersPath = join(mockDirectory, 'fixtures', 'chapter-text.json'),
   recentWorksPath = join(mockDirectory, 'fixtures', 'recent-works.json'),
   libraryPath = join(mockDirectory, 'fixtures', 'library.json'),
@@ -136,16 +138,21 @@ export async function createMockServer({
     if (pathname === '/works') {
       const queries = url.searchParams.getAll('query');
       const kinds = url.searchParams.getAll('kind');
+      const genres = url.searchParams.getAll('genre');
       const query = queries[0]?.trim();
-      if (queries.length !== 1 || !query || [...query].length > 200 || kinds.length > 1
-          || (kinds.length === 1 && !supportedKinds.has(kinds[0]))) {
-        sendJson(response, 400, { error: '검색어는 1자 이상 200자 이하이며 종류와 함께 각각 한 번만 지정하십시오.' });
+      const genre = genres.length === 0 ? null : genres[0].trim();
+      if (queries.length !== 1 || !query || [...query].length > 200 || kinds.length > 1 || genres.length > 1
+          || (kinds.length === 1 && !supportedKinds.has(kinds[0]))
+          || (genre !== null && (!genre || [...genre].length > 50))) {
+        sendJson(response, 400, { error: '검색어는 1~200자, 장르는 1~50자이며 검색어·종류·장르는 각각 한 번만 지정하십시오.' });
         return;
       }
       const kind = kinds.length === 0 ? 'all' : kinds[0];
       try {
         const works = JSON.parse(await readFile(worksPath, 'utf8'));
+        const workGenres = genre === null ? null : JSON.parse(await readFile(workGenresPath, 'utf8'));
         const matches = works.filter(work => (kind === 'all' || work.kind === kind)
+          && (genre === null || workGenres[work.id]?.includes(genre))
           && [work.title, work.author, work.publisher].some(value => value.toLowerCase().includes(query.toLowerCase())))
           .sort((left, right) => right.publishedAt.localeCompare(left.publishedAt))
           .map(({ id, title, imageUrl, kind }) => ({ id, title, imageUrl, kind }));

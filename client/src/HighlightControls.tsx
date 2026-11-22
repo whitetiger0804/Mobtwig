@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Modal, Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useMemberAuth } from './memberAuth';
 import { isTextBoundary, listHighlights, saveHighlight, type Highlight, type HighlightColor, type HighlightRange } from './highlights';
-import { Action, colors, s } from './ui';
+import { Action, colors, ModalPanel, s } from './ui';
 
 const noHighlights: Highlight[] = [];
 
@@ -125,9 +125,9 @@ export function HighlightEditor({ workId, chapterId, contentVersion, contentHash
     }
   }
 
-  return <Modal visible transparent animationType="fade" onRequestClose={onClose}>
+  return <Modal visible transparent animationType="none" onRequestClose={onClose}>
     <View style={styles.backdrop}>
-      <View accessibilityViewIsModal style={styles.panel}>
+      <ModalPanel visible style={styles.panel}>
         <Text style={s.title}>{text === undefined ? offset + '쪽 표시' : '하이라이트 범위 선택'}</Text>
         {text !== undefined && <>
           {Platform.OS === 'web' ? <TextInput accessibilityLabel="하이라이트할 문장 선택" multiline readOnly value={text}
@@ -156,7 +156,7 @@ export function HighlightEditor({ workId, chapterId, contentVersion, contentHash
           <Action compact label="하이라이트 저장" disabled={!valid || busy} onPress={() => { void save(); }} />
           <Action compact tone="secondary" label="닫기" disabled={busy} onPress={onClose} />
         </View>
-      </View>
+      </ModalPanel>
     </View>
   </Modal>;
 }

@@ -48,7 +48,10 @@ test('종료 상태의 작품 링크와 잘못된 링크를 구분하고 개발 
   for (const [url, expected] of [
     ['mobtwig://works/book-care', { workId: 'book-care', sequence: 1 }],
     ['mobtwig://works/invalid?', { workId: null, sequence: 1 }],
+    [defaultShareBaseUrl + '/s/works/book-care', { workId: 'book-care', sequence: 1 }],
+    [defaultShareBaseUrl + '/s/invalid', { workId: null, sequence: 1 }],
     ['exp://127.0.0.1:8081', null],
+    ['exp+mobtwig://?__expo_url=http%3A%2F%2F127.0.0.1%3A8081', null],
   ]) {
     const cold = source(), results = [];
     const dispose = observeWorkLinks(cold, target => results.push(target));
@@ -57,4 +60,33 @@ test('종료 상태의 작품 링크와 잘못된 링크를 구분하고 개발 
     assert.deepEqual(results, [expected]);
     dispose();
   }
+});
+
+test('비공유 URL 이벤트는 초기 작품 링크와 실행 중 작품을 덮지 않고 순서도 올리지 않습니다.', async () => {
+  const launched = source(), values = [];
+  const stop = observeWorkLinks(launched, target => values.push(target));
+  const otherUrls = ['exp://127.0.0.1:8081',
+    'exp+mobtwig://?__expo_url=http%3A%2F%2F127.0.0.1%3A8081',
+    'https://example.test/s/works/other', defaultShareBaseUrl + '/works/other'];
+  for (const url of otherUrls) launched.receive(url);
+  assert.deepEqual(values, []);
+  launched.initial(defaultShareBaseUrl + '/s/works/first');
+  await Promise.resolve();
+  assert.deepEqual(values, [{ workId: 'first', sequence: 1 }]);
+  for (const url of otherUrls) launched.receive(url);
+  assert.deepEqual(values, [{ workId: 'first', sequence: 1 }]);
+  launched.receive('mobtwig://works/second');
+  assert.deepEqual(values[1], { workId: 'second', sequence: 2 });
+  stop();
+});
+
+test('실행 중 잘못된 앱 주소와 공유 경로는 계속 링크 오류로 전달합니다.', async () => {
+  const launched = source(), values = [];
+  const stop = observeWorkLinks(launched, target => values.push(target));
+  launched.initial(null);
+  await Promise.resolve();
+  launched.receive('mobtwig://works/invalid?');
+  launched.receive(defaultShareBaseUrl + '/s/invalid');
+  assert.deepEqual(values, [null, { workId: null, sequence: 1 }, { workId: null, sequence: 2 }]);
+  stop();
 });

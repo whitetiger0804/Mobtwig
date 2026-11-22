@@ -1,5 +1,5 @@
 import type { MemberSessionClient } from './memberSession.ts';
-import type { ReadingPosition } from './readingProgress.ts';
+import { sameReadingPosition, type ReadingPosition } from './readingProgress.ts';
 
 /** 회원의 책갈피 한 건입니다. */
 export interface Bookmark {
@@ -79,16 +79,47 @@ export function parseBookmark(input: unknown): Bookmark {
  * @param client - 현재 회원 세션입니다.
  * @param page - 1부터 시작하는 쪽입니다.
  * @param workId - 작품별로 조회할 때 사용할 slug입니다.
+ * @param signal - 화면을 떠날 때 조회를 취소할 신호입니다.
  * @returns 확인한 목록과 다음 쪽 여부입니다.
  */
-export async function listBookmarks(client: MemberSessionClient, page: number, workId?: string): Promise<BookmarkPage> {
+export async function listBookmarks(client: MemberSessionClient, page: number, workId?: string, signal?: AbortSignal): Promise<BookmarkPage> {
   const query = new URLSearchParams({ page: String(page) });
   if (workId) query.set('workId', workId);
-  const value = object(await client.request(path + '?' + query));
+  const value = object(await client.request(path + '?' + query, { signal }));
   if (!value || value.page !== page || typeof value.hasNext !== 'boolean' || !Array.isArray(value.items) || value.items.length > 30) throw invalid();
   const items = value.items.map(parseBookmark);
   if (workId && items.some(item => item.workId !== null && item.workId !== workId)) throw invalid();
   return { items, page, hasNext: value.hasNext };
+}
+
+/**
+ * 작품의 책갈피를 끝 페이지까지 읽습니다. 위치 이동 중에는 이 목록을 재사용합니다.
+ * @param client - 현재 회원 세션입니다.
+ * @param workId - 읽고 있는 작품입니다.
+ * @param signal - 화면이나 회원이 바뀌면 취소할 신호입니다.
+ * @returns 작품에 저장된 모든 책갈피입니다.
+ */
+export async function listWorkBookmarks(client: MemberSessionClient, workId: string, signal: AbortSignal): Promise<Bookmark[]> {
+  const items: Bookmark[] = [];
+  for (let page = 1; !signal.aborted; page++) {
+    const result = await listBookmarks(client, page, workId, signal);
+    if (signal.aborted) break;
+    items.push(...result.items);
+    if (!result.hasNext) return items;
+  }
+  throw Object.assign(new Error('책갈피 조회가 취소되었습니다.'), { name: 'AbortError' });
+}
+
+/**
+ * 현재 작품·본문 버전·위치와 정확히 일치하는 사용 가능한 책갈피를 확인합니다.
+ * @param items - 서버에서 확인한 책갈피 목록입니다.
+ * @param workId - 읽고 있는 작품입니다.
+ * @param position - 현재 표시한 문단 또는 쪽입니다.
+ * @returns 현재 위치에 유효한 책갈피가 있으면 참입니다.
+ */
+export function hasBookmarkAtPosition(items: readonly Bookmark[], workId: string | undefined, position: ReadingPosition | null): boolean {
+  return position !== null && items.some(item => item.state === 'available' && item.workId === workId
+    && sameReadingPosition(item.position, position));
 }
 
 /**

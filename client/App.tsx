@@ -4,21 +4,38 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
+import * as Font from 'expo-font';
 import { AppProvider, kindLabel, useApp, type Route, type Screen } from './src/appState';
 import { EmptyState } from './src/EmptyState';
 import { MemberAuthProvider, useMemberAuth } from './src/memberAuth';
 import { RecentWorksProvider } from './src/recentWorksContext';
 import { LoadingScreens } from './src/LoadingScreens';
 import { loadReadingPreferences, type ReadingPreferences } from './src/readingPreferences';
+import { readingFontNames, readingFonts, type ReadingFont } from './src/readingFonts';
+import { loadLibraryTab, type LibraryTab } from './src/libraryPreferences';
 import { ServerConnectionProvider } from './src/serverConnection';
-import { Action, colors, Icon, IconButton, s, Title } from './src/ui';
+import { Action, colors, Icon, IconButton, ModalPanel, s, Title } from './src/ui';
 import { DetailScreen, FallbackScreen, FiltersScreen, HomeScreen, LibraryManageScreen, LibraryScreen, RecentScreen, RecordsScreen, SearchScreen, ShareScreen } from './src/CatalogScreens';
 import { AccountScreen, FavoritesScreen, LoginScreen, MyScreen, PasswordScreen, PurchaseHistoryScreen, ReadingSettingsScreen, SignupScreen, WithdrawScreen } from './src/AccountScreens';
-import { CommentComposeScreen, CommunityScreen, PostMenuScreen, PostScreen, ReportScreen, WritePostScreen } from './src/CommunityScreens';
+import { CommentComposeScreen, CommunityBoardScreen, CommunityScreen, PostMenuScreen, PostScreen, ReportScreen, WritePostScreen } from './src/CommunityScreens';
 import { ReviewCommentsScreen, ReviewsScreen, ReviewWriteScreen } from './src/ReviewScreens';
 import { ImageFullScreen, ReadingScreen, WorldScreen, WorldTermsScreen } from './src/ReadingScreens';
 import { NotificationsScreen } from './src/NotificationScreens';
 import { WorkLinkProvider, useWorkLink } from './src/WorkLinkProvider';
+// #endregion
+
+// #region 읽기 글꼴
+/** 번들에 포함한 읽기 글꼴 파일입니다. */
+const readingFontSources: Record<ReadingFont, Font.FontSource> = {
+  "기본 명조": require("./assets/fonts/NotoSerifKR/NotoSerifKR-Regular.otf"),
+  "기본 고딕": require("./assets/fonts/NotoSansKR/NotoSansKR-Regular.otf"),
+  "나눔명조": require("./assets/fonts/NanumMyeongjo/NanumMyeongjo-Regular.ttf"),
+  "나눔고딕": require("./assets/fonts/NanumGothic/NanumGothic-Regular.ttf"),
+  "고운바탕": require("./assets/fonts/GowunBatang/GowunBatang-Regular.ttf"),
+  "고운돋움": require("./assets/fonts/GowunDodum/GowunDodum-Regular.ttf"),
+  "함렛": require("./assets/fonts/Hahmlet/Hahmlet[wght].ttf"),
+  "플렉스고딕": require("./assets/fonts/Pretendard/Pretendard-Regular.otf"),
+};
 // #endregion
 
 // #region 화면 제목
@@ -26,8 +43,8 @@ import { WorkLinkProvider, useWorkLink } from './src/WorkLinkProvider';
 const titles: Record<Screen, string> = {
   linkError: '작품 링크',
   home: '홈', search: '통합 검색', detail: '작품 상세', reader: '독서', media: '앱북',
-  world: '세계관', worldTerms: '세계관 용어', imageFull: '이미지 확대', library: '내 서재', records: '밑줄과 책갈피', recent: '최근 본',
-  community: '커뮤니티', post: '게시글', writePost: '글쓰기',
+  world: '세계관', worldTerms: '세계관 용어', imageFull: '이미지 확대', library: '내 서재', records: '밑줄과 책갈피', recent: '최근 본 작품',
+  community: '커뮤니티', communityBoard: '게시판', post: '게시글', writePost: '글쓰기',
   reviews: '독자 리뷰', reviewWrite: '리뷰 쓰기', reviewComments: '댓글',
   login: '로그인', signup: '회원가입', my: '마이', account: '계정 설정',
   password: '비밀번호 변경', withdraw: '회원 탈퇴', readingSettings: '읽기 설정', purchaseHistory: '구매 내역', favorites: '즐겨찾기',
@@ -63,7 +80,7 @@ function Content({ route }: {
     case 'world': return <WorldScreen />;
     case 'worldTerms': return <WorldTermsScreen />;
     case 'imageFull': return <ImageFullScreen />;
-    case 'library': return <LibraryScreen route={route} />;
+    case 'library': return <LibraryScreen />;
     case 'libraryManage': return <LibraryManageScreen />;
     case 'records': return <RecordsScreen />;
     case 'recent': return <RecentScreen />;
@@ -71,6 +88,7 @@ function Content({ route }: {
     case 'reviewWrite': return <ReviewWriteScreen />;
     case 'reviewComments': return <ReviewCommentsScreen />;
     case 'community': return <CommunityScreen route={route} />;
+    case 'communityBoard': return <CommunityBoardScreen route={route} />;
     case 'post': return <PostScreen />;
     case 'writePost': return <WritePostScreen route={route} />;
     case 'commentCompose': return <CommentComposeScreen />;
@@ -117,10 +135,10 @@ function Shell() {
   const ownHeader = ['reader', 'media', 'world', 'worldTerms', 'imageFull', 'webFallback'].includes(route.screen);
   const branded = route.screen === 'home' || route.screen === 'community';
   const showBottomNav = ['home', 'search', 'library', 'detail', 'records', 'recent', 'my', 'community', 'events', 'notifications'].includes(route.screen);
-  const ownScroll = ['reader', 'media', 'world', 'worldTerms', 'imageFull', 'search', 'library', 'community', 'post', 'writePost', 'report', 'reviews', 'reviewWrite', 'reviewComments', 'login', 'signup', 'password'].includes(route.screen);
+  const ownScroll = ['reader', 'media', 'world', 'worldTerms', 'imageFull', 'search', 'library', 'community', 'communityBoard', 'post', 'writePost', 'report', 'reviews', 'reviewWrite', 'reviewComments', 'login', 'signup', 'password'].includes(route.screen);
   const centeredTitle = ['signup', 'account', 'password', 'share', 'records', 'report', 'reviewWrite', 'reviewComments', 'writePost'].includes(route.screen);
   const hideTitle = route.screen === 'login' || route.screen === 'detail';
-  const routeKey = [route.screen, route.kind, route.mode, route.workId, route.chapterId, route.resumeRevision,
+  const routeKey = [route.screen, route.kind, route.mode, route.boardId, route.postId, route.communityCreate, route.communityMine, route.workId, route.reviewId, route.chapterId, route.resumeRevision,
     route.resumePosition?.contentVersion, route.resumePosition?.contentHash, route.resumePosition?.offset,
     route.bookmarkPosition?.contentVersion, route.bookmarkPosition?.contentHash, route.bookmarkPosition?.offset,
     route.highlightPosition?.contentVersion, route.highlightPosition?.contentHash, route.highlightPosition?.offset].join(':');
@@ -129,7 +147,7 @@ function Shell() {
     <SafeAreaView style={[styles.shell, route.screen === 'imageFull' && styles.darkShell]} edges={['top', 'bottom']}>
       <StatusBar style={route.screen === 'imageFull' ? 'light' : 'dark'} />
       {!ownHeader && (
-        <View style={[styles.header, branded && styles.brandHeader, route.screen === 'detail' && styles.detailHeader]}>
+        <View style={[styles.header, ['search', 'library', 'recent', 'my'].includes(route.screen) && styles.mainHeader, branded && styles.brandHeader, route.screen === 'detail' && styles.detailHeader]}>
           {branded ? (
             <Pressable accessibilityRole="button" accessibilityLabel="모북이 홈" style={s.row} onPress={() => app.navigate({ screen: 'home', kind: 'all' }, true)}>
               <Image source={require('./assets/brand/header.png')} style={styles.brand} />
@@ -138,7 +156,7 @@ function Shell() {
           ) : (
             <View style={[s.row, s.grow, styles.headerStart]}>
               <IconButton icon="back" label="뒤로 가기" onPress={app.back} />
-              {!hideTitle && !centeredTitle && <Text numberOfLines={1} style={[styles.headerTitle, s.grow, ['my', 'search', 'library'].includes(route.screen) && styles.mainTitle, route.screen === 'post' && styles.postTitle]}>{titles[route.screen]}</Text>}
+              {!hideTitle && !centeredTitle && <Text numberOfLines={1} style={[styles.headerTitle, s.grow, ['my', 'search', 'library'].includes(route.screen) && styles.mainTitle, route.screen === 'post' && styles.postTitle]}>{route.screen === 'communityBoard' ? route.boardTitle ?? titles[route.screen] : titles[route.screen]}</Text>}
             </View>
           )}
           {centeredTitle && <Text pointerEvents="none" numberOfLines={1} style={styles.centeredTitle}>{titles[route.screen]}</Text>}
@@ -146,9 +164,10 @@ function Shell() {
             {(branded || route.screen === 'search' || route.screen === 'library') && <IconButton icon="bell" label="알림" iconSize={26} style={styles.headerIconButton} onPress={() => app.navigate({ screen: 'notifications' })} />}
             {(branded || route.screen === 'search' || route.screen === 'library') && <IconButton icon="user" label="마이페이지" iconSize={26} style={styles.headerIconButton} onPress={() => app.navigate({ screen: 'my' })} />}
             {route.screen === 'my' && <View style={styles.roundHeaderAction}><IconButton icon="gear" label="계정 설정" onPress={() => app.navigate({ screen: 'account' })} /></View>}
-            {route.screen === 'post' && <IconButton icon="more" label="게시글 메뉴" onPress={() => app.navigate({ screen: 'postMenu' })} />}
+            {route.screen === 'post' && <IconButton icon="more" label="게시글 메뉴" onPress={() => app.navigate({ screen: 'postMenu', postId: route.postId })} />}
             {route.screen === 'reviews' && route.workId && <Action label="리뷰 쓰기" compact style={styles.headerAction}
-              onPress={() => app.navigate({ screen: 'reviewWrite', kind: route.kind, workId: route.workId, workTitle: route.workTitle })} />}
+              onPress={() => app.navigate({ screen: 'reviewWrite', kind: route.kind, workId: route.workId, workTitle: route.workTitle,
+                workAuthor: route.workAuthor, workImageUrl: route.workImageUrl })} />}
           </View>
         </View>
       )}
@@ -174,7 +193,8 @@ function Shell() {
           })}
         </View>
       )}
-      <KeyboardAvoidingView style={styles.content} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <KeyboardAvoidingView style={styles.content}
+        behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'android' && route.screen === 'writePost' ? 'height' : undefined}>
         {ownScroll ? (
           <Content key={routeKey} route={route} />
         ) : (
@@ -203,21 +223,21 @@ function Shell() {
               <View style={[styles.navIcon, screen === 'home' && styles.homeIcon]}>
                 <Icon name={icon} size={screen === 'home' ? 27 : 22} color={screen === 'home' ? '#fff' : route.screen === screen ? colors.green : '#625D50'} />
               </View>
-              <Text style={[styles.navLabel, (route.screen === screen || screen === 'home') && styles.selectedLabel]}>{label}</Text>
+              <Text style={[styles.navLabel, route.screen === screen && styles.selectedLabel]}>{label}</Text>
             </Pressable>
           ))}
         </View>
       )}
-      <Modal visible={!!app.overlay} transparent animationType="slide" onRequestClose={app.back}>
+      <Modal visible={!!app.overlay} transparent animationType="none" onRequestClose={app.back}>
         <KeyboardAvoidingView style={styles.backdrop} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <Pressable accessibilityRole="button" accessibilityLabel="패널 바깥에서 닫기" onPress={app.back} style={StyleSheet.absoluteFill} />
-          <View accessibilityViewIsModal style={styles.sheet}>
+          <ModalPanel visible={!!app.overlay} animation="slide" style={styles.sheet}>
             <View style={styles.handleArea}><View style={styles.handle} /></View>
             <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
               {app.overlay && <Content key={app.overlay.screen} route={app.overlay} />}
             </ScrollView>
             <View style={[styles.closeArea, app.overlay?.screen === 'readingSettings' && { top: 8 }, app.overlay?.screen === 'commentCompose' && { top: 24 }, app.overlay?.screen === 'postMenu' && { top: 22 }]}><IconButton icon="close" label="패널 닫기" onPress={app.back} /></View>
-          </View>
+          </ModalPanel>
         </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
@@ -226,12 +246,12 @@ function Shell() {
 // #endregion
 
 // #region 앱 시작 처리
-/** 최초 인증 결과와 기기에서 복원한 읽기 설정입니다. */
+/** 최초 인증 결과와 기기에서 복원한 읽기 설정·서재 탭입니다. */
 interface StartupState {
   /** 최초로 표시할 로그인 또는 홈 경로입니다. */
   route: Route;
-  /** 기기 저장소에서 복원한 읽기 설정입니다. */
-  preferences: ReadingPreferences;
+  /** 기기 저장소에서 복원한 읽기 설정과 마지막 서재 탭입니다. */
+  preferences: { reading: ReadingPreferences; libraryTab: LibraryTab };
   linkSequence: number;
 }
 
@@ -248,13 +268,13 @@ function IncomingWorkLink({ initialSequence }: { initialSequence: number }) {
 }
 
 /**
- * 기기 설정과 로그인 상태를 확인한 뒤 앱 화면을 한 번 초기화합니다.
+ * 기기 설정·읽기 글꼴과 로그인 상태를 확인한 뒤 앱 화면을 한 번 초기화합니다.
  * @returns 로딩·재시도 안내 또는 초기화된 앱 화면입니다.
  */
 function AppStartup() {
   const link = useWorkLink();
   const { state: auth, client } = useMemberAuth();
-  const [preferences, setPreferences] = useState<ReadingPreferences | null>(null);
+  const [preferences, setPreferences] = useState<StartupState['preferences'] | null>(null);
   const [settingsError, setSettingsError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
   const [startup, setStartup] = useState<StartupState | null>(null);
@@ -263,10 +283,12 @@ function AppStartup() {
     let active = true;
     setPreferences(null);
     setSettingsError(null);
-    loadReadingPreferences(AsyncStorage)
-      .then(value => { if (active) setPreferences(value); })
+    Promise.all([loadReadingPreferences(AsyncStorage), loadLibraryTab(AsyncStorage),
+      Font.loadAsync(readingFontNames.map(name => ({ fontFamily: readingFonts[name].family,
+        fontDefinitions: [{ path: readingFontSources[name], weight: readingFonts[name].weight }] })))])
+      .then(([reading, libraryTab]) => { if (active) setPreferences({ reading, libraryTab }); })
       .catch(() => {
-        if (active) setSettingsError('저장된 읽기 설정을 불러오지 못했습니다. 다시 시도해 주십시오.');
+        if (active) setSettingsError('앱 설정과 글꼴을 불러오지 못했습니다. 다시 시도해 주십시오.');
       });
     return () => { active = false; };
   }, [attempt]);
@@ -286,7 +308,8 @@ function AppStartup() {
   }, [auth.status, preferences, startup, link]);
 
   if (startup !== null) {
-    return <AppProvider initialRoute={startup.route} initialReadingPreferences={startup.preferences}>
+    return <AppProvider initialRoute={startup.route} initialReadingPreferences={startup.preferences.reading}
+      initialLibraryTab={startup.preferences.libraryTab}>
       <IncomingWorkLink initialSequence={startup.linkSequence} /><Shell />
     </AppProvider>;
   }
@@ -333,8 +356,9 @@ const styles = StyleSheet.create({
   content: { flex: 1, minHeight: 0 },
   scrollContent: { flexGrow: 1 },
   header: { height: 72, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#fff' },
-  brandHeader: { height: 70, paddingLeft: 20 },
-  detailHeader: { height: 64 },
+  mainHeader: { height: 60 },
+  brandHeader: { height: 60, paddingLeft: 20 },
+  detailHeader: { height: 56 },
   headerStart: { gap: 6 },
   headerTitle: { fontSize: 20, fontWeight: '700', color: colors.ink },
   mainTitle: { fontSize: 22 },
@@ -346,7 +370,7 @@ const styles = StyleSheet.create({
   roundHeaderAction: { borderRadius: 22, backgroundColor: colors.pale },
   brand: { width: 32, height: 32 },
   brandName: { fontSize: 24, fontWeight: '700', color: colors.ink },
-  categories: { height: 54, flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 12, borderBottomWidth: 1, borderColor: colors.line },
+  categories: { height: 48, flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 12, borderBottomWidth: 1, borderColor: colors.line },
   category: { flexGrow: 1, flexShrink: 0, alignItems: 'center' },
   categoryLabelWrap: { height: 47, paddingHorizontal: 8, justifyContent: 'center', borderBottomWidth: 2, borderBottomColor: 'transparent' },
   categoryActive: { borderBottomColor: colors.green },
