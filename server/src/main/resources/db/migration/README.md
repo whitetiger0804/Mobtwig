@@ -21,10 +21,13 @@
 | `V15__create_review_engagement.sql` | 리뷰 | 리뷰·댓글 공감 `review_like`, 신고 접수 `review_report` (2개) |
 | `V16__unique_named_community_boards.sql` | 커뮤니티 | 게시판 종류·이름별 중복 제한 |
 | `V17__add_community_spoiler_flags.sql` | 커뮤니티 | 게시글·댓글의 스포일러 표시와 기존 표시 이관 |
+| `V18__create_notification.sql` | 알림 | 회원별 알림 `notification` (1개) |
 
 V15는 리뷰 또는 리뷰 댓글 중 정확히 한 대상을 참조하고 회원·대상별 중복을 UNIQUE로 막습니다. 댓글을 실제 삭제하면 그 댓글의 공감·신고는 FK CASCADE로 정리하며 회원·리뷰 FK는 RESTRICT입니다. 리뷰 삭제는 기존 V4의 soft delete를 유지하고 남은 댓글을 보존합니다. 신고는 최초 사유·상세를 보존하는 접수만 제공하며 별도의 심사·자동 숨김 컬럼이나 공감 수 캐시는 추가하지 않습니다.
 
-V16은 게시판 `(type, name)`의 유일성을 추가하며 작품별 게시판은 기존 `uk_board_book` 제약을 유지합니다. V17은 게시글·댓글에 `has_spoiler`를 추가하고 기존 회차 지정 스포일러 표시를 이관합니다. 다음 스키마 변경에는 V18 이후를 사용합니다.
+V16은 게시판 `(type, name)`의 유일성을 추가하며 작품별 게시판은 기존 `uk_board_book` 제약을 유지합니다. V17은 게시글·댓글에 `has_spoiler`를 추가하고 기존 회차 지정 스포일러 표시를 이관합니다.
+
+V18은 회원별 알림을 추가하며 현재는 가입 트랜잭션에서 환영 알림 한 건만 생성합니다. 회원 FK는 RESTRICT이므로 회원 행을 지우는 테스트·시드 정리·향후 탈퇴 처리는 `notification` 행을 먼저 지워야 합니다. 다음 스키마 변경에는 V19 이후를 사용합니다.
 
 공통 기준은 `snake_case`, `utf8mb4`, `BIGINT AUTO_INCREMENT` PK, `{참조테이블}_id` FK, UTC `TIMESTAMP`입니다.
 
