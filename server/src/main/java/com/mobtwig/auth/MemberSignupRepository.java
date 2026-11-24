@@ -63,6 +63,12 @@ public class MemberSignupRepository {
         jdbc.update("INSERT INTO member_reading_setting(member_id) VALUES (?)", id);
     }
 
+    /** 가입 트랜잭션에서 안 읽은 환영 알림 한 건을 저장합니다. */
+    public void insertWelcomeNotification(long id) {
+        jdbc.update("INSERT INTO notification(member_id,type,title,message) VALUES (?,'NOTICE',?,?)",
+                id, "모북이에 오신 것을 환영합니다", "읽고 싶은 작품을 찾아 서재에 담아 보세요.");
+    }
+
     public void insertConsents(long id, List<SignupPolicies.Document> documents, Instant agreedAt) {
         var timestamp = Timestamp.from(agreedAt);
         for (var document : documents) {

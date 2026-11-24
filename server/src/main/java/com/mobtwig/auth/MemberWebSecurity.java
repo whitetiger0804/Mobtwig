@@ -34,7 +34,8 @@ public class MemberWebSecurity {
                 PathPatternRequestMatcher.withDefaults().matcher("/api/members/works/{slug}/reviews"),
                 PathPatternRequestMatcher.withDefaults().matcher("/api/members/reviews/**"),
                 PathPatternRequestMatcher.withDefaults().matcher("/api/members/review-comments/**"),
-                PathPatternRequestMatcher.withDefaults().matcher("/api/members/community/**"));
+                PathPatternRequestMatcher.withDefaults().matcher("/api/members/community/**"),
+                PathPatternRequestMatcher.withDefaults().matcher("/api/members/notifications/**"));
         var defaultDenied = new AccessDeniedHandlerImpl();
         return http.securityMatcher("/api/auth/**", "/api/members/**")
                 .cors(configuration -> configuration.configurationSource(cors))
@@ -50,7 +51,7 @@ public class MemberWebSecurity {
                                 defaultDenied.handle(request, response, failure);
                                 return;
                             }
-                            // CSRF 실패가 먼저 발생해도 리뷰·커뮤니티 요청의 미인증은 401로 반환합니다.
+                            // CSRF 실패가 먼저 발생해도 리뷰·커뮤니티·알림 요청의 미인증은 401로 반환합니다.
                             var auth = SecurityContextHolder.getContext().getAuthentication();
                             boolean active = auth != null && auth.isAuthenticated() && !(auth instanceof AnonymousAuthenticationToken)
                                     && sessions.current(auth.getName()).isPresent();
@@ -89,7 +90,7 @@ public class MemberWebSecurity {
             var configuration = new CorsConfiguration();
             configuration.setAllowedOrigins(allowed);
             configuration.setAllowedMethods(path.startsWith("/api/members/")
-                    ? List.of("GET", "POST", "PUT", "DELETE", "OPTIONS") : List.of("GET", "POST", "OPTIONS"));
+                    ? List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS") : List.of("GET", "POST", "OPTIONS"));
             configuration.setAllowedHeaders(List.of("Content-Type", "X-CSRF-TOKEN", "Accept"));
             configuration.setAllowCredentials(true);
             configuration.setMaxAge(600L);

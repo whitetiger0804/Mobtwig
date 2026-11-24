@@ -3,11 +3,11 @@ info:
   title: Mobtwig HTTP API
   version: 0.0.1-SNAPSHOT
   description: |
-    현재 구현한 홈 SDUI·작품 검색·상세·리뷰·댓글·커뮤니티·회원 인증·관리자 등록 API의 계약입니다.
+    현재 구현한 홈 SDUI·작품 검색·상세·리뷰·댓글·커뮤니티·알림·회원 인증·관리자 등록 API의 계약입니다.
     이 명세를 포함한 커밋이 배포된 서버에서 사용합니다.
     공개 조회에는 로그인이 필요하지 않습니다. 관리자 API는 SESSION 쿠키와 활성 ADMIN 권한을 사용합니다.
     회원 인증 API는 별도의 MEMBER_SESSION 쿠키를 사용합니다.
-    POST·PUT·DELETE 요청은 같은 인증 영역·세션의 csrf 경로에서 받은 X-CSRF-TOKEN 헤더가 필요합니다.
+    POST·PUT·PATCH·DELETE 요청은 같은 인증 영역·세션의 csrf 경로에서 받은 X-CSRF-TOKEN 헤더가 필요합니다.
     로그인은 application/x-www-form-urlencoded이며 성공 시 본문 없는 204를 반환합니다.
     이 서버의 Swagger UI는 회원·관리자 변경 요청 전에 해당 영역의 CSRF 토큰을 자동으로 조회합니다.
     로그인 요청을 실행한 뒤 관리자 API를 호출하고, 사용을 마치면 로그아웃 요청을 실행하십시오.
@@ -27,6 +27,8 @@ tags:
     description: 공개 리뷰·평점과 댓글, 본인 작성물 관리, 공감·신고 접수를 제공합니다. 관리자 심사·자동 숨김·이미지 첨부·추가 정렬은 포함하지 않습니다.
   - name: 커뮤니티
     description: 작품별·주제별·홍보 게시판, 게시글·댓글, 이미지·이모티콘·초안과 게시글 공감·신고를 제공합니다.
+  - name: 알림
+    description: 회원 본인의 최신 알림 조회와 읽음 처리를 제공합니다. 현재 생성하는 알림은 가입 환영 알림뿐입니다.
   - name: 관리자 인증
     description: 세션과 CSRF 토큰으로 로그인 상태를 관리합니다.
   - name: 관리자 등록
@@ -1241,6 +1243,57 @@ paths:
         '401': {description: 활성 회원 세션 필요}
         '403': {description: 회원 CSRF 검증 실패}
         '404': {$ref: '#/components/responses/RecentWorkError'}
+  /api/members/notifications:
+    get:
+      tags: [알림]
+      operationId: listNotifications
+      summary: 회원 본인의 최신 알림 50개와 전체 안 읽은 개수를 조회합니다.
+      description: |
+        생성 시각 내림차순, 같은 시각이면 알림 ID 내림차순으로 최대 50개를 반환합니다. 페이지 처리는 없습니다.
+        unreadCount는 50개 제한과 무관한 본인의 전체 안 읽은 알림 수입니다. 알림이 없으면 unreadCount 0과 빈 배열입니다.
+        조회는 읽음 상태를 변경하지 않습니다.
+      security: [{MemberSessionCookie: []}]
+      responses:
+        '200':
+          description: 최신 알림 목록입니다.
+          headers:
+            Cache-Control:
+              description: 회원 알림을 캐시하지 않습니다.
+              schema: {type: string, enum: [no-store]}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/NotificationList'}
+              example:
+                unreadCount: 1
+                items:
+                  - id: '1'
+                    type: notice
+                    title: 모북이에 오신 것을 환영합니다
+                    message: 읽고 싶은 작품을 찾아 서재에 담아 보세요.
+                    createdAt: '2026-01-02T03:04:05Z'
+                    readAt: null
+        '401': {description: 활성 회원 세션이 필요합니다. 본문은 없습니다.}
+  /api/members/notifications/{notificationId}/read:
+    parameters:
+      - $ref: '#/components/parameters/NotificationId'
+    patch:
+      tags: [알림]
+      operationId: markNotificationRead
+      summary: 본인 알림을 읽음으로 표시합니다.
+      description: |
+        요청 본문이 없습니다. 안 읽은 알림이면 현재 시각을 readAt으로 기록합니다.
+        이미 읽은 알림도 readAt을 바꾸지 않고 204를 반환합니다.
+        없는 알림과 다른 회원의 알림은 구분하지 않고 404입니다.
+      security: [{MemberSessionCookie: [], MemberCsrfToken: []}]
+      responses:
+        '204':
+          description: 읽음으로 표시했으며 본문은 없습니다.
+          headers:
+            Cache-Control: {schema: {type: string, enum: [no-store]}}
+        '400': {$ref: '#/components/responses/NotificationError'}
+        '401': {description: 활성 회원 세션이 필요합니다. 본문은 없습니다.}
+        '403': {description: 회원 CSRF 검증에 실패했습니다. 본문은 없습니다.}
+        '404': {$ref: '#/components/responses/NotificationError'}
   /api/auth/terms:
     get:
       tags: [회원 인증]
@@ -2493,6 +2546,13 @@ components:
       description: catalog.works[].id 또는 작품 등록 응답의 숫자 ID입니다. slug와 다릅니다.
       schema: {type: integer, format: int64}
       example: 1
+    NotificationId:
+      name: notificationId
+      in: path
+      required: true
+      description: 알림 ID의 십진 문자열입니다. 0·선행 0·signed BIGINT 범위 밖은 400입니다.
+      schema: {$ref: '#/components/schemas/ReviewIdentifier'}
+      example: '1'
     CommunityPostId:
       name: postId
       in: path
@@ -2746,6 +2806,19 @@ components:
             properties:
               message: {type: string}
           example: {message: 리뷰 요청 값이 올바르지 않습니다.}
+    NotificationError:
+      description: 알림 ID 형식 오류 또는 없거나 다른 회원의 알림입니다.
+      headers:
+        Cache-Control: {schema: {type: string, enum: [no-store]}}
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: false
+            required: [message]
+            properties:
+              message: {type: string}
+          example: {message: 알림을 찾을 수 없습니다.}
     WorkReviewPage:
       description: 활성 평점 요약과 삭제 자리표시를 포함한 페이지입니다. 회원 경로는 본인 상태와 myReview를 포함합니다.
       headers:
@@ -3641,6 +3714,27 @@ components:
             publishedAt: '2026-01-01T00:00:00Z'
             characterCount: 1500
             contentUrl: /content/sample-book/1.html
+    NotificationList:
+      type: object
+      additionalProperties: false
+      required: [unreadCount, items]
+      properties:
+        unreadCount: {type: integer, format: int64, minimum: 0, description: 50개 제한과 무관한 전체 안 읽은 알림 수입니다.}
+        items:
+          type: array
+          maxItems: 50
+          items: {$ref: '#/components/schemas/NotificationItem'}
+    NotificationItem:
+      type: object
+      additionalProperties: false
+      required: [id, type, title, message, createdAt, readAt]
+      properties:
+        id: {type: string, pattern: '^-?[1-9][0-9]{0,18}$', description: 알림 ID의 십진 문자열입니다.}
+        type: {type: string, enum: [notice, comment, work, event], description: 현재는 notice만 생성합니다.}
+        title: {type: string, minLength: 1, maxLength: 100}
+        message: {type: string, maxLength: 500}
+        createdAt: {type: string, format: date-time, description: UTC ISO 8601 생성 시각입니다.}
+        readAt: {type: string, format: date-time, nullable: true, description: UTC ISO 8601 읽은 시각이며 안 읽었으면 null입니다.}
     ReviewIdentifier:
       type: string
       pattern: '^-?[1-9][0-9]{0,18}$'

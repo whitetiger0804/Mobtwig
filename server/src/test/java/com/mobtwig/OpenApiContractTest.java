@@ -115,7 +115,8 @@ class OpenApiContractTest {
 
     @Test
     void validatesThePublishedJsonExamples() throws Exception {
-        for (String path : List.of("/sdui/home", "/works/{slug}", "/api/members/library", "/api/members/purchase-history")) {
+        for (String path : List.of("/sdui/home", "/works/{slug}", "/api/members/library", "/api/members/purchase-history",
+                "/api/members/notifications")) {
             Object example = api.getPaths().get(path).getGet().getResponses().get("200")
                     .getContent().get("application/json").getExample();
             assertNotNull(example);

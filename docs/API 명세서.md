@@ -194,6 +194,19 @@ POST /api/members/purchases
 
 홈과 최근 본 전용 화면은 `RecentWorksProvider`의 같은 목록을 표시합니다. 회원 목록은 위 API로 조회·기록하며 저장 실패를 메모리 기록으로 대체하지 않습니다. 비회원 기록은 현재 인증 범위의 메모리에 최대 20개를 보관합니다. 로그인·로그아웃·회원 변경 시 목록을 초기화하며 비회원 기록을 회원 DB로 자동 합치지 않습니다.
 
+## 알림 · #122
+
+`GET /api/members/notifications`는 활성 회원 본인의 알림을 생성 시각 내림차순, 같은 시각이면 ID 내림차순으로 최대 50개 반환합니다. 응답은 `{ "unreadCount": 1, "items": [...] }`입니다. `unreadCount`는 50개 제한과 관계없는 본인의 전체 안 읽은 알림 수입니다. 알림이 없으면 `{ "unreadCount": 0, "items": [] }`입니다. GET에는 CSRF 토큰이 필요하지 않으며 조회만으로 읽음 상태가 바뀌지 않습니다.
+
+각 항목은 `id`(숫자 ID의 문자열), `type`(`notice`, `comment`, `work`, `event` 중 하나, 소문자), `title`, `message`, `createdAt`(UTC ISO 시각), `readAt`(UTC ISO 시각 또는 `null`)입니다. 현재 서버가 만드는 알림은 가입 시 한 건 생성하는 `notice` 환영 알림뿐입니다.
+
+`PATCH /api/members/notifications/{id}/read`는 요청 본문 없이 같은 회원 세션의 CSRF 토큰을 보냅니다. 안 읽은 본인 알림이면 현재 시각을 `readAt`으로 기록하고, 이미 읽은 알림이면 기존 시각을 유지합니다. 두 경우 모두 본문 없는 204입니다.
+
+- `id` 형식은 리뷰 ID와 같은 `^-?[1-9][0-9]{0,18}$` 및 signed BIGINT 범위이며 어긋나면 400입니다.
+- 없는 알림과 다른 회원의 알림은 구분하지 않고 404입니다. 400·404 본문은 `{ "message": "안내" }`입니다.
+- 미인증은 본문 없는 401, CSRF 누락·불일치는 본문 없는 403입니다. 두 요청 모두 `Cache-Control: no-store`를 사용합니다.
+- 모두 읽음·알림 삭제·페이지 처리와 댓글·새 작품·이벤트 알림 생성은 아직 제공하지 않습니다.
+
 ## 매거진 쪽 열람 · #38
 
 | 요청 | 200 응답 |
@@ -224,6 +237,7 @@ Swagger UI는 자신을 제공한 서버에 요청합니다. 관리자 POST 요�
 
 - JSON API에는 `Accept: application/json`을 사용합니다.
 - JSON을 보내는 POST에는 `Content-Type: application/json`을 사용합니다.
+- 회원·관리자의 POST·PUT·PATCH·DELETE에는 같은 세션의 csrf 경로에서 받은 `X-CSRF-TOKEN` 헤더가 필요합니다.
 - 로그인만 `application/x-www-form-urlencoded`로 `username`, `password`를 보냅니다.
 - 201 응답에는 생성한 식별자가 있으며, 204 응답에는 본문이 없습니다. 204에 `response.json()`을 호출하지 않습니다.
 - 작품 발행일은 `YYYY-MM-DD`, 회차 공개 시각은 `2026-01-01T00:00:00Z`처럼 UTC 또는 오프셋을 포함한 ISO 8601 문자열입니다.
@@ -259,6 +273,8 @@ Swagger UI는 자신을 제공한 서버에 요청합니다. 관리자 POST 요�
 | GET | `/api/members/recent-works` | 활성 회원 세션이 필요합니다. | 200 최근 본 공개 작품 최대 20개입니다. |
 | GET | `/api/members/library?kind={kind}` | 활성 회원 세션이 필요하며 kind는 선택 사항입니다. | 200 본인의 분류별 서재 목록입니다. |
 | POST | `/api/members/recent-works/{slug}` | 회원 세션과 CSRF가 필요하며 본문은 없습니다. | 204이며 본문은 없습니다. |
+| GET | `/api/members/notifications` | 활성 회원 세션이 필요합니다. | 200 최신 알림 최대 50개와 전체 `unreadCount`입니다. |
+| PATCH | `/api/members/notifications/{id}/read` | 회원 세션과 CSRF로 본인 알림만 읽음 처리하며 본문은 없습니다. | 204이며 이미 읽은 알림도 204입니다. |
 | GET | `/api/auth/csrf` | 회원 인증 영역의 익명 CSRF 세션을 사용합니다. | 200 현재 세션의 CSRF 토큰입니다. |
 | GET | `/api/admin/csrf` | 로그인 전에도 호출합니다. | 200 CSRF 토큰입니다. |
 | POST | `/api/admin/login` | 같은 세션의 CSRF 토큰과 폼을 보냅니다. | 204이며 본문은 없습니다. |
