@@ -59,6 +59,7 @@ public class MemberSignupService {
 
         long id = repository.insertMember(email, nickname, passwords.encode(password));
         repository.insertReadingSettings(id);
+        repository.insertWelcomeNotification(id);
         repository.insertConsents(id, documents, Instant.now());
         return new Created(Long.toString(id), email, nickname);
     }

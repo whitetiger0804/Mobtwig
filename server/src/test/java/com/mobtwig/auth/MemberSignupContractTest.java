@@ -63,6 +63,7 @@ class MemberSignupContractTest {
         verify(repository).insertMember(eq("reader@example.test"), eq("시연 회원"), hash.capture());
         assertTrue(passwords.matches(PASSWORD, hash.getValue()));
         verify(repository).insertReadingSettings(9007199254740993L);
+        verify(repository).insertWelcomeNotification(9007199254740993L);
         verify(repository).insertConsents(eq(9007199254740993L), eq(policies.current()), any(Instant.class));
     }
 

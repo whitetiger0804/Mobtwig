@@ -59,6 +59,8 @@ class MemberSignupApiTest {
         assertTrue(database != null && (database.equals("mobtwig_ci") || database.matches("[A-Za-z0-9_]+_test")));
         for (String session : sessions) jdbc.update("DELETE FROM SPRING_SESSION WHERE SESSION_ID=?", session);
         for (String email : emails) {
+            // 가입 환영 알림의 회원 FK는 RESTRICT이므로 회원보다 먼저 지웁니다.
+            jdbc.update("DELETE FROM notification WHERE member_id IN (SELECT id FROM member WHERE email=?)", email);
             jdbc.update("DELETE FROM member_policy_consent WHERE member_id IN (SELECT id FROM member WHERE email=?)", email);
             jdbc.update("DELETE FROM member_reading_setting WHERE member_id IN (SELECT id FROM member WHERE email=?)", email);
             jdbc.update("DELETE FROM member WHERE email=?", email);
@@ -87,6 +89,7 @@ class MemberSignupApiTest {
         assertEquals("ACTIVE", jdbc.queryForObject("SELECT status FROM member WHERE id=?", String.class, member));
         assertTrue(passwords.matches(PASSWORD, jdbc.queryForObject("SELECT password_hash FROM member WHERE id=?", String.class, member)));
         assertEquals(3, jdbc.queryForObject("SELECT font_size_level FROM member_reading_setting WHERE member_id=?", Integer.class, member));
+        assertEquals(1, notifications(member));
 
         var recorded = recorded(member);
         assertEquals(2, recorded.size());
@@ -170,6 +173,7 @@ class MemberSignupApiTest {
             invocation.callRealMethod();
             assertEquals(2, recorded(id).size());
             assertEquals(1, settings(id));
+            assertEquals(1, notifications(id));
             throw new DataAccessResourceFailureException("private-test-write-failure");
         }).when(repository).insertConsents(anyLong(), anyList(), any(Instant.class));
         var response = send(signupRequest(signupInput(person, current), csrf.cookie(), csrf.token()));
@@ -178,6 +182,7 @@ class MemberSignupApiTest {
         assertTrue(failedId.get() > 0);
         assertEquals(0, members(person.email()));
         assertEquals(0, settings(failedId.get()));
+        assertEquals(0, notifications(failedId.get()));
         assertTrue(recorded(failedId.get()).isEmpty());
     }
 
@@ -196,6 +201,7 @@ class MemberSignupApiTest {
         assertEquals(1, members(first.email()));
         long id = jdbc.queryForObject("SELECT id FROM member WHERE email=?", Long.class, first.email());
         assertEquals(1, settings(id));
+        assertEquals(1, notifications(id));
         assertEquals(2, recorded(id).size());
     }
 
@@ -207,6 +213,7 @@ class MemberSignupApiTest {
     }
     private long members(String email) { return jdbc.queryForObject("SELECT COUNT(*) FROM member WHERE email=?", Long.class, email); }
     private long settings(long id) { return jdbc.queryForObject("SELECT COUNT(*) FROM member_reading_setting WHERE member_id=?", Long.class, id); }
+    private long notifications(long id) { return jdbc.queryForObject("SELECT COUNT(*) FROM notification WHERE member_id=?", Long.class, id); }
     private List<ConsentRow> recorded(long id) {
         return jdbc.query("""
                 SELECT c.document_kind,c.document_version,d.document_title,d.document_body,d.content_hash,d.temporary,c.agreed_at

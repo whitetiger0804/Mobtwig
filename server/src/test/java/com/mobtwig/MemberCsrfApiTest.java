@@ -105,6 +105,12 @@ class MemberCsrfApiTest {
                 .header("Access-Control-Request-Headers", "Content-Type,X-CSRF-TOKEN")
                 .method("OPTIONS", HttpRequest.BodyPublishers.noBody()).build(), HttpResponse.BodyHandlers.ofString());
         assertCors(preflight, 200);
+        var patchPreflight = client.send(HttpRequest.newBuilder(url("/api/members/notifications/1/read"))
+                .header("Origin", ORIGIN).header("Access-Control-Request-Method", "PATCH")
+                .header("Access-Control-Request-Headers", "X-CSRF-TOKEN")
+                .method("OPTIONS", HttpRequest.BodyPublishers.noBody()).build(), HttpResponse.BodyHandlers.ofString());
+        assertCors(patchPreflight, 200);
+        assertTrue(patchPreflight.headers().firstValue("Access-Control-Allow-Methods").orElseThrow().contains("PATCH"));
         String originalId = new String(Base64.getDecoder().decode(admin.value()), StandardCharsets.UTF_8);
         assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM SPRING_SESSION WHERE SESSION_ID=?", Integer.class, originalId));
         assertEquals(200, send("/api/admin/csrf", admin.cookie(), null, null).statusCode());
@@ -140,7 +146,7 @@ class MemberCsrfApiTest {
                 .header("Access-Control-Request-Headers", "Content-Type,X-CSRF-TOKEN")
                 .method("OPTIONS", HttpRequest.BodyPublishers.noBody()).build(), HttpResponse.BodyHandlers.ofString());
         assertCors(allowed, 200);
-        assertEquals(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"), java.util.Arrays.stream(
+        assertEquals(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"), java.util.Arrays.stream(
                 allowed.headers().firstValue("Access-Control-Allow-Methods").orElseThrow().split(",")).map(String::strip).toList());
         assertEquals("600", allowed.headers().firstValue("Access-Control-Max-Age").orElseThrow());
         var denied = client.send(HttpRequest.newBuilder(url("/api/auth/session"))
