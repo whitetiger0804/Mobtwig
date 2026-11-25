@@ -5,6 +5,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.security.core.Authentication;
 
 /** 세션 주체의 활성 상태 조회와 회원 쓰기 잠금을 처리합니다. */
 @Service
@@ -18,6 +19,13 @@ public class MemberSessions {
         return jdbc.query("SELECT id,email,nickname,created_at FROM member WHERE id=? AND status='ACTIVE'",
                 (rs, row) -> new Identity(Long.toString(rs.getLong("id")), rs.getString("email"),
                         rs.getString("nickname"), rs.getTimestamp("created_at").toInstant().toString()), principal).stream().findFirst();
+    }
+
+    /** 인증 때 사용한 해시 버전으로 검사하며 과거 형식·폐기된 회원 인증은 거부합니다. */
+    public boolean authorized(Authentication authentication) {
+        if (!(authentication.getPrincipal() instanceof CredentialPrincipal principal)) return false;
+        return jdbc.query("SELECT password_hash FROM member WHERE id=? AND status='ACTIVE'",
+                (rs, row) -> principal.matchesVersion(rs.getString(1)), authentication.getName()).stream().findFirst().orElse(false);
     }
 
     /**

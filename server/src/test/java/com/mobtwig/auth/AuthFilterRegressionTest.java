@@ -41,6 +41,7 @@ class AuthFilterRegressionTest {
             var sessions = mock(MemberSessions.class);
             when(sessions.current("2")).thenReturn(java.util.Optional.of(
                     new MemberSessions.Identity("2", "user@example.test", "회원", "2026-01-01T00:00:00Z")));
+            when(sessions.authorized(any())).thenAnswer(call -> "2".equals(((org.springframework.security.core.Authentication) call.getArgument(0)).getName()));
             return sessions;
         }
         @Bean AdminAccounts accounts(PasswordEncoder passwords) {

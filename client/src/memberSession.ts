@@ -1,4 +1,5 @@
 import { parseSignupDocuments, parseSignupProblem, parseSignupResult, type SignupDocument, type SignupInput, type SignupResult } from './memberSignup.ts';
+import { parsePasswordChangeProblem, PasswordChangeProblem, validatePasswordChange, type PasswordChangeInput } from './memberPassword.ts';
 
 /** 회원 API가 반환한 HTTP 오류의 상태와 고정 코드를 제공합니다. */
 export class MemberRequestError extends Error {
@@ -42,6 +43,8 @@ export interface MemberAuthState {
   generation: number;
   /** 민감한 응답 원문을 포함하지 않는 안내입니다. */
   error: string | null;
+  /** 비밀번호 변경 204를 확인한 세대에서만 로그인 화면에 전달하는 이메일입니다. */
+  passwordChangedEmail?: string;
 }
 
 /** 쿠키는 플랫폼이 관리하며 JS 저장소에 직접 보관하지 않습니다. */
@@ -73,6 +76,8 @@ export interface MemberSessionClient {
   login(email: string, password: string): Promise<MemberIdentity>;
   /** 서버의 종료 응답을 확인하지 못하면 성공으로 표시하지 않습니다. */
   logout(): Promise<void>;
+  /** 모든 회원 세션 종료를 확인하고 재로그인에 사용할 이메일만 반환합니다. */
+  changePassword(input: PasswordChangeInput): Promise<string>;
   /**
    * 소유자 ID를 클라이언트에서 대체하지 않는 회원 전용 경로를 요청합니다.
    * @param path - 같은 서버의 `/api/members/` 하위 상대 경로입니다.
@@ -129,11 +134,11 @@ export function createMemberSessionClient(apiUrl: string, requester: typeof fetc
     state = Object.freeze(next);
     for (const listener of listeners) listener();
   };
-  const forget = (status: MemberAuthState['status'], error: string | null = null) => {
+  const forget = (status: MemberAuthState['status'], error: string | null = null, passwordChangedEmail?: string) => {
     generation++;
     for (const controller of requests) controller.abort();
     requests.clear();
-    publish({ status, member: null, generation, error });
+    publish({ status, member: null, generation, error, ...(passwordChangedEmail ? { passwordChangedEmail } : {}) });
     return generation;
   };
 
@@ -146,7 +151,9 @@ export function createMemberSessionClient(apiUrl: string, requester: typeof fetc
     const timer = setTimeout(() => controller.abort(), 15000);
     try {
       const response = await requester(base + path, { ...init, credentials: 'include', signal: controller.signal });
-      assertCurrent(epoch); const result = await consume(response); assertCurrent(epoch);
+      assertCurrent(epoch);
+      if (controller.signal.aborted) throw canceled();
+      const result = await consume(response); assertCurrent(epoch);
       if (controller.signal.aborted) throw canceled();
       return result;
     } finally { clearTimeout(timer); requests.delete(controller); init.signal?.removeEventListener('abort', cancel); }
@@ -156,6 +163,7 @@ export function createMemberSessionClient(apiUrl: string, requester: typeof fetc
 
   async function csrf(epoch: number): Promise<string> {
     return consumeRequest('/api/auth/csrf', epoch, {}, async response => {
+    if (response.status === 401) { forget('anonymous'); throw new MemberRequestError(401, null); }
     if (!response.ok) throw new Error('보안 확인 정보를 받지 못했습니다. 다시 시도해 주십시오.');
     let value: unknown;
     try { value = await response.json(); } catch { throw new Error('보안 확인 응답이 올바르지 않습니다.'); }
@@ -187,6 +195,7 @@ export function createMemberSessionClient(apiUrl: string, requester: typeof fetc
     if (!path.startsWith('/api/members/') || /[\\\u0000-\u0020#]/.test(path) || /%2e|%2f|%5c/i.test(path.split('?')[0]) || path.split('/').includes('..')
         || !new URL(base + path).pathname.startsWith(url.pathname.replace(/\/+$/, '') + '/api/members/')) throw new Error('회원 요청 경로를 확인해 주십시오.');
     if (state.status !== 'authenticated') throw new MemberRequestError(401, null);
+    if (busy) throw new Error('인증 요청을 처리하고 있습니다.');
     const epoch = generation;
     const method = (init.method ?? 'GET').toUpperCase();
     const headers = new Headers(init.headers);
@@ -244,7 +253,7 @@ export function createMemberSessionClient(apiUrl: string, requester: typeof fetc
       try {
         const member = await readIdentity(epoch);
         assertCurrent(epoch); if (sequence !== refreshSequence) return;
-        if (!member) { if (state.member) forget('anonymous'); else publish({ status: 'anonymous', member: null, generation, error: null }); return; }
+        if (!member) { if (state.member) forget('anonymous'); else publish({ ...state, status: 'anonymous', member: null, generation, error: null }); return; }
         if (state.member && member.id !== state.member.id) forget('checking');
         publish({ status: 'authenticated', member: Object.freeze(member), generation, error: null });
       } catch {
@@ -284,6 +293,37 @@ export function createMemberSessionClient(apiUrl: string, requester: typeof fetc
         assertCurrent(epoch); publish({ status: 'anonymous', member: null, generation, error: null });
       } catch (error) {
         if (!disposed && generation === epoch) publish({ status: 'error', member: null, generation, error: '로그아웃 완료를 확인하지 못했습니다. 다시 시도해 주십시오.' });
+        throw error;
+      } finally { busy = false; }
+    },
+    async changePassword(input) {
+      if (busy) throw new Error('인증 요청을 처리하고 있습니다.');
+      if (disposed) throw canceled();
+      if (state.status !== 'authenticated' || !state.member) throw new MemberRequestError(401, null);
+      const validated = validatePasswordChange(input);
+      const epoch = generation, email = state.member.email;
+      busy = true; ++refreshSequence;
+      for (const controller of requests) controller.abort();
+      let unchanged = true;
+      try {
+        const token = await csrf(epoch);
+        unchanged = false;
+        const status = await consumeRequest('/api/auth/password', epoch, {
+          method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': token }, body: JSON.stringify(validated),
+        }, async response => {
+          if ([400, 401, 403].includes(response.status)) unchanged = true;
+          if (response.status === 400) throw parsePasswordChangeProblem(await response.json().catch(() => null));
+          return response.status;
+        });
+        if (status === 204) { forget('anonymous', null, email); return email; }
+        if (status === 401) { forget('anonymous'); throw new MemberRequestError(401, null); }
+        if (status === 403) throw new Error('보안 확인에 실패했습니다. 다시 시도해 주세요.');
+        throw new Error('비밀번호 변경 완료를 확인하지 못했습니다. 다시 로그인해 확인해 주세요.');
+      } catch (error) {
+        // 400·403은 변경되지 않은 확정 응답입니다. 통신 실패는 변경 여부가 불명확하므로 개인 상태를 비웁니다.
+        if (!unchanged && !(error instanceof PasswordChangeProblem) && !(error instanceof MemberRequestError) && !disposed && generation === epoch) {
+          forget('error', '비밀번호 변경 완료를 확인하지 못했습니다. 다시 로그인해 확인해 주세요.');
+        }
         throw error;
       } finally { busy = false; }
     },

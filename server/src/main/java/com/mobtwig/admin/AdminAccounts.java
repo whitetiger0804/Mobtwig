@@ -4,6 +4,7 @@ import java.nio.charset.StandardCharsets;
 import java.sql.PreparedStatement;
 import java.sql.Statement;
 import java.util.Locale;
+import com.mobtwig.auth.CredentialPrincipal;
 
 import jakarta.validation.Validator;
 import org.jspecify.annotations.NonNull;
@@ -11,7 +12,6 @@ import org.jspecify.annotations.Nullable;
 import org.springframework.dao.support.DataAccessUtils;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
-import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
@@ -47,9 +47,8 @@ public class AdminAccounts implements UserDetailsService {
     @Override
     public @NonNull UserDetails loadUserByUsername(@NonNull String email) {
         var users = jdbc.<@NonNull UserDetails>query("SELECT id,password_hash,role,status FROM member WHERE email=?",
-                (rs, row) -> User.withUsername("" + rs.getLong("id"))
-                        .password(rs.getString("password_hash")).roles(rs.getString("role"))
-                        .disabled(!"ACTIVE".equals(rs.getString("status"))).build(),
+                (rs, row) -> new CredentialPrincipal("" + rs.getLong("id"), rs.getString("password_hash"),
+                        rs.getString("role"), "ACTIVE".equals(rs.getString("status"))),
                 email.strip().toLowerCase(Locale.ROOT));
         if (users.isEmpty()) {
             throw new UsernameNotFoundException("로그인 정보를 확인하십시오.");

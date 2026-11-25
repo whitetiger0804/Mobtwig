@@ -31,6 +31,7 @@ public class MemberWebSecurity {
     public SecurityFilterChain memberFilter(HttpSecurity http, AuthCookies cookies, MemberSessions sessions,
             @Qualifier("memberCors") CorsConfigurationSource cors) throws Exception {
         var contentWrite = new OrRequestMatcher(
+                PathPatternRequestMatcher.withDefaults().matcher("/api/auth/password"),
                 PathPatternRequestMatcher.withDefaults().matcher("/api/members/works/{slug}/reviews"),
                 PathPatternRequestMatcher.withDefaults().matcher("/api/members/reviews/**"),
                 PathPatternRequestMatcher.withDefaults().matcher("/api/members/review-comments/**"),
@@ -50,10 +51,10 @@ public class MemberWebSecurity {
                                 defaultDenied.handle(request, response, failure);
                                 return;
                             }
-                            // CSRF 실패가 먼저 발생해도 리뷰·커뮤니티 요청의 미인증은 401로 반환합니다.
+                            // CSRF 실패가 먼저 발생해도 해당 회원 쓰기 요청의 미인증은 401로 반환합니다.
                             var auth = SecurityContextHolder.getContext().getAuthentication();
                             boolean active = auth != null && auth.isAuthenticated() && !(auth instanceof AnonymousAuthenticationToken)
-                                    && sessions.current(auth.getName()).isPresent();
+                                    && sessions.authorized(auth);
                             response.setHeader("Cache-Control", "no-store");
                             response.setStatus(active ? 403 : 401);
                         }))
@@ -61,6 +62,12 @@ public class MemberWebSecurity {
                 .formLogin(login -> login.loginPage("/api/auth/login").loginProcessingUrl("/api/auth/login")
                         .usernameParameter("email")
                         .successHandler((request, response, authentication) -> {
+                            // 검증 후 비밀번호가 바뀐 구 로그인은 새 버전을 부여받지 않습니다.
+                            if (!sessions.authorized(authentication)) {
+                                request.getSession().invalidate();
+                                SecurityContextHolder.clearContext(); cookies.expireSession(request, response);
+                                response.setHeader("Cache-Control", "no-store"); response.setStatus(401); return;
+                            }
                             request.getSession().setAttribute(AuthCookies.SCOPE, AuthCookies.MEMBER);
                             request.getSession().setMaxInactiveInterval(cookies.memberSessionTimeoutSeconds());
                             response.setHeader("Cache-Control", "no-store"); response.setStatus(204);
