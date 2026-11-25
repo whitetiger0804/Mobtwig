@@ -585,8 +585,8 @@ export function WithdrawScreen() {
  * 테마 미리보기, 글꼴 타일, 글자 크기와 읽기 효과 선택을 표시합니다.
  *
  * @remarks
- * 테마·글꼴 계열·글자 크기는 현재 기기에 저장하여 다음 실행에도 적용합니다.
- * 서버 계정 설정과 동기화하지 않으며, 페이지 넘김 방식과 효과 설정은 지원 전까지 비활성화합니다.
+ * 테마·글꼴 계열·글자 크기·읽기 방식은 현재 기기에 저장하여 다음 실행에도 적용합니다.
+ * 서버 계정 설정과 동기화하지 않으며, 페이지 전환 애니메이션과 효과음은 지원 전까지 비활성화합니다.
  *
  * @returns 읽기 설정 시안의 미리보기와 선택 도구입니다.
  */
@@ -595,6 +595,7 @@ export function ReadingSettingsScreen() {
   const [theme, setTheme] = useState(app.readingPreferences.theme);
   const [font, setFont] = useState(app.readingPreferences.font);
   const [size, setSize] = useState(app.readingPreferences.size);
+  const [mode, setMode] = useState(app.readingPreferences.mode);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
   const settingsMounted = useRef(true);
@@ -608,7 +609,7 @@ export function ReadingSettingsScreen() {
     setSaving(true);
     setSaveError('');
     try {
-      await app.setReadingPreferences({ theme, font, size });
+      await app.setReadingPreferences({ theme, font, size, mode });
       if (settingsMounted.current) app.back();
     } catch {
       if (settingsMounted.current) setSaveError('읽기 설정을 저장하지 못했습니다. 다시 적용해 주십시오.');
@@ -616,7 +617,6 @@ export function ReadingSettingsScreen() {
       if (settingsMounted.current) setSaving(false);
     }
   };
-  const mode = '스크롤';
   const animation = false;
   const sound = false;
   return (
@@ -641,7 +641,7 @@ export function ReadingSettingsScreen() {
       </View>
       <Text style={[s.label, styles.settingsLabel]}>글자 크기</Text>
       <View style={styles.sizeRow}>{[13, 15, 17, 19, 21].map((fontSize, index) => <Pressable key={fontSize} accessibilityRole="radio" accessibilityLabel={`글자 크기 ${index + 1}단계`} accessibilityState={{ checked: size === index }} onPress={() => setSize(index)} style={[styles.sizeOption, size === index && styles.sizeSelected]}><Text style={[s.text, { fontSize, fontFamily: readingFonts[font].family }, size === index && styles.selectedText]}>가</Text></Pressable>)}</View>
-      <View style={styles.settingRow}><Text numberOfLines={1} style={[s.text, styles.settingName, styles.unsupportedSetting]}>읽기 방식</Text><View style={styles.modeRow}>{['스크롤', '책장'].map(label => <Pressable key={label} disabled accessibilityRole="radio" accessibilityState={{ checked: mode === label, disabled: true }} style={[styles.modeOption, styles.unsupportedSetting, mode === label && styles.modeSelected]}><Text numberOfLines={1} style={[s.text, styles.modeLabel, styles.unsupportedSetting, mode === label && styles.lightText]}>{label}</Text></Pressable>)}</View></View>
+      <View style={styles.settingRow}><Text numberOfLines={1} style={[s.text, styles.settingName]}>읽기 방식</Text><View accessibilityRole="radiogroup" accessibilityLabel="읽기 방식" style={styles.modeRow}>{(['스크롤', '책장'] as const).map(label => <Pressable key={label} accessibilityRole="radio" accessibilityLabel={label + ' 읽기 방식'} accessibilityState={{ checked: mode === label }} onPress={() => setMode(label)} style={[styles.modeOption, mode === label && styles.modeSelected]}><Text numberOfLines={1} style={[s.text, styles.modeLabel, mode === label && styles.lightText]}>{label}</Text></Pressable>)}</View></View>
       <View style={styles.settingRow}><Text numberOfLines={1} style={[s.text, styles.settingName, styles.unsupportedSetting]}>페이지 전환 애니메이션</Text><Switch disabled accessibilityLabel="페이지 전환 애니메이션" accessibilityState={{ disabled: true }} value={animation} trackColor={{ false: '#E3E8DC', true: colors.green }} thumbColor="#FFFFFF" /></View>
       <View style={styles.settingRow}><Text numberOfLines={1} style={[s.text, styles.settingName, styles.unsupportedSetting]}>페이지 전환 효과음</Text><Switch disabled accessibilityLabel="페이지 전환 효과음" accessibilityState={{ disabled: true }} value={sound} trackColor={{ false: '#E3E8DC', true: colors.green }} thumbColor="#FFFFFF" /></View>
       {!!saveError && <Text accessibilityRole="alert" style={s.error}>{saveError}</Text>}
