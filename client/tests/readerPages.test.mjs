@@ -1,45 +1,102 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { classifyPageTouch, pageCount, pageOf, pageStep, pageTop, turnPage } from '../src/readerPages.ts';
+import { buildPageTops, classifyPageTouch, pageOf, pageTop, turnPage } from '../src/readerPages.ts';
 
-test('쪽 간격은 뷰포트에서 한 줄을 겹치고 겹침은 뷰포트 절반을 넘지 않습니다.', () => {
-  assert.equal(pageStep(600, 30), 570);
-  assert.equal(pageStep(100, 31.45), 68.55);
-  assert.equal(pageStep(100, 80), 50, '줄 높이가 커도 절반만 겹칩니다.');
-  assert.equal(pageStep(100, -5), 100);
-  assert.equal(pageStep(0, 30), 1, '레이아웃 전에도 0 이하 간격으로 무한 반복하지 않습니다.');
+/** 같은 높이 줄을 top부터 count개 만듭니다. */
+const run = (top, count, height) => Array.from({ length: count }, (_, index) => ({ top: top + index * height, height }));
+
+/** 모든 줄이 정확히 한 쪽에서 완전히 보이고 쪽 시작이 줄 중간이 아닌지 검사합니다. */
+function assertLineAligned(lines, viewport, tops, message) {
+  assert.equal(tops[0], 0, message);
+  for (let index = 1; index < tops.length; index++) {
+    assert.ok(tops[index] > tops[index - 1], message);
+    assert.ok(lines.some(line => line.top === tops[index]), `${message}: ${tops[index]}은 줄 시작입니다.`);
+    assert.ok(!lines.some(line => line.top < tops[index] && tops[index] < line.top + line.height), `${message}: 줄 중간에서 시작하지 않습니다.`);
+  }
+  for (const line of lines) {
+    const pages = tops.filter(top => top <= line.top && line.top + line.height <= top + viewport + 0.5);
+    assert.equal(pages.length, 1, `${message}: ${line.top} 줄은 한 쪽에서만 온전히 보입니다.`);
+  }
+}
+
+test('줄이 뷰포트에 정확히 맞으면 다음 쪽은 바로 다음 줄에서 시작합니다.', () => {
+  assert.deepEqual(buildPageTops(run(0, 10, 25), 100), [0, 100, 200]);
+  assert.deepEqual(buildPageTops(run(0, 4, 25), 100), [0], '한 쪽에 모두 들어갑니다.');
+  assert.deepEqual(buildPageTops([], 100), [0]);
+  assert.deepEqual(buildPageTops(run(0, 10, 25), 0), [0], '레이아웃 전에는 한 쪽입니다.');
 });
 
-test('본문이 뷰포트보다 짧으면 한 쪽이고 나머지는 마지막 쪽으로 계산합니다.', () => {
-  assert.equal(pageCount(80, 100, 70), 1);
-  assert.equal(pageCount(100, 100, 70), 1);
-  assert.equal(pageCount(240, 100, 70), 3, '본문 끝이 쪽 간격과 정확히 맞습니다.');
-  assert.equal(pageCount(241, 100, 70), 4, '남은 1px도 한 쪽입니다.');
+test('뷰포트에 걸친 줄은 다음 쪽의 첫 줄이 됩니다.', () => {
+  const lines = run(0, 10, 30);
+  assert.deepEqual(buildPageTops(lines, 100), [0, 90, 180, 270]);
+  assertLineAligned(lines, 100, buildPageTops(lines, 100), '30px 줄');
 });
 
-test('쪽 시작은 범위를 벗어나지 않고 마지막 쪽은 본문 끝에 맞춥니다.', () => {
-  assert.deepEqual([0, 1, 2, 3].map(index => pageTop(index, 260, 100, 70)), [0, 70, 140, 160]);
-  assert.equal(pageTop(-1, 260, 100, 70), 0);
-  assert.equal(pageTop(99, 260, 100, 70), 160);
-  assert.equal(pageTop(1, 80, 100, 70), 0, '한 쪽짜리 본문은 항상 처음입니다.');
+test('문단 사이 간격은 줄이 아니므로 쪽 시작은 다음 문단의 첫 줄입니다.', () => {
+  const lines = [...run(0, 3, 30), ...run(110, 3, 30)];
+  assert.deepEqual(buildPageTops(lines, 100), [0, 110]);
+  assert.deepEqual(buildPageTops([...run(0, 2, 30), ...run(95, 3, 30)], 100), [0, 95], '간격 뒤 걸친 줄도 줄 시작입니다.');
 });
 
-test('y 위치의 쪽은 경계 허용 오차 4px로 계산하고 범위 밖은 첫 쪽과 마지막 쪽으로 맞춥니다.', () => {
-  const at = y => pageOf(y, 1000, 100, 70);
-  assert.equal(pageCount(1000, 100, 70), 14);
-  assert.equal(at(0), 0);
-  assert.equal(at(65), 0);
-  assert.equal(at(66), 1, '쪽 시작 4px 앞은 다음 쪽입니다.');
-  assert.equal(at(70), 1);
-  assert.equal(at(135), 1);
-  assert.equal(at(136), 2);
-  assert.equal(at(895), 12);
-  assert.equal(at(896), 13, '본문 끝 4px 앞부터 마지막 쪽입니다.');
-  assert.equal(at(900), 13);
-  assert.equal(at(-50), 0);
-  assert.equal(at(5000), 13);
-  assert.equal(pageOf(50, 80, 100, 70), 0);
-  for (let index = 0; index < 14; index++) assert.equal(at(pageTop(index, 1000, 100, 70)), index, '쪽 시작은 같은 쪽입니다.');
+test('제목 블록은 쪼개지 않고 넘치면 블록 시작에서 다음 쪽을 시작합니다.', () => {
+  const lines = [...run(0, 2, 30), { top: 60, height: 62 }, ...run(122, 3, 30)];
+  assert.deepEqual(buildPageTops(lines, 100), [0, 60, 152]);
+  assertLineAligned(lines, 100, buildPageTops(lines, 100), '제목 블록');
+});
+
+test('뷰포트보다 큰 블록은 뷰포트만큼 전진하여 무한 반복하지 않습니다.', () => {
+  assert.deepEqual(buildPageTops([{ top: 0, height: 250 }, ...run(250, 2, 30)], 100), [0, 100, 200, 280]);
+  assert.deepEqual(buildPageTops([...run(0, 2, 30), { top: 60, height: 150 }, { top: 210, height: 30 }], 100), [0, 60, 160]);
+});
+
+test('마지막 쪽도 본문 끝이 아니라 줄 시작에 맞춥니다.', () => {
+  // 실기기 2쪽 회차: 9줄 + 본문 끝. 예전 계산은 마지막 쪽을 높이−뷰포트(170)로 맞춰 줄 중간에서 시작했습니다.
+  const lines = run(0, 9, 30);
+  const tops = buildPageTops(lines, 100);
+  assert.deepEqual(tops, [0, 90, 180]);
+  assert.ok(!tops.includes(170));
+});
+
+test('소수 줄 높이가 누적되어도 0.5px 안의 오차는 같은 쪽에 넣습니다.', () => {
+  const lines = run(0, 20, 31.45);
+  const tops = buildPageTops(lines, 94.35);
+  assert.equal(tops[1], lines[3].top);
+  assertLineAligned(lines, 94.35, tops, '31.45px 줄');
+});
+
+test('임의의 문단·간격·제목에서도 모든 줄은 정확히 한 쪽에서 온전히 보이고 쪽은 줄 중간에서 시작하지 않습니다.', () => {
+  let seed = 36;
+  const random = () => (seed = (seed * 1_103_515_245 + 12_345) % 2_147_483_648) / 2_147_483_648;
+  for (let round = 0; round < 300; round++) {
+    const viewport = 80 + Math.floor(random() * 600);
+    const lineHeight = 18 + random() * 30;
+    const lines = [{ top: 0, height: 40 + random() * 80 }];
+    let y = lines[0].height;
+    for (let paragraph = 0, count = 1 + Math.floor(random() * 30); paragraph < count; paragraph++) {
+      y += Math.floor(random() * 3) * lineHeight * random();
+      const block = run(y, 1 + Math.floor(random() * 12), lineHeight);
+      lines.push(...block);
+      y = block.at(-1).top + lineHeight;
+    }
+    if (lines.some(line => line.height > viewport)) continue;
+    assertLineAligned(lines, viewport, buildPageTops([...lines].reverse(), viewport), `round ${round}`);
+  }
+});
+
+test('쪽 시작은 범위를 벗어나지 않고 y 위치의 쪽은 쪽 시작 4px 앞부터 계산합니다.', () => {
+  const tops = [0, 90, 180, 270];
+  assert.deepEqual([0, 1, 2, 3].map(index => pageTop(index, tops)), tops);
+  assert.equal(pageTop(-1, tops), 0);
+  assert.equal(pageTop(99, tops), 270);
+  assert.equal(pageTop(0, []), 0);
+  assert.equal(pageOf(0, tops), 0);
+  assert.equal(pageOf(85, tops), 0);
+  assert.equal(pageOf(86, tops), 1, '쪽 시작 4px 앞은 다음 쪽입니다.');
+  assert.equal(pageOf(179, tops), 2);
+  assert.equal(pageOf(-50, tops), 0);
+  assert.equal(pageOf(5_000, tops), 3);
+  assert.equal(pageOf(50, [0]), 0);
+  for (let index = 0; index < tops.length; index++) assert.equal(pageOf(pageTop(index, tops), tops), index, '쪽 시작은 같은 쪽입니다.');
 });
 
 test('첫 쪽 이전과 마지막 쪽 다음은 쪽을 유지하고 닿은 경계를 알립니다.', () => {

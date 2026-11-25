@@ -17,7 +17,7 @@ import { adjacentMagazinePage, fetchMagazineIssue, fetchMagazinePage, magazineAr
 import { matchesReadingResume, readReadingProgress, readingSegments, restoreReadingOffset, sameReadingPosition, saveReadingProgress,
   type ReadingPosition, type ReadingProgress } from './readingProgress';
 import { EmptyState } from './EmptyState';
-import { classifyPageTouch, pageCount, pageOf, pageStep, pageTop, turnPage } from './readerPages';
+import { buildPageTops, classifyPageTouch, pageOf, pageTop, turnPage, type PageLine } from './readerPages';
 import { Action, colors, Icon, IconButton, ModalPanel, s } from './ui';
 // #endregion
 
@@ -544,7 +544,8 @@ function TextReader() {
   const nativeEndDrag = useRef(false);
   const advanceRef = useRef(advanceNext);
   const goPageRef = useRef(goPage);
-  const [page, setPage] = useState({ index: 0, count: 1 });
+  /** 책장 모드의 현재 쪽이며 cut은 다음 쪽에서 온전히 보일 잘리는 줄 영역의 높이입니다. */
+  const [page, setPage] = useState({ index: 0, count: 1, cut: 0, viewport: 0 });
   const [pageNotice, setPageNotice] = useState('');
   /** 화면 상단 문단의 utf16 오프셋이며 모드·글자 크기 변경의 기준입니다. */
   const visibleOffset = useRef<number | null>(null);
@@ -565,6 +566,13 @@ function TextReader() {
   }, [segments, highlights.items, data]);
   const geometry = useRef({ y: 0, viewport: 0, height: 0, chapterY: 0, textY: 0 });
   const anchors = useRef(new Map<number, number>());
+  /** 문단 Text의 높이이며 onTextLayout이 없는 웹에서 줄 위치를 추정할 때 사용합니다. */
+  const paragraphHeights = useRef(new Map<number, number>());
+  /** 문단 Text 기준의 실제 줄 위치이며 네이티브 onTextLayout에서 받습니다. */
+  const paragraphLines = useRef(new Map<number, PageLine[]>());
+  /** 줄 경계에 맞춘 책장 모드 쪽 시작 위치입니다. */
+  const pageTops = useRef<number[]>([0]);
+  const pageTopsFrame = useRef<number | null>(null);
   const restored = useRef(false);
   const gestureUntil = useRef(0);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -654,6 +662,7 @@ function TextReader() {
   useEffect(() => {
     if (lastLayout.current === layoutKey) return;
     lastLayout.current = layoutKey;
+    schedulePages();
     if (!restored.current) return;
     pendingAnchor.current ??= visibleOffset.current;
     reanchor();
@@ -661,6 +670,7 @@ function TextReader() {
   useEffect(() => () => {
     if (frame.current !== null) cancelAnimationFrame(frame.current);
     if (anchorFrame.current !== null) cancelAnimationFrame(anchorFrame.current);
+    if (pageTopsFrame.current !== null) cancelAnimationFrame(pageTopsFrame.current);
   }, []);
 
   function restore() {
@@ -670,15 +680,15 @@ function TextReader() {
     if (frame.current !== null) cancelAnimationFrame(frame.current);
     frame.current = requestAnimationFrame(() => {
       frame.current = null;
-      const { chapterY, textY, height, viewport } = geometry.current;
-      const y = snapToPage(anchor === 0 ? 0 : anchor === data.body.length ? Math.max(0, height - viewport)
+      const { chapterY, textY } = geometry.current;
+      const y = snapToPage(anchor === 0 ? 0 : anchor === data.body.length ? endY()
         : chapterY + textY + (anchors.current.get(anchor) ?? 0));
       clearGesture();
       restored.current = true;
       geometry.current.y = y;
       updateVisiblePosition();
       scroll.current?.scrollTo({ y, animated: false });
-      setViewportProgress(height <= viewport ? 1 : Math.min(1, Math.max(0, y / (height - viewport))));
+      setViewportProgress(progressAt(y));
       setRestorationComplete(true);
     });
   }
@@ -686,10 +696,78 @@ function TextReader() {
   /** 책장 모드에서는 y가 포함된 쪽의 시작으로, 스크롤 모드에서는 스크롤 범위 안으로 맞춥니다. */
   function snapToPage(y: number): number {
     const { height, viewport } = geometry.current;
-    const bounded = Math.min(Math.max(0, y), Math.max(0, height - viewport));
-    if (!paged) return bounded;
-    const step = pageStep(viewport, lineHeight);
-    return pageTop(pageOf(bounded, height, viewport, step), height, viewport, step);
+    if (!paged) return Math.min(Math.max(0, y), Math.max(0, height - viewport));
+    const tops = flushPages();
+    return pageTop(pageOf(Math.max(0, y), tops), tops);
+  }
+
+  /** 본문 끝 위치이며 책장 모드는 줄에 맞춘 마지막 쪽의 시작입니다. */
+  function endY(): number {
+    const { height, viewport } = geometry.current;
+    if (!paged) return Math.max(0, height - viewport);
+    const tops = flushPages();
+    return tops[tops.length - 1];
+  }
+
+  /** 진행률이며 책장 모드는 위치가 아니라 쪽 번호로 계산합니다. */
+  function progressAt(y: number): number {
+    const { height, viewport } = geometry.current;
+    if (paged) {
+      const tops = pageTops.current;
+      return tops.length <= 1 ? 1 : pageOf(y, tops) / (tops.length - 1);
+    }
+    return height <= viewport ? 1 : Math.min(1, Math.max(0, y / (height - viewport)));
+  }
+
+  /** 측정된 머리글과 문단 줄을 콘텐츠 기준 절대 y의 줄 목록으로 모아 쪽 경계를 계산합니다. */
+  function measurePages(): number[] {
+    const { chapterY, textY, viewport } = geometry.current;
+    const lines: PageLine[] = [];
+    // 회차 번호와 제목은 쪼개지 않는 한 블록입니다.
+    if (chapterY + textY > 0) lines.push({ top: 0, height: chapterY + textY });
+    for (const part of segments) {
+      const top = anchors.current.get(part.offset);
+      if (top === undefined) continue;
+      const base = chapterY + textY + top;
+      const measured = Platform.OS === 'web' ? undefined : paragraphLines.current.get(part.offset);
+      if (measured?.length) {
+        for (const line of measured) lines.push({ top: base + line.top, height: line.height });
+        continue;
+      }
+      // 웹은 onTextLayout이 없으므로 문단 높이를 줄 높이로 나눈 균등한 줄로 추정합니다.
+      const height = paragraphHeights.current.get(part.offset) ?? 0;
+      const count = Math.max(1, Math.round(height / lineHeight));
+      for (let index = 0; index < count; index++) lines.push({ top: base + index * height / count, height: height / count });
+    }
+    return buildPageTops(lines, viewport);
+  }
+
+  /** 예약된 쪽 재계산을 즉시 실행하고 현재 쪽 경계를 돌려줍니다. */
+  function flushPages(): number[] {
+    if (pageTopsFrame.current !== null) {
+      cancelAnimationFrame(pageTopsFrame.current);
+      pageTopsFrame.current = null;
+      pageTops.current = measurePages();
+    }
+    return pageTops.current;
+  }
+
+  /** 문단 레이아웃이 연달아 바뀌어도 쪽 경계는 프레임마다 한 번만 다시 계산합니다. */
+  function schedulePages() {
+    if (pageTopsFrame.current !== null) cancelAnimationFrame(pageTopsFrame.current);
+    pageTopsFrame.current = requestAnimationFrame(() => {
+      pageTopsFrame.current = null;
+      pageTops.current = measurePages();
+      updateVisiblePosition();
+    });
+  }
+
+  /** 레이아웃 측정값이 바뀔 때마다 쪽 경계 예약과 위치 복원·재정렬을 함께 처리합니다. */
+  function relayout() {
+    schedulePages();
+    restore();
+    reanchor();
+    updateVisiblePosition();
   }
 
   /** 사용자 입력 전까지 기준 문단을 화면 상단(책장 모드는 그 문단의 쪽)에 다시 맞춥니다. */
@@ -702,13 +780,13 @@ function TextReader() {
       anchorFrame.current = null;
       const target = pendingAnchor.current;
       if (target === null) return;
-      const { chapterY, textY, height, viewport } = geometry.current;
-      const y = snapToPage(target === 0 ? 0 : target === data.body.length ? Math.max(0, height - viewport)
+      const { chapterY, textY } = geometry.current;
+      const y = snapToPage(target === 0 ? 0 : target === data.body.length ? endY()
         : chapterY + textY + (anchors.current.get(target) ?? 0));
       geometry.current.y = y;
       scroll.current?.scrollTo({ y, animated: false });
       updateVisiblePosition();
-      setViewportProgress(height <= viewport ? 1 : Math.min(1, Math.max(0, y / (height - viewport))));
+      setViewportProgress(progressAt(y));
     });
   }
 
@@ -716,7 +794,10 @@ function TextReader() {
     if (!data || data.kind === 'magazine' || !restored.current) return null;
     const { y, viewport, height, chapterY, textY } = geometry.current;
     let offset = 0;
-    if (atEnd || height > viewport + 4 && y + viewport >= height - 4) offset = data.body.length;
+    const tops = pageTops.current, index = pageOf(y, tops);
+    // 책장 모드의 끝은 위치가 아니라 마지막 쪽 번호로 판정하며 한 쪽짜리 회차는 스크롤 모드처럼 처음으로 저장합니다.
+    const end = paged ? tops.length > 1 && index === tops.length - 1 : height > viewport + 4 && y + viewport >= height - 4;
+    if (atEnd || end) offset = data.body.length;
     else {
       for (const part of segments) {
         const top = anchors.current.get(part.offset);
@@ -724,10 +805,9 @@ function TextReader() {
       }
       if (paged && viewport > 0 && height > 0) {
         // 책장 모드는 현재 쪽에서 시작하는 첫 문단을 기록하여 복원 시 같은 쪽으로 돌아옵니다.
-        const step = pageStep(viewport, lineHeight), index = pageOf(y, height, viewport, step);
         const first = index === 0 ? undefined : segments.find(part => {
           const top = anchors.current.get(part.offset);
-          return top !== undefined && pageOf(chapterY + textY + top, height, viewport, step) === index;
+          return top !== undefined && pageOf(chapterY + textY + top, tops) === index;
         });
         if (first) offset = first.offset;
       }
@@ -738,7 +818,12 @@ function TextReader() {
   /** 복원·관성 이동이 아닌, 본문 끝에서 시작한 추가 입력만 이어보기에 사용합니다. */
   function atEnd(): boolean {
     const { y, height, viewport } = geometry.current;
-    return restored.current && viewport > 0 && height > 0 && y + viewport >= height - 4;
+    if (!restored.current || viewport <= 0 || height <= 0) return false;
+    if (paged) {
+      const tops = flushPages();
+      return pageOf(y, tops) === tops.length - 1;
+    }
+    return y + viewport >= height - 4;
   }
 
   function beginEndTouch(event: GestureResponderEvent) {
@@ -806,8 +891,8 @@ function TextReader() {
     const { y, viewport, height } = geometry.current;
     if (viewport <= 0 || height <= 0) return false;
     pendingAnchor.current = null;
-    const step = pageStep(viewport, lineHeight);
-    const turn = turnPage(pageOf(y, height, viewport, step), delta, pageCount(height, viewport, step));
+    const tops = flushPages();
+    const turn = turnPage(pageOf(y, tops), delta, tops.length);
     if (turn.edge === 'start') { setPageNotice(''); return true; }
     if (turn.edge === 'end') {
       if (autoContinue && data.next) { setPageNotice(''); void advanceRef.current(); }
@@ -815,12 +900,12 @@ function TextReader() {
       return true;
     }
     setPageNotice('');
-    const top = pageTop(turn.index, height, viewport, step);
+    const top = pageTop(turn.index, tops);
     readingStarted.current = true;
     geometry.current.y = top;
     scroll.current?.scrollTo({ y: top, animated: false });
     updateVisiblePosition();
-    setViewportProgress(height <= viewport ? 1 : Math.min(1, Math.max(0, top / (height - viewport))));
+    setViewportProgress(progressAt(top));
     scheduleAutoSave();
     return true;
   }
@@ -851,14 +936,17 @@ function TextReader() {
     if (next && pendingAnchor.current === null) visibleOffset.current = next.offset;
     setVisiblePosition(previous => next && sameReadingPosition(previous, next) ? previous : next);
     const { y, viewport, height } = geometry.current;
-    if (viewport > 0 && height > 0) {
-      const step = pageStep(viewport, lineHeight);
-      const index = pageOf(y, height, viewport, step), count = pageCount(height, viewport, step);
-      setPage(previous => previous.index === index && previous.count === count ? previous : { index, count });
+    if (paged && viewport > 0 && height > 0) {
+      const tops = pageTops.current, index = pageOf(y, tops), count = tops.length;
+      // 다음 쪽 시작부터 화면 아래까지는 잘리는 줄이며 다음 쪽에서 온전히 보입니다.
+      const cut = index < count - 1 ? Math.max(0, viewport - (tops[index + 1] - y)) : 0;
+      setPage(previous => previous.index === index && previous.count === count && previous.cut === cut && previous.viewport === viewport
+        ? previous : { index, count, cut, viewport });
     }
   }
 
   function saveVisible(automatic = false, atEnd = false): Promise<boolean> {
+    if (paged) flushPages();
     const position = currentPosition(atEnd);
     if (!position || automatic && (selectedPart || recordEntry && !readingStarted.current)) return Promise.resolve(false);
     return storage.save(position, automatic);
@@ -883,8 +971,7 @@ function TextReader() {
     geometry.current.height = contentSize.height;
     geometry.current.viewport = layoutMeasurement.height;
     updateVisiblePosition();
-    setViewportProgress(contentSize.height <= layoutMeasurement.height ? 1
-      : Math.min(1, Math.max(0, contentOffset.y / (contentSize.height - layoutMeasurement.height))));
+    setViewportProgress(progressAt(contentOffset.y));
     if (!moved || gestureUntil.current < Date.now() || !restored.current || app.overlay || selectedPart) return;
     readingStarted.current = true;
     scheduleAutoSave();
@@ -909,6 +996,11 @@ function TextReader() {
     pageTouch.current = null;
     setPageNotice('');
     anchors.current.clear();
+    paragraphHeights.current.clear();
+    paragraphLines.current.clear();
+    if (pageTopsFrame.current !== null) cancelAnimationFrame(pageTopsFrame.current);
+    pageTopsFrame.current = null;
+    pageTops.current = [0];
     restored.current = false;
     readingStarted.current = false;
     setRestorationComplete(false);
@@ -974,35 +1066,41 @@ function TextReader() {
         if (paged && restored.current && geometry.current.viewport > 0 && viewport !== geometry.current.viewport) {
           pendingAnchor.current ??= visibleOffset.current;
         }
-        geometry.current.viewport = viewport; restore(); reanchor(); updateVisiblePosition();
+        geometry.current.viewport = viewport; relayout();
       }}
-      onContentSizeChange={(_, height) => { clearGesture(); geometry.current.height = height; restore(); reanchor(); updateVisiblePosition(); }}
+      onContentSizeChange={(_, height) => { clearGesture(); geometry.current.height = height; relayout(); }}
       onScrollBeginDrag={startGesture} scrollEventThrottle={16} onScroll={onScroll}
       onTouchStart={paged ? undefined : beginEndTouch} onTouchEnd={paged ? undefined : event => finishEndTouch(event)}
       onTouchCancel={paged ? undefined : event => finishEndTouch(event, true)} onScrollEndDrag={paged ? undefined : finishNativeDrag}>
       {error ? <View accessibilityLiveRegion="polite" onTouchStart={markPress} onPointerDown={markPress}><Text style={[s.subtitle, { color: readingPalette.text }]}>본문을 불러오지 못했습니다.</Text><Text style={s.error}>{error}</Text><ReadingAccessActions status={accessError} workId={workId} />{workId && chapterId && <Action label="다시 불러오기" onPress={() => setAttempt(v => v + 1)} />}{workId && accessError !== 402 && <Action label="작품 상세로" onPress={() => app.navigate({ screen: 'detail', workId }, false, true)} />}</View>
         : !data ? <View accessibilityLiveRegion="polite"><ActivityIndicator color={colors.green} /><Text style={[s.muted, { color: readingPalette.muted }]}>본문을 불러오고 있습니다.</Text></View>
-        : <View testID="chapter-text" onLayout={event => { geometry.current.chapterY = event.nativeEvent.layout.y; restore(); reanchor(); updateVisiblePosition(); }}>
+        : <View testID="chapter-text" onLayout={event => { geometry.current.chapterY = event.nativeEvent.layout.y; relayout(); }}>
           <Text style={[styles.chapterNumber, { color: readingPalette.muted }]}>제{data.chapter.number}{data.kind === 'novel' ? '화' : '장'}</Text>
           <View accessibilityRole="header" accessibilityLabel={data.chapter.title} style={styles.chapterTitleWords}>
             {data.chapter.title.trim().split(/\s+/).map((word, index) => <Text key={index}
               style={[styles.chapterTitle, { color: readingPalette.text, fontFamily: bodyFont }]}>{word}</Text>)}
           </View>
           {data.body.length === 0 ? <EmptyState title="이 회차의 본문이 비어 있습니다." tone={app.readingPreferences.theme === '다크' ? 'dark' : 'light'} />
-            : <View testID="reader-body-text" onLayout={event => { geometry.current.textY = event.nativeEvent.layout.y; restore(); reanchor(); updateVisiblePosition(); }}>
+            : <View testID="reader-body-text" onLayout={event => { geometry.current.textY = event.nativeEvent.layout.y; relayout(); }}>
               {segments.map((part, index) => <Text key={part.offset} selectable
                 onLongPress={Platform.OS !== 'web' && highlights.authenticated ? () => selectPart(part) : undefined} onLayout={event => {
                 anchors.current.set(part.offset, event.nativeEvent.layout.y);
-                restore();
-                reanchor();
-                updateVisiblePosition();
+                paragraphHeights.current.set(part.offset, event.nativeEvent.layout.height);
+                relayout();
+              }} onTextLayout={Platform.OS === 'web' ? undefined : event => {
+                // 시스템 글자 크기에 따라 실제 줄 높이가 계산값과 다를 수 있어 측정된 줄 위치를 사용합니다.
+                paragraphLines.current.set(part.offset, event.nativeEvent.lines.map(line => ({ top: line.y, height: line.height })));
+                relayout();
               }} style={[s.text, { color: readingPalette.text, fontFamily: bodyFont, fontSize: bodySize, lineHeight: bodySize * 1.85 }]}>
                 {painted[index].map((piece, edge) => piece.color ? <Text key={edge}
                   style={{ backgroundColor: highlightColors[piece.color], color: colors.ink }}>{piece.text}</Text> : piece.text)}
               </Text>)}
             </View>}
         </View>}
+      {paged && <View testID="reader-page-spacer" style={{ height: page.viewport }} />}
     </ScrollView>
+    {paged && page.cut > 0 && <View testID="reader-page-mask" pointerEvents="none"
+      style={[styles.pageMask, { height: page.cut, backgroundColor: readingPalette.background }]} />}
     </View>
     {storage.enabled && (storage.status.problem !== null || storage.status.retry) && <View style={[styles.readerSave, { backgroundColor: readingPalette.background }]}>
       {!!storage.status.message && <Text accessibilityLiveRegion="polite" style={[s.muted, { color: readingPalette.text }]}>{storage.status.message}</Text>}
@@ -1213,6 +1311,7 @@ const styles = StyleSheet.create({
   progressFill: { height: 2, backgroundColor: colors.green },
   readerActions: { flexDirection: 'row', paddingHorizontal: 20, minHeight: 44, marginTop: 6 },
   readerPages: { flex: 1 },
+  pageMask: { position: 'absolute', left: 0, right: 0, bottom: 0 },
   pageActions: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, minHeight: 44, marginTop: 6 },
   pageCounter: { flex: 1, textAlign: 'center', fontSize: 12, fontVariant: ['tabular-nums'] },
   pageNotice: { textAlign: 'center', fontSize: 12, marginTop: 2 },
