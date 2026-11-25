@@ -25,12 +25,15 @@ export interface PageLine {
   top: number;
   /** 줄 높이입니다. */
   height: number;
+  /** 문단 사이의 빈 줄이면 true이며 쪽 경계 판정에서 빼서 쪽이 빈 줄로 시작하지 않게 합니다. */
+  blank?: boolean;
 }
 
 /**
  * 모든 쪽의 시작 위치를 줄 경계에 맞춰 계산합니다.
  * 각 쪽은 top+viewport 안에 완전히 들어오는 줄까지 보여 주고, 다음 쪽은 처음 잘리는 줄의 시작에서 시작합니다.
  * 한 줄(블록)이 뷰포트보다 크면 뷰포트만큼 전진하여 무한 반복하지 않습니다.
+ * 빈 줄은 문단 사이 간격처럼 다루므로 쪽은 항상 내용이 있는 줄에서 시작합니다.
  * @param lines - 콘텐츠 기준 절대 y의 줄 목록이며 순서는 상관없습니다.
  * @param viewport - 본문 ScrollView 높이입니다.
  * @returns 첫 값이 0인 오름차순 쪽 시작 위치 목록입니다.
@@ -38,7 +41,7 @@ export interface PageLine {
 export function buildPageTops(lines: readonly PageLine[], viewport: number): number[] {
   const tops = [0];
   if (!(viewport > 0)) return tops;
-  const sorted = lines.filter(line => Number.isFinite(line.top) && Number.isFinite(line.height) && line.height > 0)
+  const sorted = lines.filter(line => !line.blank && Number.isFinite(line.top) && Number.isFinite(line.height) && line.height > 0)
     .sort((a, b) => a.top - b.top);
   let current = 0;
   for (const line of sorted) {

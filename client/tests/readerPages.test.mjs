@@ -64,6 +64,12 @@ test('소수 줄 높이가 누적되어도 0.5px 안의 오차는 같은 쪽에 
   assertLineAligned(lines, 94.35, tops, '31.45px 줄');
 });
 
+test('빈 줄은 쪽 경계 판정에서 빠져 쪽이 빈 줄로 시작하지 않습니다.', () => {
+  const lines = [...run(0, 2, 30), { top: 60, height: 30, blank: true }, ...run(90, 3, 30)];
+  assert.deepEqual(buildPageTops(lines, 80), [0, 90, 150]);
+  assert.deepEqual(buildPageTops(lines.map(({ blank, ...line }) => line), 80), [0, 60, 120], '빈 줄을 빼지 않으면 60의 빈 줄에서 시작합니다.');
+});
+
 test('임의의 문단·간격·제목에서도 모든 줄은 정확히 한 쪽에서 온전히 보이고 쪽은 줄 중간에서 시작하지 않습니다.', () => {
   let seed = 36;
   const random = () => (seed = (seed * 1_103_515_245 + 12_345) % 2_147_483_648) / 2_147_483_648;
@@ -75,11 +81,15 @@ test('임의의 문단·간격·제목에서도 모든 줄은 정확히 한 쪽�
     for (let paragraph = 0, count = 1 + Math.floor(random() * 30); paragraph < count; paragraph++) {
       y += Math.floor(random() * 3) * lineHeight * random();
       const block = run(y, 1 + Math.floor(random() * 12), lineHeight);
+      // 문단 끝의 \n\n처럼 마지막 줄을 가끔 빈 줄로 둡니다.
+      if (block.length > 1 && random() < 0.5) block.at(-1).blank = true;
       lines.push(...block);
       y = block.at(-1).top + lineHeight;
     }
     if (lines.some(line => line.height > viewport)) continue;
-    assertLineAligned(lines, viewport, buildPageTops([...lines].reverse(), viewport), `round ${round}`);
+    const tops = buildPageTops([...lines].reverse(), viewport);
+    assertLineAligned(lines.filter(line => !line.blank), viewport, tops, `round ${round}`);
+    assert.ok(!lines.some(line => line.blank && tops.includes(line.top)), `round ${round}: 빈 줄에서 시작하지 않습니다.`);
   }
 });
 
