@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Image, Modal, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { useMemberAuth } from './memberAuth';
+import { PasswordChangeProblem, validatePasswordChange, type PasswordChangeFields, type PasswordChangeInput } from './memberPassword';
 import { readPurchaseHistory, type PurchaseRecord } from './purchases';
 import { useApiUrl } from './serverConnection';
 import { buildSignupInput, SignupProblem, type SignupAcceptance, type SignupDocument, type SignupFields, type SignupForm } from './memberSignup';
@@ -155,6 +156,7 @@ export function LoginScreen() {
         <Image source={require('../assets/brand/header.png')} style={styles.loginLogo} />
         <Text style={[s.title, styles.brandName]}>모북이</Text>
       </View>
+      {app.baseRoute.passwordChanged && <Text accessibilityRole="alert" style={s.text}>비밀번호가 변경되어 모든 기기에서 로그아웃했습니다. 새 비밀번호로 로그인해 주세요.</Text>}
       <AccountField label="이메일" value={identity} onChangeText={setIdentity} placeholder="로그인 이메일" tall />
       <View style={styles.loginPassword}><AccountField label="비밀번호" value={password} onChangeText={setPassword} placeholder="비밀번호" password tall /></View>
       <View style={styles.loginSubmit}><Action label={busy ? '로그인 중…' : '로그인'} disabled={busy || auth.status === 'checking'} onPress={() => void submit()} style={styles.authButton} /></View>
@@ -500,24 +502,56 @@ export function AccountScreen() {
  * 새 비밀번호 안내, 세 개의 가림 입력과 하단 변경 버튼을 표시합니다.
  *
  * @remarks
- * 비밀번호 문자열과 표시 여부는 화면 내부에만 유지합니다. 안내 문구를 표시하되
- * 기존 비밀번호 확인·정책 검증·서버 변경은 수행하지 않습니다.
+ * 입력은 화면 메모리에만 두고 서버 변경을 확인한 뒤 이메일을 채운 로그인 화면으로 이동합니다.
  *
  * @returns 비밀번호 변경 시안의 입력과 고정 하단 동작 영역입니다.
  */
 export function PasswordScreen() {
-  const [current, setCurrent] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmation, setConfirmation] = useState('');
+  const app = useApp();
+  const { state: auth, client } = useMemberAuth();
+  const [form, setForm] = useState<PasswordChangeInput>({ currentPassword: '', newPassword: '', newPasswordConfirmation: '' });
+  const [errors, setErrors] = useState<PasswordChangeFields>({});
+  const [busy, setBusy] = useState(false);
+  const pending = useRef<object | null>(null);
+  useLayoutEffect(() => {
+    setForm({ currentPassword: '', newPassword: '', newPasswordConfirmation: '' }); setErrors({}); setBusy(false);
+    return () => { pending.current = null; };
+  }, [client]);
+  const update = (field: keyof PasswordChangeInput, value: string) => {
+    setForm(previous => ({ ...previous, [field]: value }));
+    setErrors(previous => ({ ...previous, [field]: undefined, request: undefined }));
+  };
+  const submit = async () => {
+    if (pending.current) return;
+    const operation = {}; pending.current = operation;
+    const current = () => pending.current === operation;
+    setBusy(true); setErrors({});
+    try {
+      await client.changePassword(validatePasswordChange(form));
+      if (!current()) return;
+      setForm({ currentPassword: '', newPassword: '', newPasswordConfirmation: '' });
+      pending.current = null; setBusy(false);
+      // AppProvider가 인증 세대와 성공 결과를 함께 반영해 개인 화면 스택을 교체합니다.
+    } catch (failure) {
+      if (!current()) return;
+      setErrors(failure instanceof PasswordChangeProblem ? failure.fields
+        : { request: failure instanceof Error ? failure.message : '비밀번호를 변경하지 못했습니다.' });
+      if (!client.getSnapshot().member) {
+        setForm({ currentPassword: '', newPassword: '', newPasswordConfirmation: '' });
+      }
+    } finally { if (current()) { pending.current = null; setBusy(false); } }
+  };
+  if (!auth.member) return <View style={s.page}><Text accessibilityRole="alert" style={s.error}>{errors.request || auth.error || '로그인이 필요합니다.'}</Text><Action label="로그인" onPress={() => app.navigate({ screen: 'login' }, true)} /></View>;
   return (
     <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={[styles.authPage, styles.passwordPage]}>
       <Text style={[s.title, styles.introTitle]}>새 비밀번호 설정</Text>
       <Text style={[s.muted, styles.passwordIntro]}>계정을 보호할 비밀번호를 입력해 주세요.</Text>
-      <AccountField label="현재 비밀번호" value={current} onChangeText={setCurrent} placeholder="현재 비밀번호 입력" password />
-      <View style={styles.passwordGap}><AccountField label="새 비밀번호" value={password} onChangeText={setPassword} placeholder="영문·숫자 포함 8자 이상" password /></View>
-      <View style={styles.passwordGap}><AccountField label="새 비밀번호 확인" value={confirmation} onChangeText={setConfirmation} placeholder="새 비밀번호 다시 입력" password /></View>
-      <Text style={[s.muted, styles.passwordHint]}>다른 곳에서 사용하지 않는 비밀번호를 권장합니다.</Text>
-      <View style={styles.passwordSubmit}><Action label="비밀번호 변경" disabled style={styles.authButton} /></View>
+      <AccountField label="현재 비밀번호" value={form.currentPassword} onChangeText={value => update('currentPassword', value)} placeholder="현재 비밀번호 입력" password disabled={busy} error={errors.currentPassword} />
+      <View style={styles.passwordGap}><AccountField label="새 비밀번호" value={form.newPassword} onChangeText={value => update('newPassword', value)} placeholder="영문·숫자 포함 8자 이상" password disabled={busy} error={errors.newPassword} /></View>
+      <View style={styles.passwordGap}><AccountField label="새 비밀번호 확인" value={form.newPasswordConfirmation} onChangeText={value => update('newPasswordConfirmation', value)} placeholder="새 비밀번호 다시 입력" password disabled={busy} error={errors.newPasswordConfirmation} /></View>
+      <Text style={[s.muted, styles.passwordHint]}>변경하면 모든 기기에서 로그아웃됩니다. 새 비밀번호로 다시 로그인해 주세요.</Text>
+      {!!errors.request && <Text accessibilityRole="alert" style={s.error}>{errors.request}</Text>}
+      <View style={styles.passwordSubmit}><Action label={busy ? '변경 중…' : '비밀번호 변경'} disabled={busy} onPress={() => void submit()} style={styles.authButton} /></View>
     </ScrollView>
   );
 }

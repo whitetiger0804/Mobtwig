@@ -9,7 +9,7 @@ import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.filter.OncePerRequestFilter;
 
-/** 활성 회원의 요청은 세션을 갱신하고 비활성 회원의 요청은 거부합니다. */
+/** 활성 상태와 인증 버전을 확인하고 폐기된 회원 세션의 재사용을 거부합니다. */
 final class ActiveMemberGuard extends OncePerRequestFilter {
     private final MemberSessions sessions;
     private final AuthCookies cookies;
@@ -20,7 +20,7 @@ final class ActiveMemberGuard extends OncePerRequestFilter {
         response.setHeader("Cache-Control", "no-store");
         var principal = SecurityContextHolder.getContext().getAuthentication();
         if (principal != null && principal.isAuthenticated() && !(principal instanceof AnonymousAuthenticationToken)) {
-            if (sessions.current(principal.getName()).isEmpty()) {
+            if (!sessions.authorized(principal)) {
                 var session = request.getSession(false);
                 if (session != null) session.invalidate();
                 SecurityContextHolder.clearContext(); cookies.expireSession(request, response);

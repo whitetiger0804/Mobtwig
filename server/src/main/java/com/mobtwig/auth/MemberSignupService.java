@@ -1,6 +1,5 @@
 package com.mobtwig.auth;
 
-import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -21,8 +20,6 @@ public class MemberSignupService {
     private static final Set<String> INPUT_KEYS = Set.of("email", "nickname", "password", "passwordConfirmation", "consents");
     private static final Set<String> CONSENT_KEYS = Set.of("kind", "version", "contentHash", "agreed");
     private static final Pattern EDGE_SPACE = Pattern.compile("^[\\p{Z}\\s\\uFEFF]+|[\\p{Z}\\s\\uFEFF]+$");
-    private static final Pattern LATIN_LETTER = Pattern.compile("[A-Za-z]");
-    private static final Pattern DIGIT = Pattern.compile("[0-9]");
     private final SignupPolicies policies;
     private final MemberSignupRepository repository;
     private final PasswordEncoder passwords;
@@ -73,12 +70,8 @@ public class MemberSignupService {
         if (nickname.isEmpty() || nickname.length() > 30 || invalidDisplayText(nickname)) {
             errors.put("nickname", "닉네임을 1~30자로 입력해 주세요.");
         }
-        if (password.codePointCount(0, password.length()) < 8 || !LATIN_LETTER.matcher(password).find()
-                || !DIGIT.matcher(password).find() || hasUnpairedSurrogate(password)) {
-            errors.put("password", "영문과 숫자를 포함한 비밀번호를 8자 이상 입력해 주세요.");
-        } else if (password.getBytes(StandardCharsets.UTF_8).length > 72) {
-            errors.put("password", "비밀번호는 UTF-8 기준 72바이트까지 입력할 수 있습니다.");
-        }
+        String passwordProblem = PasswordRules.problem(password);
+        if (passwordProblem != null) errors.put("password", passwordProblem);
         if (confirmation.isEmpty() || !confirmation.equals(password)) {
             errors.put("passwordConfirmation", "비밀번호 확인을 같은 값으로 입력해 주세요.");
         }

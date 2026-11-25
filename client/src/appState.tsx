@@ -97,8 +97,10 @@ export interface Route {
   resumeRevision?: string | null;
   /** 현재 독서 흐름에서 추가 스크롤로 다음 회차를 자동 열고 구매할지 지정합니다. */
   autoContinue?: boolean;
-  /** 가입 성공 후 로그인 입력란에 채울 이메일입니다. */
+  /** 가입 또는 비밀번호 변경 성공 후 로그인 입력란에 채울 이메일입니다. */
   registeredEmail?: string;
+  /** 비밀번호 변경 성공을 확인한 뒤 로그인 화면에 표시합니다. */
+  passwordChanged?: boolean;
 }
 // #endregion
 
@@ -227,6 +229,7 @@ export function AppProvider({ children, initialRoute, initialReadingPreferences,
     previousGeneration.current = auth.generation;
     setOverlay(null);
     setStack(previous => {
+      if (auth.passwordChangedEmail) return [{ screen: 'login', registeredEmail: auth.passwordChangedEmail, passwordChanged: true }];
       const current = previous[previous.length - 1];
       return [['login', 'signup', 'account', 'my', 'detail', 'linkError'].includes(current.screen) ? current : { screen: 'home', kind: 'all' }];
     });

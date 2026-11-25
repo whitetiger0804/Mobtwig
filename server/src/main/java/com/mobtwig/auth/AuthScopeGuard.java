@@ -23,7 +23,8 @@ public final class AuthScopeGuard extends OncePerRequestFilter {
                     && session.getAttribute(HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY) != null;
             if (scope != null && !expected.equals(scope) || legacyAuthenticated && AuthCookies.MEMBER.equals(expected)) {
                 cookies.expireSession(request, response);
-                response.setStatus(401); response.setHeader("Cache-Control", "no-store"); return;
+                response.setStatus(request.getServletPath().equals("/api/auth/password") ? 403 : 401);
+                response.setHeader("Cache-Control", "no-store"); return;
             }
         }
         chain.doFilter(request, response);
