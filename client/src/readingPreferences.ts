@@ -10,19 +10,24 @@ export interface ReadingPreferences {
   font: ReadingFont;
   /** 글자 크기 단계이며 0부터 4까지 사용합니다. */
   size: number;
+  /** 텍스트 본문의 이동 방식이며 저장값에 없으면 스크롤로 읽습니다. */
+  mode: '스크롤' | '책장';
 }
 
 /** 처음 실행하는 기기에 적용하는 설정입니다. */
-const defaultPreferences: ReadingPreferences = { theme: '크림', font: '기본 명조', size: 2 };
-/** 현재 기기에서 공유하는 버전 1 읽기 설정의 저장 키입니다. */
+const defaultPreferences: ReadingPreferences = { theme: '크림', font: '기본 명조', size: 2, mode: '스크롤' };
+/**
+ * 현재 기기에서 공유하는 버전 1 읽기 설정의 저장 키입니다.
+ * mode가 없는 기존 값은 스크롤로 읽고, 이전 버전 앱은 추가된 mode를 무시하므로 키를 유지합니다.
+ */
 const storageKey = 'mobtwig:reading-preferences:v1';
 // #endregion
 
 // #region 저장값 검증과 입출력
 /**
- * 저장값이 현재 화면에서 지원하는 테마·글꼴·크기인지 검사합니다.
+ * 저장값이 현재 화면에서 지원하는 테마·글꼴·크기·읽기 방식인지 검사합니다.
  * @param value - 저장소에서 읽거나 저장할 설정입니다.
- * @returns 검증된 세 속성만 포함하는 새 설정 객체입니다.
+ * @returns 검증된 속성만 포함하는 새 설정 객체이며 mode가 없으면 스크롤로 채웁니다.
  * @throws Error - 설정의 형식이나 선택값이 올바르지 않으면 발생합니다.
  */
 export function parseReadingPreferences(value: unknown): ReadingPreferences {
@@ -33,13 +38,15 @@ export function parseReadingPreferences(value: unknown): ReadingPreferences {
   if (!['크림', '연노랑', '연회색', '다크'].includes(preferences.theme as string)
       || !readingFontNames.includes(preferences.font as ReadingFont)
       || typeof preferences.size !== 'number' || !Number.isInteger(preferences.size)
-      || preferences.size < 0 || preferences.size > 4) {
+      || preferences.size < 0 || preferences.size > 4
+      || preferences.mode !== undefined && preferences.mode !== '스크롤' && preferences.mode !== '책장') {
     throw new Error('지원하지 않는 읽기 설정입니다.');
   }
   return {
     theme: preferences.theme as ReadingPreferences['theme'],
     font: preferences.font as ReadingFont,
     size: preferences.size,
+    mode: preferences.mode === '책장' ? '책장' : '스크롤',
   };
 }
 

@@ -36,7 +36,7 @@
     "ios:go": "node scripts/start-expo.mjs --go --ios",
     "web": "node scripts/start-expo.mjs --web",
     "typecheck": "tsc --noEmit",
-    "test": "node --test tests/community.test.mjs tests/communityDrafts.test.mjs tests/communityBody.test.mjs tests/bookmarks.test.mjs tests/highlights.test.mjs tests/mockServerUrl.test.mjs tests/magazineReader.test.mjs tests/readingProgress.test.mjs tests/memberSignup.test.mjs tests/memberSession.test.mjs tests/memberPassword.test.mjs tests/purchases.test.mjs tests/readingPreferences.test.mjs tests/homeSchema.test.mjs tests/workDetails.test.mjs tests/workReviews.test.mjs tests/workSharing.test.mjs tests/workLinks.test.mjs tests/appLinks.test.mjs tests/shareLanding.test.mjs tests/chapterText.test.mjs tests/recentWorks.test.mjs ../server/mock/server.test.mjs",
+    "test": "node --test tests/community.test.mjs tests/communityDrafts.test.mjs tests/communityBody.test.mjs tests/bookmarks.test.mjs tests/highlights.test.mjs tests/mockServerUrl.test.mjs tests/magazineReader.test.mjs tests/readingProgress.test.mjs tests/memberSignup.test.mjs tests/memberSession.test.mjs tests/memberPassword.test.mjs tests/purchases.test.mjs tests/readingPreferences.test.mjs tests/readerPages.test.mjs tests/homeSchema.test.mjs tests/workDetails.test.mjs tests/workReviews.test.mjs tests/workSharing.test.mjs tests/workLinks.test.mjs tests/appLinks.test.mjs tests/shareLanding.test.mjs tests/chapterText.test.mjs tests/recentWorks.test.mjs ../server/mock/server.test.mjs",
     "links:files": "node scripts/app-link-files.mjs",
     "docs": "typedoc"
   },

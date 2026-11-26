@@ -11,6 +11,7 @@ import { adjacentMagazinePage, fetchMagazinePage, magazineArticle, startMagazine
 import { highlightPieces, isTextBoundary } from '../src/highlights.ts';
 import { parseChapterText } from '../src/chapterText.ts';
 import { readingFontNames, readingFonts } from '../src/readingFonts.ts';
+import { buildPageTops, classifyPageTouch, pageOf, pageTop, turnPage } from '../src/readerPages.ts';
 
 const hash = 'a'.repeat(64);
 const position = { chapterId: '9007199254740993', offset: 8, unit: 'utf16', contentVersion: 3, contentHash: hash };
@@ -138,7 +139,7 @@ const workProductsSource = ts.createSourceFile('useWorkProducts.ts',
 /** 실제 TSX 함수와 이벤트를 실행하며 네이티브 배치·네트워크만 대체합니다. */
 function readerHarness({ magazine = false, entry, version = 2, canSave = true, highlights = [], realStorage = false,
   progress, resumeRevision = saved.revision, autoContinue = false, platform = 'android', chapterId = '11',
-  readerKind = 'novel', authenticated = true, font = '기본 명조', realNavigation = false, realProducts = false } = {}) {
+  readerKind = 'novel', authenticated = true, font = '기본 명조', realNavigation = false, realProducts = false, mode, entryOffset } = {}) {
   const name = magazine ? 'MagazineReader' : 'TextReader';
   const declaration = readerSource.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === name);
   const saveSource = realStorage ? readerSource.statements.filter(node =>
@@ -152,10 +153,11 @@ function readerHarness({ magazine = false, entry, version = 2, canSave = true, h
   }).outputText;
   const route = { screen: 'reader', kind: magazine ? 'magazine' : readerKind,
     workId: magazine ? readerIssue.workId : readerData.workId, chapterId: magazine ? '21' : chapterId, autoContinue };
-  if (entry) route[entry] = { ...(magazine ? pagePosition : textPosition), contentVersion: version };
+  if (entry) route[entry] = { ...(magazine ? pagePosition : textPosition), contentVersion: version,
+    ...(entryOffset === undefined ? {} : { offset: entryOffset }) };
   if (entry === 'resumePosition') route.resumeRevision = resumeRevision;
   let backHandler = null;
-  const app = { baseRoute: route, overlay: null, readingPreferences: { theme: '크림', size: 2, font },
+  const app = { baseRoute: route, overlay: null, readingPreferences: { theme: '크림', size: 2, font, ...(mode ? { mode } : {}) },
     registerBackHandler: handler => { backHandler = handler; return () => { backHandler = null; }; },
     back: () => { const next = () => navigation.push('back'); if (backHandler) backHandler(next); else next(); },
     navigate: (value, reset, replace) => {
@@ -163,7 +165,8 @@ function readerHarness({ magazine = false, entry, version = 2, canSave = true, h
       if (realStorage && value.screen === 'reader') nextRoute = value;
     } };
   const saves = [], writes = [], navigation = [], transitions = [], scrolls = [], pages = [];
-  const purchases = [], productReads = [], listeners = new Map();
+  let pageBuilds = 0;
+  const purchases = [], productReads = [], listeners = new Map(), documentListeners = new Map();
   const cells = [], effects = [], timers = new Map(), frames = new Map();
   const auth = { status: authenticated ? 'authenticated' : 'anonymous', generation: 1 };
   const provider = realNavigation ? navigationHarness(route, app.readingPreferences, auth) : null;
@@ -213,7 +216,7 @@ function readerHarness({ magazine = false, entry, version = 2, canSave = true, h
     const index = cursor++;
     if (!cells[index] || !unchanged(cells[index].dependencies, dependencies)) cells[index] = { value: calculate(), dependencies };
     return cells[index].value;
-  }, useApp: () => app, useApiUrl: () => 'https://test.example', useSafeAreaInsets: () => ({ bottom: 0 }),
+  }, useApp: () => app, useApiUrl: () => 'https://test.example', useSafeAreaInsets: () => ({ bottom: 0 }), useWindowDimensions: () => ({ width: 400, height: 800 }),
   useMemberAuth: () => ({ client: memberClient, state: { ...auth } }),
   useWorkProducts: workId => workId ? offer : { ...offer, products: null, loading: false, busy: false },
   readPurchaseProducts: async (_url, _client, workId) => { productReads.push(workId); return offer.products; },
@@ -231,7 +234,10 @@ function readerHarness({ magazine = false, entry, version = 2, canSave = true, h
     return network.page ? network.page(url, issue, page, signal, client)
       : 'data:image/png;base64,' + Buffer.from('page-' + page).toString('base64');
   },
-  readingFonts, readingSegments, restoreReadingOffset, magazineArticle, adjacentMagazinePage, startMagazinePage,
+  readingFonts, readingSegments, restoreReadingOffset, classifyPageTouch, pageOf, pageTop, turnPage,
+  buildPageTops: (...values) => { pageBuilds++; return buildPageTops(...values); },
+  document: { addEventListener: (type, listener) => documentListeners.set(type, listener),
+    removeEventListener: (type, listener) => { if (documentListeners.get(type) === listener) documentListeners.delete(type); } }, magazineArticle, adjacentMagazinePage, startMagazinePage,
   matchesReadingResume, sameReadingPosition,
   readReadingProgress: async () => {
     network.reads++; return network.read ? network.read() : network.progress;
@@ -284,13 +290,14 @@ function readerHarness({ magazine = false, entry, version = 2, canSave = true, h
       }
       if (dirty) { dirty = false; cursor = 0; tree = context.exports[name](); }
       effects.splice(0).forEach(run => run());
-      for (const [id, run] of [...frames]) { frames.delete(id); run(); }
+      // 실제 requestAnimationFrame처럼 같은 프레임에서 먼저 실행된 콜백이 취소한 프레임은 실행하지 않습니다.
+      for (const [id, run] of [...frames]) { if (!frames.delete(id)) continue; run(); }
       await new Promise(resolve => setImmediate(resolve));
       if (!dirty && !effects.length && !frames.size && !nextRoute) return;
     }
     assert.fail('리더 상태가 안정되지 않았습니다.');
   }
-  return { saves, writes, navigation, transitions, scrolls, pages, purchases, productReads, offer, network, storage, nodes, find, settle,
+  return { get pageBuilds() { return pageBuilds; }, saves, writes, navigation, transitions, scrolls, pages, purchases, productReads, offer, network, storage, nodes, find, settle,
     get route() { return app.baseRoute; }, get overlayRoute() { return app.overlay; },
     async hardwareBack() { assert.ok(provider); const handled = provider.hardwareBack(); await settle(); return handled; },
     async navigate(route) { assert.ok(provider); provider.value.navigate(route); await settle(); },
@@ -311,17 +318,28 @@ function readerHarness({ magazine = false, entry, version = 2, canSave = true, h
     async wheel(deltaY) { listeners.get('wheel')({ deltaY }); await settle(); },
     async key(key, repeat = false) { listeners.get('keydown')({ key, repeat, preventDefault() {} }); await settle(); },
     async rerender() { dirty = true; await settle(); },
-    async layout({ height = 1000, viewport = 100 } = {}) {
+    /**
+     * 본문 레이아웃을 흉내 냅니다. 문단 i는 i×spacing에서 시작하고 마지막 문단은 height까지 차지합니다.
+     * line을 주면 네이티브 onTextLayout으로 그 높이의 실제 줄 위치를 함께 보냅니다. extra는 책장 모드 여백처럼 콘텐츠 높이에만 더하고,
+     * blank(문단, 줄)가 참이면 그 줄을 빈 줄 텍스트로 보냅니다.
+     */
+    async layout({ height = 1000, viewport = 100, spacing = 240, line, extra = 0, blank } = {}) {
       await settle();
       if (magazine) find('Image').props.onLoad({ nativeEvent: { source: { width: 600, height: 800 } } });
       else {
         const scroll = find('ScrollView');
+        nodes().find(node => node.props.testID === 'reader-pages')
+          ?.props.onLayout({ nativeEvent: { layout: { x: 0, y: 0, width: 400, height: viewport } } });
         scroll.props.onLayout({ nativeEvent: { layout: { height: viewport } } });
         nodes().filter(node => node.props.testID === 'chapter-text' || node.props.testID === 'reader-body-text')
           .forEach(node => node.props.onLayout({ nativeEvent: { layout: { y: 0 } } }));
-        nodes().filter(node => node.type === 'Text' && node.props.onLayout)
-          .forEach((node, index) => node.props.onLayout({ nativeEvent: { layout: { y: index * 240 } } }));
-        scroll.props.onContentSizeChange(300, height);
+        const paragraphs = nodes().filter(node => node.type === 'Text' && node.props.onLayout);
+        paragraphs.forEach((node, index) => {
+          const size = index < paragraphs.length - 1 ? spacing : height - index * spacing;
+          node.props.onLayout({ nativeEvent: { layout: { y: index * spacing, height: size } } });
+          if (line) node.props.onTextLayout?.({ nativeEvent: { lines: Array.from({ length: Math.floor(size / line) }, (_, at) => ({ y: at * line, height: line, text: blank?.(index, at) ? '\n' : '줄' })) } });
+        });
+        scroll.props.onContentSizeChange(300, height + extra);
       }
       await settle();
     },
@@ -330,6 +348,21 @@ function readerHarness({ magazine = false, entry, version = 2, canSave = true, h
       if (gesture) scroll.props.onScrollBeginDrag();
       scroll.props.onScroll({ nativeEvent: { contentOffset: { y }, contentSize: { height: 1000 }, layoutMeasurement: { height: 100 } } });
       await settle();
+    },
+    async preferences(change) { app.readingPreferences = { ...app.readingPreferences, ...change }; dirty = true; await settle(); },
+    async viewport(height) { find('ScrollView').props.onLayout({ nativeEvent: { layout: { height } } }); await settle(); },
+    async pageTouch(start, end, duration = 100) {
+      const area = nodes().find(node => node.props.testID === 'reader-pages');
+      area.props.onTouchStart?.({ nativeEvent: { pageX: start.x, pageY: start.y, touches: [{}] } });
+      clock += duration;
+      area.props.onTouchEnd?.({ nativeEvent: { pageX: end.x, pageY: end.y, touches: [] } });
+      await settle();
+    },
+    async pageKey(key) {
+      let prevented = false;
+      documentListeners.get('keydown')?.({ key, repeat: false, target: null, preventDefault() { prevented = true; } });
+      await settle();
+      return prevented;
     },
     async advance(milliseconds) {
       clock += milliseconds;
@@ -1000,5 +1033,312 @@ test('비회원은 무료 회차만 바로 열며 유료 회차에서는 구매 
     assert.equal(reader.purchases.length, 0);
     assert.equal(reader.navigation[0].screen, readable ? 'reader' : 'login');
   }
+});
+// #endregion
+
+// #region 책장 모드
+/** 하니스 layout()의 문단을 웹 폴백과 같은 방식(문단 높이 ÷ 줄 높이)으로 나눈 줄 목록입니다. */
+const harnessLines = (size = 2, { height = 1000, spacing = 240 } = {}) => [spacing, height - spacing].flatMap((paragraph, index) => {
+  const count = Math.max(1, Math.round(paragraph / ([13, 15, 17, 19, 21][size] * 1.85)));
+  return Array.from({ length: count }, (_, line) => ({ top: index * spacing + line * paragraph / count, height: paragraph / count }));
+});
+const topsAt = (size = 2, { viewport = 100, ...layout } = {}) => buildPageTops(harnessLines(size, layout), viewport);
+const pageTopAt = (index, size = 2) => pageTop(index, topsAt(size));
+const secondParagraph = readingSegments(textBody).at(-1).offset;
+const press = async (reader, label) => { reader.find('Pressable', label).props.onPress(); await reader.settle(); };
+
+test('스크롤 모드는 기존 스크롤을 유지하고 쪽 넘김 도구와 판정을 붙이지 않습니다.', async () => {
+  const reader = readerHarness(); await reader.layout();
+  assert.equal(reader.find('ScrollView').props.scrollEnabled, true);
+  assert.equal(reader.find('Pressable', '다음 쪽'), undefined);
+  assert.equal(reader.nodes().find(node => node.props.testID === 'reader-pages').props.onTouchStart, undefined);
+});
+
+test('책장 모드의 버튼·스와이프·가장자리 스와이프·좌우 탭·웹 키는 같은 쪽 넘김 결과를 만듭니다.', async () => {
+  const count = topsAt().length;
+  const inputs = {
+    button: [reader => press(reader, '다음 쪽'), reader => press(reader, '이전 쪽')],
+    swipe: [reader => reader.pageTouch({ x: 260, y: 300 }, { x: 200, y: 310 }), reader => reader.pageTouch({ x: 200, y: 300 }, { x: 260, y: 290 })],
+    edgeSwipe: [reader => reader.pageTouch({ x: 395, y: 300 }, { x: 300, y: 300 }, 600), reader => reader.pageTouch({ x: 5, y: 300 }, { x: 100, y: 300 }, 600)],
+    tap: [reader => reader.pageTouch({ x: 380, y: 300 }, { x: 383, y: 302 }), reader => reader.pageTouch({ x: 20, y: 300 }, { x: 22, y: 300 })],
+    arrow: [async reader => assert.equal(await reader.pageKey('ArrowRight'), true), async reader => assert.equal(await reader.pageKey('ArrowLeft'), true)],
+    page: [async reader => assert.equal(await reader.pageKey('PageDown'), true), async reader => assert.equal(await reader.pageKey('PageUp'), true)],
+  };
+  for (const [name, [next, previous]] of Object.entries(inputs)) {
+    const reader = readerHarness({ mode: '책장', platform: ['arrow', 'page'].includes(name) ? 'web' : 'android' });
+    await reader.layout();
+    assert.equal(reader.find('ScrollView').props.scrollEnabled, false);
+    assert.ok(reader.find('Text', `전체 ${count}쪽 중 1쪽`));
+    const before = reader.scrolls.length;
+    await next(reader);
+    assert.deepEqual(reader.scrolls.slice(before).map(value => value.y), [pageTopAt(1)], name);
+    assert.ok(reader.find('Text', `전체 ${count}쪽 중 2쪽`), name);
+    await previous(reader);
+    assert.deepEqual(reader.scrolls.slice(before).map(value => value.y), [pageTopAt(1), 0], name);
+    assert.ok(reader.find('Text', `전체 ${count}쪽 중 1쪽`), name);
+  }
+});
+
+test('첫 쪽 이전은 이동하지 않고 마지막 쪽 다음은 이어보기 설정에 따라 다음 화나 끝 안내로 처리합니다.', async () => {
+  const tops = topsAt(), count = tops.length;
+  for (const autoContinue of [false, true]) {
+    const reader = readerHarness({ mode: '책장', autoContinue }); await reader.layout();
+    const before = reader.scrolls.length;
+    await press(reader, '이전 쪽');
+    await reader.pageTouch({ x: 20, y: 300 }, { x: 20, y: 300 });
+    assert.equal(reader.scrolls.length, before);
+    for (let index = 1; index < count; index++) await press(reader, '다음 쪽');
+    assert.equal(reader.scrolls.at(-1).y, tops.at(-1), '마지막 쪽은 높이−뷰포트(900)가 아니라 줄 시작입니다.');
+    assert.notEqual(tops.at(-1), 900);
+    assert.ok(harnessLines().some(line => line.top === tops.at(-1)));
+    assert.ok(reader.find('Text', `전체 ${count}쪽 중 ${count}쪽`));
+    const moved = reader.scrolls.length;
+    await press(reader, '다음 쪽');
+    assert.equal(reader.scrolls.length, moved);
+    const notice = !!reader.find('Text', `전체 ${count}쪽 중 ${count}쪽. 회차의 마지막 쪽입니다.`);
+    if (autoContinue) {
+      assert.equal(notice, false);
+      assert.equal(reader.purchases.length, 1);
+      assert.equal(reader.navigation.at(-1).chapterId, '12');
+      assert.equal(reader.navigation.at(-1).autoContinue, true);
+    } else {
+      assert.equal(notice, true);
+      assert.equal(reader.purchases.length, 0);
+      assert.equal(reader.navigation.length, 0);
+    }
+  }
+});
+
+test('하이라이트 선택·설정 패널·목차가 열려 있으면 책장 모드에서도 쪽을 넘기지 않습니다.', async () => {
+  const reader = readerHarness({ mode: '책장', platform: 'web' }); await reader.layout();
+  const before = reader.scrolls.length;
+  const attempt = async () => {
+    await press(reader, '다음 쪽');
+    await reader.pageTouch({ x: 300, y: 300 }, { x: 200, y: 300 });
+    await reader.pageTouch({ x: 390, y: 300 }, { x: 390, y: 300 });
+    assert.equal(await reader.pageKey('PageDown'), false, '막힌 키는 기본 동작을 막지 않습니다.');
+    assert.equal(reader.scrolls.length, before);
+  };
+  reader.find('BookmarkButton').props.onHighlight(); await reader.settle();
+  assert.ok(reader.find('HighlightEditor'));
+  await attempt();
+  reader.find('HighlightEditor').props.onClose(); await reader.settle();
+  await reader.overlay({ screen: 'readingSettings' });
+  await attempt();
+  await reader.overlay(null);
+  reader.find('IconButton', '목차').props.onPress(); await reader.settle();
+  await attempt();
+  reader.find('Action', '목차 닫기').props.onPress(); await reader.settle();
+  await press(reader, '다음 쪽');
+  assert.equal(reader.scrolls.at(-1).y, pageTopAt(1));
+});
+
+test('가장자리 롱프레스와 짧은 탭을 누른 시간으로 구분하고 스와이프는 시간과 무관하게 넘깁니다.', async () => {
+  const reader = readerHarness({ mode: '책장' }); await reader.layout();
+  const before = reader.scrolls.length;
+  await reader.pageTouch({ x: 390, y: 300 }, { x: 390, y: 300 }, 300);
+  await reader.pageTouch({ x: 200, y: 300 }, { x: 202, y: 300 });
+  await reader.pageTouch({ x: 200, y: 100 }, { x: 230, y: 300 });
+  assert.equal(reader.scrolls.length, before, '롱프레스·가운데 탭·세로 이동은 넘기지 않습니다.');
+  await reader.pageTouch({ x: 390, y: 300 }, { x: 390, y: 300 }, 299);
+  assert.equal(reader.scrolls.at(-1).y, pageTopAt(1));
+  await reader.pageTouch({ x: 300, y: 300 }, { x: 200, y: 300 }, 2_000);
+  assert.equal(reader.scrolls.at(-1).y, pageTopAt(2));
+});
+
+test('스크롤→책장→스크롤 전환은 화면 상단 문단을 유지하고 책장에서는 그 문단의 쪽으로 맞춥니다.', async () => {
+  const reader = readerHarness(); await reader.layout();
+  await reader.scroll(240);
+  assert.equal(reader.find('BookmarkButton').props.position.offset, secondParagraph);
+  await reader.preferences({ mode: '책장' });
+  const snapped = pageTopAt(pageOf(240, topsAt()));
+  assert.equal(reader.scrolls.at(-1).y, snapped);
+  assert.ok(snapped < 240 - 12, '쪽 시작이 문단보다 위에 있는 경우를 검사합니다.');
+  assert.equal(reader.find('BookmarkButton').props.position.offset, secondParagraph);
+  await reader.preferences({ mode: '스크롤' });
+  assert.equal(reader.scrolls.at(-1).y, 240);
+  assert.equal(reader.find('BookmarkButton').props.position.offset, secondParagraph);
+  await reader.preferences({ mode: '책장' });
+  await reader.preferences({ mode: '스크롤' });
+  assert.equal(reader.scrolls.at(-1).y, 240, '반복 전환에도 기준 문단이 흐르지 않습니다.');
+});
+
+test('책장 모드에서 글자 크기 2→4→2와 화면 높이 변경 후에도 같은 utf16 문단의 쪽으로 맞추고 저장합니다.', async () => {
+  const start = pageOf(240, topsAt());
+  assert.ok(start > 0);
+  const reader = readerHarness({ mode: '책장' }); await reader.layout();
+  for (let index = 0; index < start; index++) await press(reader, '다음 쪽');
+  assert.equal(reader.scrolls.at(-1).y, pageTopAt(start));
+  await reader.advance(450);
+  assert.deepEqual([reader.saves.at(-1).offset, reader.saves.at(-1).unit], [secondParagraph, 'utf16']);
+  await reader.preferences({ size: 4 });
+  await reader.layout({ spacing: 300 });
+  assert.equal(reader.scrolls.at(-1).y, pageTop(pageOf(300, topsAt(4, { spacing: 300 })), topsAt(4, { spacing: 300 })));
+  assert.equal(reader.find('BookmarkButton').props.position.offset, secondParagraph);
+  await reader.preferences({ size: 2 });
+  await reader.layout({ spacing: 240 });
+  assert.equal(reader.scrolls.at(-1).y, pageTopAt(start));
+  assert.equal(reader.find('BookmarkButton').props.position.offset, secondParagraph);
+  await reader.viewport(150);
+  const tall = topsAt(2, { viewport: 150 });
+  assert.equal(reader.scrolls.at(-1).y, pageTop(pageOf(240, tall), tall));
+  assert.ok(reader.find('Text', `전체 ${tall.length}쪽 중 ${pageOf(240, tall) + 1}쪽`));
+});
+test('책장 모드는 잘린 맨 아래 줄에서 시작한 문단을 그 쪽이 아닌 다음 쪽의 문단으로 저장하고 같은 쪽으로 복원합니다.', async () => {
+  // 30px 줄·뷰포트 100px: 1쪽은 0~90의 세 줄만 온전히 보이고 90에서 시작하는 둘째 문단의 첫 줄은 가려지며 2쪽 맨 위에 옵니다.
+  const layout = { spacing: 90, line: 30 };
+  const reader = readerHarness({ mode: '책장' }); await reader.layout(layout);
+  const mask = reader.nodes().find(node => node.props.testID === 'reader-page-mask');
+  assert.equal(mask.props.pointerEvents, 'none');
+  assert.equal(mask.props.style.at(-1).top, 90, '다음 쪽 시작 줄부터 아래만 가립니다.');
+  await press(reader, '다음 쪽');
+  await press(reader, '이전 쪽');
+  await reader.advance(450);
+  assert.notEqual(reader.saves.at(-1).offset, secondParagraph, '1쪽은 가려진 줄의 문단을 저장하지 않습니다.');
+  await press(reader, '다음 쪽');
+  assert.equal(reader.scrolls.at(-1).y, 90);
+  await reader.advance(450);
+  assert.equal(reader.saves.at(-1).offset, secondParagraph);
+  const reopened = readerHarness({ mode: '책장', entry: 'bookmarkPosition', entryOffset: reader.saves.at(-1).offset });
+  await reopened.layout(layout);
+  assert.equal(reopened.scrolls.at(-1).y, 90);
+  assert.match(reopened.nodes().find(node => node.props.accessibilityLabel?.startsWith('전체')).props.accessibilityLabel, /쪽 중 2쪽$/);
+});
+
+test('네이티브 줄 높이가 계산값과 달라도(fontScale 1.3) 모든 쪽은 실제 줄 시작에서 시작합니다.', async () => {
+  const line = 17 * 1.85 * 1.3;
+  const lines = [...Array.from({ length: Math.floor(240 / line) }, (_, at) => at * line),
+    ...Array.from({ length: Math.floor(760 / line) }, (_, at) => 240 + at * line)];
+  const reader = readerHarness({ mode: '책장' }); await reader.layout({ line });
+  const label = reader.nodes().find(node => node.props.accessibilityLabel?.startsWith('전체')).props.accessibilityLabel;
+  const count = Number(label.match(/전체 (\d+)쪽/)[1]);
+  assert.ok(count > 1);
+  for (let index = 1; index < count; index++) await press(reader, '다음 쪽');
+  const visited = reader.scrolls.map(value => value.y).filter(y => y > 0);
+  assert.equal(visited.length, count - 1);
+  for (const y of visited) assert.ok(lines.some(top => Math.abs(top - y) < 1e-9), `${y}는 실제 줄 시작입니다.`);
+  const estimated = topsAt();
+  assert.notDeepEqual([0, ...visited], estimated, '계산 줄 높이로 추정한 경계와 다릅니다.');
+});
+
+test('책장 모드 마지막 쪽은 위치와 무관하게 끝이며 진행률 100%·본문 끝 저장·이어보기를 처리합니다.', async () => {
+  const tops = topsAt();
+  // 책장 모드 여백(뷰포트 높이)까지 포함한 콘텐츠 높이에서는 위치 기준 끝 판정이 마지막 쪽을 끝으로 보지 못합니다.
+  const reader = readerHarness({ mode: '책장', autoContinue: true }); await reader.layout({ extra: 100 });
+  const progress = () => reader.nodes().find(node => node.props.accessibilityRole === 'progressbar').props['aria-valuenow'];
+  for (let index = 1; index < tops.length; index++) await press(reader, '다음 쪽');
+  assert.ok(tops.at(-1) + 100 < 1100 - 4, '마지막 쪽 위치는 높이−뷰포트보다 위입니다.');
+  assert.equal(progress(), 100);
+  await reader.advance(450);
+  assert.equal(reader.saves.at(-1).offset, textBody.length);
+  await press(reader, '다음 쪽');
+  assert.equal(reader.navigation.at(-1).chapterId, '12', '마지막 쪽 다음은 이어보기로 다음 화를 엽니다.');
+  assert.equal(reader.saves.at(-1).offset, textBody.length);
+});
+
+test('책장 모드에만 뷰포트 높이 여백을 붙이고 레이아웃이 연달아 바뀌어도 쪽 경계는 프레임당 한 번만 계산합니다.', async () => {
+  const scrolling = readerHarness(); await scrolling.layout();
+  assert.equal(scrolling.nodes().find(node => node.props.testID === 'reader-page-spacer'), undefined);
+  assert.equal(scrolling.nodes().find(node => node.props.testID === 'reader-page-mask'), undefined);
+  const reader = readerHarness({ mode: '책장' });
+  await reader.settle();
+  const before = reader.pageBuilds;
+  await reader.layout();
+  assert.equal(reader.pageBuilds - before, 1);
+  assert.equal(reader.nodes().find(node => node.props.testID === 'reader-page-spacer').props.style.height, 800, '창 높이만큼 여백을 둡니다.');
+});
+
+/** 하니스 layout({ line })이 onTextLayout으로 보내는 실제 줄 목록입니다. */
+const nativeLines = (line, { height = 1000, spacing = 240, blank } = {}) => [spacing, height - spacing].flatMap((size, index) =>
+  Array.from({ length: Math.floor(size / line) }, (_, at) => ({ top: index * spacing + at * line, height: line, blank: !!blank?.(index, at) })));
+const counterOf = reader => reader.nodes().find(node => node.props.accessibilityLabel?.startsWith('전체'));
+
+/** 책장 모드 불변식: 화면 위치는 카운터 쪽의 시작이고 가림 View는 그 쪽에서 다음 쪽 시작 줄부터 아래를 가립니다. */
+function assertPageInvariant(reader, tops, message) {
+  const [, count, page] = counterOf(reader).props.accessibilityLabel.match(/전체 (\d+)쪽 중 (\d+)쪽/).map(Number);
+  const index = page - 1;
+  assert.equal(count, tops.length, message);
+  assert.ok(index >= 0 && index < tops.length, message);
+  assert.ok(Math.abs(reader.scrolls.at(-1).y - tops[index]) <= 1, `${message}: 스크롤 ${reader.scrolls.at(-1).y} ≠ 쪽 시작 ${tops[index]}`);
+  const mask = reader.nodes().find(node => node.props.testID === 'reader-page-mask');
+  if (index === tops.length - 1) assert.equal(mask, undefined, message);
+  else {
+    assert.equal(mask.props.pointerEvents, 'none', message);
+    assert.equal(mask.props.style.at(-1).top, tops[index + 1] - tops[index], message);
+  }
+  return index;
+}
+
+test('2쪽 회차에서 끝 안내 표시→이전→다음 후에도 쪽 시작·쪽 번호·가림 영역이 일치하고 2쪽 시작 줄이 같습니다.', async () => {
+  const layout = { height: 180, spacing: 90, line: 30 };
+  const tops = buildPageTops(nativeLines(30, layout), 100);
+  assert.deepEqual(tops, [0, 90]);
+  const reader = readerHarness({ mode: '책장' }); await reader.layout(layout);
+  assert.equal(assertPageInvariant(reader, tops, '처음'), 0);
+  await press(reader, '다음 쪽');
+  const second = reader.scrolls.at(-1).y;
+  assert.equal(assertPageInvariant(reader, tops, '2쪽'), 1);
+  // 가림 View는 쪽마다 달라지므로 빼고 나머지 화면 구조를 비교합니다.
+  const shapeOf = () => reader.nodes().filter(node => node.props.testID !== 'reader-page-mask').length;
+  const shape = shapeOf();
+  await press(reader, '다음 쪽');
+  assert.equal(counterOf(reader).props.accessibilityLabel, '전체 2쪽 중 2쪽. 회차의 마지막 쪽입니다.');
+  assert.deepEqual([...counterOf(reader).props.children], [2, ' / ', 2, ' · 마지막 쪽']);
+  assert.equal(counterOf(reader).props.accessibilityLiveRegion, 'polite');
+  assert.equal(shapeOf(), shape, '안내는 카운터 안에만 표시되어 하단 높이와 본문 화면 높이가 그대로입니다.');
+  assert.equal(reader.nodes().some(node => node.type === 'Text' && node.props.children === '회차의 마지막 쪽입니다.'), false);
+  assert.equal(assertPageInvariant(reader, tops, '안내'), 1);
+  await press(reader, '이전 쪽');
+  assert.equal(assertPageInvariant(reader, tops, '이전'), 0);
+  assert.equal(counterOf(reader).props.accessibilityLabel, '전체 2쪽 중 1쪽');
+  assert.equal(shapeOf(), shape);
+  await press(reader, '다음 쪽');
+  assert.equal(assertPageInvariant(reader, tops, '다시 다음'), 1);
+  assert.equal(reader.scrolls.at(-1).y, second, '2쪽 시작 줄이 처음과 같습니다.');
+});
+
+test('줄이 쪽 경계에 걸치는 화면 높이로 축소→확대를 반복해도 기준 줄의 쪽으로 돌아오고 쪽 번호가 흐르지 않습니다.', async () => {
+  const lines = nativeLines(30), full = buildPageTops(lines, 100), short = buildPageTops(lines, 83);
+  for (const turns of [3, full.length - 1]) {
+    const reader = readerHarness({ mode: '책장' }); await reader.layout({ line: 30 });
+    for (let index = 0; index < turns; index++) await press(reader, '다음 쪽');
+    const index = assertPageInvariant(reader, full, '처음'), y = reader.scrolls.at(-1).y;
+    const paragraph = reader.find('BookmarkButton').props.position.offset;
+    assert.equal(index, turns);
+    for (let round = 0; round < 3; round++) {
+      await reader.viewport(83);
+      const shrunk = assertPageInvariant(reader, short, `축소 ${round}`);
+      if (turns === full.length - 1) assert.equal(shrunk, short.length - 1, '마지막 쪽은 마지막 쪽으로 유지합니다.');
+      else assert.equal(short[shrunk], short[pageOf(y, short)], '기준 줄이 포함된 쪽입니다.');
+      await reader.viewport(100);
+      assert.equal(assertPageInvariant(reader, full, `확대 ${round}`), index, '같은 쪽 번호로 돌아옵니다.');
+      assert.equal(reader.scrolls.at(-1).y, y);
+      assert.equal(reader.find('BookmarkButton').props.position.offset, paragraph, '같은 기준 문단을 유지합니다.');
+    }
+  }
+  assert.ok(short.length > full.length);
+  assert.notEqual(pageOf(short[pageOf(full[3], short)], full), 3, '현재 쪽 맨 위 줄을 기준으로 삼으면 되돌아가는 배치입니다.');
+});
+
+test('책장 모드에서 네이티브가 스크롤 위치를 옮기면 확정된 쪽 시작으로 되돌리고 쪽 번호는 바꾸지 않습니다.', async () => {
+  const reader = readerHarness({ mode: '책장' }); await reader.layout();
+  await press(reader, '다음 쪽');
+  const y = reader.scrolls.at(-1).y, label = counterOf(reader).props.accessibilityLabel;
+  reader.find('ScrollView').props.onScroll({ nativeEvent: { contentOffset: { y: y + 40 }, contentSize: { height: 1800 }, layoutMeasurement: { height: 100 } } });
+  await reader.settle();
+  assert.equal(reader.scrolls.at(-1).y, y);
+  assert.equal(counterOf(reader).props.accessibilityLabel, label);
+});
+
+test('책장 모드의 다음 쪽은 문단 사이 빈 줄이 아니라 내용이 있는 줄에서 시작합니다.', async () => {
+  // 화면 높이 80px: 0·30 줄 다음의 60 줄은 빈 줄이므로 다음 쪽은 90의 둘째 문단 첫 줄에서 시작합니다.
+  const layout = { viewport: 80, height: 300, spacing: 90, line: 30, blank: (paragraph, line) => paragraph === 0 && line === 2 };
+  const tops = buildPageTops(nativeLines(30, layout), 80);
+  assert.equal(tops[1], 90);
+  assert.equal(buildPageTops(nativeLines(30, { ...layout, blank: undefined }), 80)[1], 60, '빈 줄을 빼지 않으면 빈 줄에서 시작합니다.');
+  const reader = readerHarness({ mode: '책장' }); await reader.layout(layout);
+  await press(reader, '다음 쪽');
+  assert.equal(reader.scrolls.at(-1).y, 90);
+  assertPageInvariant(reader, tops, '빈 줄');
 });
 // #endregion

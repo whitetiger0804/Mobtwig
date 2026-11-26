@@ -10,26 +10,41 @@ import { loadReadingPreferences, parseReadingPreferences, saveReadingPreferences
 
 test('처음 실행한 기기에는 기존 기본값을 적용합니다.', async () => {
   const preferences = await loadReadingPreferences({ getItem: async () => null });
-  assert.deepEqual(preferences, { theme: '크림', font: '기본 명조', size: 2 });
+  assert.deepEqual(preferences, { theme: '크림', font: '기본 명조', size: 2, mode: '스크롤' });
 });
 
 test('기기에 저장한 설정은 새 실행에서 복원되며 원본 객체 변경의 영향을 받지 않습니다.', async () => {
   const values = new Map();
-  const preferences = { theme: '다크', font: '고운바탕', size: 4 };
+  const preferences = { theme: '다크', font: '고운바탕', size: 4, mode: '책장' };
   const saved = await saveReadingPreferences({ setItem: async (key, value) => { values.set(key, value); } }, preferences);
   preferences.theme = '크림';
   const restored = await loadReadingPreferences({ getItem: async key => values.get(key) ?? null });
-  assert.deepEqual(restored, { theme: '다크', font: '고운바탕', size: 4 });
+  assert.deepEqual(restored, { theme: '다크', font: '고운바탕', size: 4, mode: '책장' });
   assert.deepEqual(saved, restored);
 });
 
 test('지원하지 않는 설정과 손상된 JSON을 정상 설정으로 처리하지 않습니다.', async () => {
   const valid = { theme: '크림', font: '기본 명조', size: 2 };
   for (const value of [null, [], {}, { ...valid, theme: '없는 테마' }, { ...valid, font: '없는 글꼴' },
-    { ...valid, size: -1 }, { ...valid, size: 5 }, { ...valid, size: 2.5 }, { ...valid, size: '2' }]) {
+    { ...valid, size: -1 }, { ...valid, size: 5 }, { ...valid, size: 2.5 }, { ...valid, size: '2' },
+    { ...valid, mode: '페이지' }, { ...valid, mode: null }, { ...valid, mode: 1 }, { ...valid, mode: '' }]) {
     assert.throws(() => parseReadingPreferences(value));
   }
   await assert.rejects(loadReadingPreferences({ getItem: async () => '{' }));
+});
+
+test('읽기 방식이 없는 기존 v1 저장값은 스크롤로 읽고 두 읽기 방식을 그대로 복원합니다.', async () => {
+  const legacy = JSON.stringify({ theme: '연노랑', font: '나눔고딕', size: 3 });
+  const restored = await loadReadingPreferences({ getItem: async key => key === 'mobtwig:reading-preferences:v1' ? legacy : null });
+  assert.deepEqual(restored, { theme: '연노랑', font: '나눔고딕', size: 3, mode: '스크롤' });
+  for (const mode of ['스크롤', '책장']) {
+    const values = new Map();
+    await saveReadingPreferences({ setItem: async (key, value) => { values.set(key, value); } },
+      { theme: '크림', font: '기본 명조', size: 2, mode });
+    assert.deepEqual([...values.keys()], ['mobtwig:reading-preferences:v1']);
+    assert.equal((await loadReadingPreferences({ getItem: async key => values.get(key) ?? null })).mode, mode);
+  }
+  assert.equal(parseReadingPreferences({ theme: '크림', font: '기본 명조', size: 2, mode: '책장', extra: true }).extra, undefined);
 });
 
 test('읽기·쓰기 실패를 호출자에게 전달하며 쓰기 완료 전에 성공하지 않습니다.', async () => {
