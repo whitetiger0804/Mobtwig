@@ -19,7 +19,8 @@ import {
   type CommunityBoard, type CommunityComment, type CommunityHead, type CommunityPost,
   type CommunityPostInput, type CommunityReportReason, type CommunitySticker, type CommunityWork,
 } from './community';
-import { deleteLocalCommunityDraft, loadLocalCommunityDraft, saveLocalCommunityDraft } from './communityDrafts';
+import { deleteMatchingLocalCommunityDraft, inspectLocalCommunityDraft, saveLocalCommunityDraftSnapshot,
+  validateCommunityDraftForBoard, type CommunityDraftSnapshot } from './communityDrafts';
 import { communityBodyTextLength, insertCommunityBodyImage, normalizeCommunityBody, removeCommunityBodyImage, splitCommunityBody,
   type CommunityBodySelection } from './communityBody';
 import { fetchWorkDetail } from './workDetails';
@@ -82,15 +83,18 @@ function useAction() {
   const pending = useRef<AbortController | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  useLayoutEffect(() => () => pending.current?.abort(), [client, state.generation]);
+  useLayoutEffect(() => {
+    setBusy(false); setError('');
+    return () => { pending.current?.abort(); pending.current = null; };
+  }, [client, state.generation]);
   async function run<T>(request: (signal: AbortSignal) => Promise<T>, done: (value: T) => void) {
     if (pending.current || client.getSnapshot().generation !== state.generation) return;
     const controller = new AbortController();
     pending.current = controller; setBusy(true); setError('');
-    const current = () => !controller.signal.aborted && client.getSnapshot().generation === state.generation;
+    const current = () => pending.current === controller && !controller.signal.aborted && client.getSnapshot().generation === state.generation;
     try { const value = await request(controller.signal); if (current()) done(value); }
     catch (failure) { if (current()) setError(requestError(failure)); }
-    finally { pending.current = null; if (current()) setBusy(false); }
+    finally { if (current()) setBusy(false); if (pending.current === controller) pending.current = null; }
   }
   return { busy, error, run, clear: () => setError('') };
 }
@@ -120,12 +124,13 @@ function Pager({ page, hasNext, busy, onChange }: { page: number; hasNext: boole
   </View> : null;
 }
 
-function Confirm({ title, visible, busy, onCancel, onConfirm }: {
-  title: string; visible: boolean; busy?: boolean; onCancel: () => void; onConfirm: () => void;
+function Confirm({ title, visible, busy, error, onCancel, onConfirm }: {
+  title: string; visible: boolean; busy?: boolean; error?: string; onCancel: () => void; onConfirm: () => void;
 }) {
   return <Modal visible={visible} transparent animationType="none" onRequestClose={onCancel}>
     <View style={styles.backdrop}><Pressable style={StyleSheet.absoluteFill} accessibilityLabel="닫기" onPress={onCancel} />
-      <ModalPanel visible={visible} style={styles.dialog}><Text style={styles.heading}>{title}</Text><View style={styles.dialogActions}>
+      <ModalPanel visible={visible} style={styles.dialog}><Text style={styles.heading}>{title}</Text>
+      {!!error && <Text accessibilityRole="alert" style={s.error}>{error}</Text>}<View style={styles.dialogActions}>
         <Action compact tone="quiet" label="취소" disabled={busy} onPress={onCancel} /><Action compact label="확인" disabled={busy} onPress={onConfirm} />
       </View></ModalPanel></View>
   </Modal>;
@@ -555,25 +560,32 @@ export function WritePostScreen({ route }: { route: Route }) {
   const [workPage, setWorkPage] = useState(1);
   const workQuery = useSearch(search);
   const [selectedWork, setSelectedWork] = useState<CommunityWork | null>(null);
-  const [localDraft, setLocalDraft] = useState<CommunityPostInput | null>(null);
+  const [localDraft, setLocalDraft] = useState<CommunityDraftSnapshot | null>(null);
+  const [invalidDraftToken, setInvalidDraftToken] = useState<string | null>(null);
   const [draftPrompt, setDraftPrompt] = useState(false);
-  const [draftLoaded, setDraftLoaded] = useState(false);
+  const [usedDraft, setUsedDraft] = useState<CommunityDraftSnapshot | null>(null);
+  const [draftMessage, setDraftMessage] = useState('');
+  const [draftSaving, setDraftSaving] = useState(false);
+  const [published, setPublished] = useState<CommunityPost | null>(null);
   const [stickersOpen, setStickersOpen] = useState(false);
   const [discard, setDiscard] = useState(false);
   const scope = { apiUrl: connection.apiUrl, memberId: connection.state.member?.id ?? '', boardId: route.boardId ?? '' };
   const data = useQuery(`${connection.key}:${route.boardId}:${route.postId}:editor`, !!connection.reader, async signal => {
-    const [boards, post, draft] = await Promise.all([
+    const [boards, post] = await Promise.all([
       readCommunityBoards(connection.apiUrl, route.mode ?? 'work', signal), route.postId
         ? readCommunityPost(connection.apiUrl, route.postId, true, signal, connection.reader)
-        : Promise.resolve(null), route.postId ? Promise.resolve(null) : loadLocalCommunityDraft(AsyncStorage, scope),
+        : Promise.resolve(null),
     ]);
     if (post && !post.mine) throw new Error('본인이 작성한 글만 수정할 수 있습니다.');
     const board = boards.items.find(item => item.id === route.boardId);
     if (!board) throw new Error('게시판을 찾을 수 없습니다.');
-    return { board, stickers: boards.stickers, post, draft };
+    return { board, stickers: boards.stickers, post };
   });
+  const drafts = useQuery(`${connection.key}:${route.boardId}:local-draft`, !!connection.reader && !route.postId,
+    () => inspectLocalCommunityDraft(AsyncStorage, scope));
   useLayoutEffect(() => {
-    setForm(null); setBodyCaret(null); setLocalDraft(null); setDraftPrompt(false); setDraftLoaded(false); setSaved(false); setSelectedWork(null);
+    setForm(null); setBodyCaret(null); setLocalDraft(null); setDraftPrompt(false); setUsedDraft(null); setSaved(false); setSelectedWork(null);
+    setDraftMessage(''); setDraftSaving(false); setPublished(null); setDiscard(false); setInvalidDraftToken(null);
   }, [connection.client, connection.state.generation, route.boardId, route.postId]);
   useLayoutEffect(() => {
     if (!bodyCaret) return;
@@ -583,12 +595,17 @@ export function WritePostScreen({ route }: { route: Route }) {
   }, [bodyCaret]);
   useEffect(() => {
     if (!data.data || form) return;
-    const { board, post, draft } = data.data;
+    const { board, post } = data.data;
     const initial = post ? postInput(post) : { boardId: board.id, workId: board.work?.id ?? null,
       head: board.heads[0], title: '', body: '', hasSpoiler: false, spoilerChapterId: null, images: [], stickerIds: [] };
     setForm(initial); bodySelection.current = { start: initial.body.length, end: initial.body.length };
-    setSelectedWork(post?.work ?? null); setChoosingWork(!post); setLocalDraft(draft); setDraftPrompt(!!draft);
+    setSelectedWork(post?.work ?? null); setChoosingWork(!post);
   }, [data.data, form]);
+  useEffect(() => {
+    if (!drafts.data) return;
+    setLocalDraft(drafts.data.snapshot); setDraftPrompt(!!drafts.data.snapshot); setDraftMessage('');
+    setInvalidDraftToken(drafts.data.invalidToken);
+  }, [drafts.data]);
   const board = data.data?.board;
   const works = useQuery(`${connection.key}:${workQuery}:${workPage}:promotion-work`, !!connection.reader && choosingWork && !!workQuery,
     signal => readCommunityWorks(connection.apiUrl, { query: workQuery, page: workPage, size: 20 }, signal));
@@ -597,7 +614,7 @@ export function WritePostScreen({ route }: { route: Route }) {
   const linkedWork = selectedWork?.id === form?.workId ? selectedWork : restoredWork.data;
   const bodyBlocks = form ? splitCommunityBody(form.body, form.images) : [];
   const bodyLength = form ? communityBodyTextLength(form.body, form.images) : 0;
-  function change(patch: Partial<CommunityPostInput>) { setForm(previous => previous ? { ...previous, ...patch } : previous); setSaved(false); action.clear(); }
+  function change(patch: Partial<CommunityPostInput>) { setForm(previous => previous ? { ...previous, ...patch } : previous); setSaved(false); setDraftMessage(''); action.clear(); }
   /** 이미지 경계에서 삭제 키를 누르면 인접한 한 장을 지우고 합쳐진 본문에 커서를 돌려놓습니다. */
   function removeImageAtCursor(index: number, key: string): boolean {
     if (!form || (key !== 'Backspace' && key !== 'Delete')) return false;
@@ -615,21 +632,33 @@ export function WritePostScreen({ route }: { route: Route }) {
     return true;
   }
   function saveDraft() {
-    if (!form) return;
-    void action.run(() => saveLocalCommunityDraft(AsyncStorage, scope, form), value => {
-      setLocalDraft(value); setDraftLoaded(true); setSaved(true);
+    if (!form || action.busy || drafts.busy || drafts.error || invalidDraftToken !== null) return;
+    void action.run(async signal => {
+      setDraftSaving(true); setDraftMessage('');
+      try { return await saveLocalCommunityDraftSnapshot(AsyncStorage, scope, form); }
+      catch { throw new Error('임시저장하지 못했습니다. 입력 내용은 유지됩니다. 다시 시도해 주세요.'); }
+      finally { if (!signal.aborted) setDraftSaving(false); }
+    }, value => {
+      setLocalDraft(value); setUsedDraft(value); setSaved(true); setDraftMessage('이 기기에 임시저장했습니다.');
     });
   }
+  function openPost(post: CommunityPost) {
+    app.navigate({ screen: 'post', postId: post.id, boardId: post.boardId, mode: post.boardType }, false, true);
+  }
   function submit() {
-    if (!form) return;
-    void action.run(signal => route.postId ? updateCommunityPost(connection.client, route.postId, form, signal)
-      : createCommunityPost(connection.client, form, signal), post => {
-      if (route.postId) app.back();
-      else {
-        // 등록 성공 후 초안 정리에 실패해도 같은 글을 다시 전송하지 않습니다.
-        if (draftLoaded) void deleteLocalCommunityDraft(AsyncStorage, scope).catch(error => console.warn('등록한 글의 로컬 초안을 삭제하지 못했습니다.', error));
-        app.navigate({ screen: 'post', postId: post.id, boardId: post.boardId, mode: post.boardType }, false, true);
+    if (!form || published) return;
+    void action.run(async signal => {
+      const post = route.postId ? await updateCommunityPost(connection.client, route.postId, form, signal)
+        : await createCommunityPost(connection.client, form, signal);
+      if (!route.postId && usedDraft) {
+        try { await deleteMatchingLocalCommunityDraft(AsyncStorage, scope, usedDraft); }
+        catch { return { post, cleanupFailed: true }; }
       }
+      return { post, cleanupFailed: false };
+    }, ({ post, cleanupFailed }) => {
+      if (route.postId) app.back();
+      else if (cleanupFailed) { setPublished(post); setSaved(false); setDraftPrompt(false); }
+      else openPost(post);
     });
   }
   function addImage() {
@@ -658,12 +687,50 @@ export function WritePostScreen({ route }: { route: Route }) {
       change({ body: result.body, images: result.images });
     });
   }
+  function discardDraft() {
+    const expected = localDraft ?? (invalidDraftToken === null ? null : { token: invalidDraftToken });
+    if (!expected) return;
+    void action.run(async () => {
+      try {
+        if (!await deleteMatchingLocalCommunityDraft(AsyncStorage, scope, expected)) {
+          throw new Error('changed');
+        }
+      } catch { throw new Error('임시저장 삭제를 확인하지 못했습니다. 다른 화면에서 바뀐 초안은 삭제하지 않습니다. 다시 확인해 주세요.'); }
+    }, () => { setLocalDraft(null); setInvalidDraftToken(null); setUsedDraft(null); setSaved(false); setDiscard(false); setDraftMessage('임시저장한 글을 삭제했습니다. 현재 입력은 유지됩니다.'); });
+  }
+  function restoreDraft() {
+    if (!localDraft || !board || !data.data) return;
+    try {
+      const input = validateCommunityDraftForBoard(localDraft.input, board, data.data.stickers);
+      const restored = { ...input, body: normalizeCommunityBody(input.body, input.images) };
+      setForm(restored); setBodyCaret(null); setSelectedWork(null); setChoosingWork(!restored.workId);
+      bodySelection.current = { start: restored.body.length, end: restored.body.length };
+      setUsedDraft(localDraft); setSaved(true); setDraftPrompt(false); setDraftMessage('임시저장한 글을 불러왔습니다.');
+    } catch (failure) { setDraftMessage(requestError(failure)); }
+  }
   if (connection.state.status === 'error' || connection.ready && !connection.reader) return <LoginRequired />;
+  if (published) return <View style={styles.problem}>
+    <Text style={styles.heading}>게시글을 등록했습니다.</Text>
+    <Text accessibilityRole="alert" style={s.error}>기기의 임시저장 글을 삭제하지 못했습니다. 남은 초안을 다시 등록하지 않도록 확인해 주세요.</Text>
+    {!!action.error && <Text accessibilityRole="alert" style={s.error}>{action.error}</Text>}
+    <Action label="임시저장 정리 다시 시도" disabled={action.busy} onPress={() => void action.run(async () => {
+      try { if (usedDraft) await deleteMatchingLocalCommunityDraft(AsyncStorage, scope, usedDraft); }
+      catch { throw new Error('초안을 정리하지 못했습니다. 게시글은 이미 등록되어 있습니다.'); }
+    }, () => openPost(published))} />
+    <Action label="게시글 보기" disabled={action.busy} onPress={() => openPost(published)} />
+  </View>;
   return <View style={styles.screen}>
     <ScrollView style={s.grow} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.writeContent}>
       <QueryStatus busy={data.busy && !data.data} error={data.error} retry={data.retry} />
       {data.data && form && <>
         <View style={styles.contextRow}><Text style={styles.contextLabel}>{board?.name}</Text></View>
+        {!route.postId && <Text style={styles.meta}>서버·회원·게시판별로 이 기기에 한 개만 수동 저장합니다. 저장하면 기존 초안이 바뀌며 다른 기기에는 동기화되지 않습니다.</Text>}
+        {!route.postId && drafts.busy && <Text style={styles.meta}>임시저장한 글 확인 중… 작성은 계속할 수 있습니다.</Text>}
+        {!route.postId && !!drafts.error && <View><Text accessibilityRole="alert" style={s.error}>임시저장한 글을 확인하지 못했습니다. 작성·등록은 가능하며 기존 초안은 유지됩니다.</Text>
+          <Action compact label="임시저장 다시 확인" disabled={action.busy} onPress={drafts.retry} /></View>}
+        {invalidDraftToken !== null && <View><Text accessibilityRole="alert" style={s.error}>손상된 임시저장 글을 불러올 수 없습니다. 작성·등록은 가능합니다. 새로 임시저장하려면 원본 삭제를 확인해 주세요.</Text>
+          <Action compact label="손상된 임시저장 삭제" disabled={action.busy} onPress={() => { action.clear(); setDiscard(true); }} /></View>}
+        {!!draftMessage && <Text accessibilityRole="alert" style={s.text}>{draftMessage}</Text>}
         {board?.type === 'promotion' && <>
           {choosingWork ? <View style={styles.promotionSearch}><CommunitySearch standalone placeholder="홍보할 작품 검색" value={search} onChange={value => { setSearch(value); setWorkPage(1); }} />
             {!!workQuery && <>
@@ -713,26 +780,21 @@ export function WritePostScreen({ route }: { route: Route }) {
         <Icon name="image" size={21} /><Text style={styles.meta}>{form.images.length} / 3</Text></Pressable>
       <Pressable accessibilityRole="button" accessibilityLabel="이모티콘 선택" disabled={action.busy} onPress={() => setStickersOpen(!stickersOpen)} style={styles.toolbarButton}>
         <Text style={[styles.linkText, stickersOpen && styles.selectedText]}>이모티콘</Text></Pressable>
-      {!route.postId && <Pressable accessibilityRole="button" accessibilityLabel={saved ? '임시저장됨' : '임시저장'} disabled={action.busy || !board || saved}
-        onPress={saveDraft} style={styles.toolbarButton}>{saved && <Icon name="check" size={16} color={colors.green} />}<Text style={[styles.linkText, saved && styles.selectedText]}>임시저장</Text></Pressable>}
-      {!route.postId && localDraft && <Pressable accessibilityRole="button" accessibilityLabel="임시저장 삭제" disabled={action.busy} style={styles.toolbarButton} onPress={() => setDiscard(true)}><Icon name="trash" size={18} /></Pressable>}
+      {!route.postId && <Pressable accessibilityRole="button" accessibilityLabel={draftSaving ? '임시저장 중' : saved ? '임시저장됨' : '임시저장'} disabled={action.busy || drafts.busy || !!drafts.error || invalidDraftToken !== null || !board || saved}
+        onPress={saveDraft} style={styles.toolbarButton}>{saved && <Icon name="check" size={16} color={colors.green} />}<Text style={[styles.linkText, saved && styles.selectedText]}>{draftSaving ? '저장 중…' : saved ? '임시저장됨' : '임시저장'}</Text></Pressable>}
+      {!route.postId && localDraft && <Pressable accessibilityRole="button" accessibilityLabel="임시저장 삭제" disabled={action.busy} style={styles.toolbarButton} onPress={() => { action.clear(); setDiscard(true); }}><Icon name="trash" size={18} /></Pressable>}
     </View><View style={styles.submitFooter}><Action label={route.postId ? '수정하기' : '등록하기'} style={styles.submitAction}
       disabled={action.busy || !board || !normalizeCommunityText(form.title) || !normalizeCommunityText(form.body) || (board.type === 'promotion' && !form.workId)} onPress={submit} /></View></>}
     <Modal visible={draftPrompt} transparent animationType="none" onRequestClose={() => setDraftPrompt(false)}>
       <View style={styles.backdrop}><ModalPanel visible={draftPrompt} style={styles.dialog}>
         <Text style={styles.heading}>임시저장한 글을 불러오시겠습니까?</Text>
-        <View style={styles.dialogActions}><Action compact tone="quiet" label="새 글 쓰기" onPress={() => setDraftPrompt(false)} />
-          <Action compact label="불러오기" onPress={() => {
-            const restored = { ...localDraft!, body: normalizeCommunityBody(localDraft!.body, localDraft!.images) };
-            setForm(restored); setChoosingWork(!restored.workId); bodySelection.current = { start: restored.body.length, end: restored.body.length };
-            setDraftLoaded(true); setSaved(true); setDraftPrompt(false);
-          }} /></View>
+        <Text style={styles.meta}>불러오면 현재 입력을 바꿉니다. 새 글 쓰기를 선택하면 저장된 초안은 유지합니다.</Text>
+        {!!draftMessage && <Text accessibilityRole="alert" style={s.error}>{draftMessage}</Text>}
+        <View style={styles.dialogActions}><Action compact tone="quiet" label="새 글 쓰기" disabled={action.busy} onPress={() => { setDraftPrompt(false); setDraftMessage(''); }} />
+          <Action compact label="불러오기" disabled={action.busy || !board} onPress={restoreDraft} /></View>
       </ModalPanel></View>
     </Modal>
-    <Confirm title="임시저장한 글을 삭제하시겠습니까?" visible={discard} busy={action.busy} onCancel={() => { if (!action.busy) setDiscard(false); }}
-      onConfirm={() => void action.run(() => deleteLocalCommunityDraft(AsyncStorage, scope), () => {
-        setLocalDraft(null); setDraftLoaded(false); setSaved(false); setDiscard(false);
-      })} />
+    <Confirm title="임시저장한 글을 삭제하시겠습니까?" visible={discard} busy={action.busy} error={action.error} onCancel={() => { if (!action.busy) setDiscard(false); }} onConfirm={discardDraft} />
   </View>;
 }
 // #endregion

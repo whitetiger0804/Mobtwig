@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { loadLocalCommunityDraft, saveLocalCommunityDraft, deleteLocalCommunityDraft } from '../src/communityDrafts.ts';
+import { loadLocalCommunityDraft, saveLocalCommunityDraft, deleteLocalCommunityDraft, loadLocalCommunityDraftSnapshot,
+  saveLocalCommunityDraftSnapshot, deleteMatchingLocalCommunityDraft, inspectLocalCommunityDraft,
+  validateCommunityDraftForBoard } from '../src/communityDrafts.ts';
 
 const scope = { apiUrl: 'https://community.example.test/api', memberId: '13', boardId: '21' };
 const input = {
@@ -122,4 +124,59 @@ test('읽기·저장·삭제 오류를 전달하고 실제 저장 완료 전에�
   finish();
   await save;
   assert.equal(completed, true);
+});
+
+test('게시 후 삭제 재시도는 새 초안과 같은 내용으로 다시 저장한 버전을 지우지 않습니다.', async () => {
+  const storage = device();
+  const published = await saveLocalCommunityDraftSnapshot(storage, scope, input);
+  let fail = true;
+  const unreliable = { ...storage, removeItem: async key => { if (fail) throw new Error('삭제 실패'); storage.values.delete(key); } };
+  await assert.rejects(deleteMatchingLocalCommunityDraft(unreliable, scope, published));
+  assert.deepEqual(await loadLocalCommunityDraft(storage, scope), input);
+  const replacement = await saveLocalCommunityDraftSnapshot(storage, scope, input);
+  assert.notEqual(replacement.token, published.token);
+  fail = false;
+  assert.equal(await deleteMatchingLocalCommunityDraft(unreliable, scope, published), false);
+  assert.deepEqual(await loadLocalCommunityDraftSnapshot(storage, scope), replacement);
+  assert.equal(await deleteMatchingLocalCommunityDraft(unreliable, scope, replacement), true);
+});
+
+test('비교·삭제 도중 시작된 저장은 삭제가 끝난 뒤 새 초안으로 남습니다.', async () => {
+  const storage = device();
+  const before = await saveLocalCommunityDraftSnapshot(storage, scope, input);
+  let release, entered;
+  const gate = new Promise(resolve => { release = resolve; });
+  const started = new Promise(resolve => { entered = resolve; });
+  const delayed = { ...storage, removeItem: async key => { entered(); await gate; storage.values.delete(key); } };
+  const deleting = deleteMatchingLocalCommunityDraft(delayed, scope, before);
+  await started;
+  const afterInput = { ...input, title: '나중에 저장한 초안' };
+  const saving = saveLocalCommunityDraftSnapshot(storage, scope, afterInput);
+  release(); assert.equal(await deleting, true); await saving;
+  assert.deepEqual(await loadLocalCommunityDraft(storage, scope), afterInput);
+});
+
+test('이전 형식 초안의 정확한 버전을 삭제하며 손상된 값도 확인한 원본만 명시적으로 삭제합니다.', async () => {
+  const storage = device(); await saveLocalCommunityDraft(storage, scope, input);
+  const [key] = storage.values.keys();
+  storage.values.set(key, JSON.stringify(input));
+  const legacy = await loadLocalCommunityDraftSnapshot(storage, scope);
+  assert.deepEqual(legacy.input, input); assert.equal(await deleteMatchingLocalCommunityDraft(storage, scope, legacy), true);
+  storage.values.set(key, '{broken');
+  const inspection = await inspectLocalCommunityDraft(storage, scope);
+  assert.equal(inspection.snapshot, null); assert.equal(inspection.invalidToken, '{broken');
+  const replacement = await saveLocalCommunityDraftSnapshot(storage, scope, input);
+  assert.equal(await deleteMatchingLocalCommunityDraft(storage, scope, { token: inspection.invalidToken }), false);
+  assert.deepEqual(await loadLocalCommunityDraftSnapshot(storage, scope), replacement);
+});
+
+test('복원 데이터가 현재 게시판의 작품·말머리·이모티콘 규칙에 맞지 않으면 원본을 변경하지 않습니다.', () => {
+  const board = { id: '21', type: 'work', work: { id: 'star-record' }, heads: ['IMPRESSION'] };
+  const stickers = [{ id: '1' }, { id: '2' }];
+  assert.deepEqual(validateCommunityDraftForBoard(input, board, stickers), input);
+  for (const changed of [{ ...board, id: '22' }, { ...board, heads: ['QUESTION'] }, { ...board, work: { id: 'another-work' } }, { ...board, type: 'topic' }]) {
+    assert.throws(() => validateCommunityDraftForBoard(input, changed, stickers));
+  }
+  assert.throws(() => validateCommunityDraftForBoard(input, board, [{ id: '1' }]), /이모티콘/);
+  assert.equal(input.head, 'IMPRESSION'); assert.equal(input.stickerIds.length, 2);
 });
