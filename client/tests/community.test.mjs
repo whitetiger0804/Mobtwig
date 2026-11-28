@@ -33,6 +33,23 @@ const input = { boardId: board.id, workId: work.id, head: post.head, title: post
   hasSpoiler: false, spoilerChapterId: null, images: [], stickerIds: [] };
 const page = (items, values = {}) => ({ items, hasNext: false, ...values });
 
+test('게시 API는 Unicode 최대 길이와 서버 공백 정리를 유지하고 초과·공백·중복 첨부를 보내지 않습니다.', async () => {
+  let calls = 0;
+  const valid = { ...input, title: ' \u0085' + '😀'.repeat(100) + '\uFEFF', body: '\n' + '🙂'.repeat(10000) + '\u0085' };
+  const client = { request: async (path, init) => {
+    calls++; assert.equal(path, '/api/members/community/posts');
+    const body = JSON.parse(init.body); assert.equal(body.title, '😀'.repeat(100)); assert.equal(body.body, '🙂'.repeat(10000));
+    return { ...own, title: body.title, body: body.body };
+  } };
+  assert.equal((await createCommunityPost(client, valid, signal)).title, '😀'.repeat(100));
+  const image = { url: '/community-images/13/one.png', width: 32, height: 32 };
+  for (const value of [{ ...input, title: '😀'.repeat(101) }, { ...input, body: '🙂'.repeat(10001) },
+    { ...input, title: '\u0085 \n' }, { ...input, body: '\u0085 \n' }, { ...input, boardId: '0' }, { ...input, images: [image, image] }]) {
+    await assert.rejects(createCommunityPost(client, value, signal));
+  }
+  assert.equal(calls, 1);
+});
+
 test('공개 게시판은 쿠키를 보내지 않고 기준 경로와 선택 종류를 유지합니다.', async context => {
   context.mock.method(globalThis, 'fetch', async (url, init) => {
     assert.equal(url, base + '/community/boards?type=work');
