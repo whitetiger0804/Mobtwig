@@ -241,6 +241,7 @@ function postInput(input: CommunityPostInput, draft: boolean): CommunityPostInpu
     }
     return { url: image.url, width: image.width, height: image.height };
   });
+  if (new Set(images.map(image => image.url)).size !== images.length) throw new Error('같은 이미지를 중복 첨부할 수 없습니다.');
   if (communityBodyTextLength(body, images) > 10000) throw new Error('본문은 10,000자 이내로 입력해 주십시오.');
   stickerIds(input.stickerIds, 8);
   return { boardId: input.boardId, workId: input.workId, head: input.head, title, body,
@@ -256,6 +257,23 @@ export function parseCommunityDraftInput(value: unknown): CommunityPostInput {
   if (!object(value)) throw new Error('임시저장한 글의 형식이 올바르지 않습니다.');
   const migrated = value.hasSpoiler === undefined ? { ...value, hasSpoiler: value.spoilerChapterId !== null } : value;
   return postInput(migrated as unknown as CommunityPostInput, true);
+}
+
+/** 현재 게시판과 표시한 이모티콘 목록을 기준으로 게시 입력을 검증하고 서버와 같은 공백 정리를 적용합니다. */
+export function validateCommunityPostForBoard(input: CommunityPostInput, board: CommunityBoard,
+  stickers: readonly CommunitySticker[]): CommunityPostInput {
+  const parsed = postInput(input, false);
+  if (parsed.boardId !== board.id || !board.heads.includes(parsed.head)) {
+    throw new Error('게시판과 말머리를 확인해 주세요.');
+  }
+  if (board.type === 'work' && parsed.workId !== null && parsed.workId !== board.work?.id) {
+    throw new Error('게시판과 연결 작품이 일치하지 않습니다.');
+  }
+  if (board.type === 'promotion' && parsed.workId === null) throw new Error('홍보할 작품을 선택해 주세요.');
+  if (parsed.stickerIds.some(id => !stickers.some(sticker => sticker.id === id))) {
+    throw new Error('현재 사용할 수 있는 이모티콘을 선택해 주세요.');
+  }
+  return parsed;
 }
 function commentInput(input: CommunityCommentInput): CommunityCommentInput {
   if (!(input.body === null || typeof input.body === 'string') || typeof input.hasSpoiler !== 'boolean'

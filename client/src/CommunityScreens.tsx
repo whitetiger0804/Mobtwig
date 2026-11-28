@@ -15,7 +15,7 @@ import {
   communityImageUrl, createCommunityBoard, createCommunityComment, createCommunityPost, deleteCommunityComment,
   deleteCommunityPost, normalizeCommunityText, readCommunityBoards, readCommunityComments,
   readCommunityPost, readCommunityPosts, readCommunityWorks, reportCommunityPost,
-  setCommunityLike, updateCommunityComment, updateCommunityPost, uploadCommunityImage,
+  setCommunityLike, updateCommunityComment, updateCommunityPost, uploadCommunityImage, validateCommunityPostForBoard,
   type CommunityBoard, type CommunityComment, type CommunityHead, type CommunityPost,
   type CommunityPostInput, type CommunityReportReason, type CommunitySticker, type CommunityWork,
 } from './community';
@@ -613,7 +613,10 @@ export function WritePostScreen({ route }: { route: Route }) {
     && !!form?.workId && selectedWork?.id !== form.workId, signal => fetchWorkDetail(connection.apiUrl, form!.workId!, signal));
   const linkedWork = selectedWork?.id === form?.workId ? selectedWork : restoredWork.data;
   const bodyBlocks = form ? splitCommunityBody(form.body, form.images) : [];
-  const bodyLength = form ? communityBodyTextLength(form.body, form.images) : 0;
+  const titleLength = form ? [...normalizeCommunityText(form.title)].length : 0;
+  const bodyLength = form ? communityBodyTextLength(normalizeCommunityText(form.body), form.images) : 0;
+  const lengthError = titleLength > 100 ? '제목은 100자 이내로 입력해 주세요.'
+    : bodyLength > 10000 ? '본문은 10,000자 이내로 입력해 주세요.' : '';
   function change(patch: Partial<CommunityPostInput>) { setForm(previous => previous ? { ...previous, ...patch } : previous); setSaved(false); setDraftMessage(''); action.clear(); }
   /** 이미지 경계에서 삭제 키를 누르면 인접한 한 장을 지우고 합쳐진 본문에 커서를 돌려놓습니다. */
   function removeImageAtCursor(index: number, key: string): boolean {
@@ -646,10 +649,11 @@ export function WritePostScreen({ route }: { route: Route }) {
     app.navigate({ screen: 'post', postId: post.id, boardId: post.boardId, mode: post.boardType }, false, true);
   }
   function submit() {
-    if (!form || published) return;
+    if (!form || published || !board || !data.data) return;
     void action.run(async signal => {
-      const post = route.postId ? await updateCommunityPost(connection.client, route.postId, form, signal)
-        : await createCommunityPost(connection.client, form, signal);
+      const input = validateCommunityPostForBoard(form, board, data.data!.stickers);
+      const post = route.postId ? await updateCommunityPost(connection.client, route.postId, input, signal)
+        : await createCommunityPost(connection.client, input, signal);
       if (!route.postId && usedDraft) {
         try { await deleteMatchingLocalCommunityDraft(AsyncStorage, scope, usedDraft); }
         catch { return { post, cleanupFailed: true }; }
@@ -750,7 +754,10 @@ export function WritePostScreen({ route }: { route: Route }) {
         {board && board.heads.length > 1 && <View style={styles.chips}>{board.heads.map(value => <Pressable key={value} accessibilityRole="radio"
           accessibilityState={{ checked: form.head === value }} disabled={action.busy} style={[styles.chip, form.head === value && styles.chipSelected]}
           onPress={() => change({ head: value })}><Text style={styles.chipText}>{heads[value]}</Text></Pressable>)}</View>}
-        <TextInput accessibilityLabel="게시글 제목" value={form.title} onChangeText={title => change({ title })} editable={!action.busy} maxLength={100}
+        <Text style={styles.meta}>등록한 글은 커뮤니티에 공개됩니다. 스포일러를 선택하면 다른 독자에게 확인 전 제목·본문·첨부가 가려집니다. 확인 후 누구나 내용을 볼 수 있습니다.</Text>
+        <Text style={styles.meta}>제목과 본문의 양끝 공백, 첨부 이미지 표식은 글자 수에서 제외합니다.</Text>
+        <Text accessibilityLabel="게시글 제목 글자 수" style={styles.meta}>제목 {titleLength.toLocaleString('ko-KR')} / 100</Text>
+        <TextInput accessibilityLabel="게시글 제목" value={form.title} onChangeText={title => change({ title })} editable={!action.busy}
           placeholder="제목을 입력해 주세요." placeholderTextColor={colors.muted} style={styles.postTitleInput} />
         <View style={styles.bodyEditor}>{bodyBlocks.map((block, index) => block.type === 'text'
           ? <TextInput key={index} accessibilityLabel={index === 0 ? '게시글 본문' : `이미지 뒤 본문 ${index / 2}`} value={block.text}
@@ -762,19 +769,20 @@ export function WritePostScreen({ route }: { route: Route }) {
               bodySelection.current = { start: block.start + nativeEvent.selection.start, end: block.start + nativeEvent.selection.end };
             }}
             onKeyPress={event => { if (removeImageAtCursor(index, event.nativeEvent.key)) event.preventDefault(); }}
-            editable={!action.busy} multiline maxLength={Math.max(0, 10000 - (bodyLength - [...block.text].length))}
+            editable={!action.busy} multiline
             placeholder={index === 0 && !form.images.length ? '이야기를 들려주세요.' : ''} placeholderTextColor={colors.muted}
             style={[styles.postBodyInput, index === bodyBlocks.length - 1 && styles.bodyEndInput]} />
           : <Image key={index} source={{ uri: communityImageUrl(connection.apiUrl, block.image.url) }}
             style={[styles.attachedImage, { width: block.image.width / PixelRatio.get(), aspectRatio: block.image.width / block.image.height }]} resizeMode="contain" />)}</View>
         {stickersOpen ? <StickerPicker items={data.data.stickers} selected={form.stickerIds} limit={8} disabled={action.busy} onChange={stickerIds => change({ stickerIds })} />
           : <StickerRow items={form.stickerIds.map(id => data.data!.stickers.find(item => item.id === id)!)} />}
+        {!!lengthError && <Text accessibilityRole="alert" style={s.error}>{lengthError}</Text>}
         {!!action.error && <Text accessibilityRole="alert" style={s.error}>{action.error}</Text>}
       </>}
     </ScrollView>
     {form && <><View style={styles.writeStatus}>
       <SpoilerButton value={form.hasSpoiler} disabled={action.busy} onChange={hasSpoiler => change({ hasSpoiler, spoilerChapterId: null })} />
-      <Text style={styles.meta}>{bodyLength.toLocaleString('ko-KR')} / 10,000</Text>
+      <Text accessibilityLabel="게시글 본문 글자 수" style={styles.meta}>본문 {bodyLength.toLocaleString('ko-KR')} / 10,000</Text>
     </View><View style={styles.writeToolbar}>
       <Pressable accessibilityRole="button" accessibilityLabel="이미지 첨부" disabled={action.busy || form.images.length >= 3} onPress={addImage} style={styles.toolbarButton}>
         <Icon name="image" size={21} /><Text style={styles.meta}>{form.images.length} / 3</Text></Pressable>
@@ -784,7 +792,7 @@ export function WritePostScreen({ route }: { route: Route }) {
         onPress={saveDraft} style={styles.toolbarButton}>{saved && <Icon name="check" size={16} color={colors.green} />}<Text style={[styles.linkText, saved && styles.selectedText]}>{draftSaving ? '저장 중…' : saved ? '임시저장됨' : '임시저장'}</Text></Pressable>}
       {!route.postId && localDraft && <Pressable accessibilityRole="button" accessibilityLabel="임시저장 삭제" disabled={action.busy} style={styles.toolbarButton} onPress={() => { action.clear(); setDiscard(true); }}><Icon name="trash" size={18} /></Pressable>}
     </View><View style={styles.submitFooter}><Action label={route.postId ? '수정하기' : '등록하기'} style={styles.submitAction}
-      disabled={action.busy || !board || !normalizeCommunityText(form.title) || !normalizeCommunityText(form.body) || (board.type === 'promotion' && !form.workId)} onPress={submit} /></View></>}
+      disabled={action.busy || !board || !!lengthError || !normalizeCommunityText(form.title) || !normalizeCommunityText(form.body) || (board.type === 'promotion' && !form.workId)} onPress={submit} /></View></>}
     <Modal visible={draftPrompt} transparent animationType="none" onRequestClose={() => setDraftPrompt(false)}>
       <View style={styles.backdrop}><ModalPanel visible={draftPrompt} style={styles.dialog}>
         <Text style={styles.heading}>임시저장한 글을 불러오시겠습니까?</Text>
